@@ -1,0 +1,7 @@
+id,name,emissions
+0,solar,0
+1,wind,0
+2,hydro,0
+3,gas,1
+4,brown coal,1
+5,black coal,1

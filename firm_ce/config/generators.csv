@@ -1,0 +1,25 @@
+id,name,fuel,capex,fom,vom,lifetime,discount_rate,node,max_build,min_build,capacity,scenarios
+0,pv_qld,solar,0,0,0,30,0.05,QLD,1000,0,0,nem
+1,pv_nsw,solar,0,0,0,30,0.05,NSW,1000,0,0,nem
+2,pv_sa,solar,0,0,0,30,0.05,SA,1000,0,0,nem
+3,pv_vic,solar,0,0,0,30,0.05,VIC,1000,0,0,nem
+4,pv_tas,solar,0,0,0,30,0.05,TAS,1000,0,0,nem
+5,wind_qld,wind,0,0,0,30,0.05,QLD,1000,0,0,nem
+6,wind_nsw,wind,0,0,0,30,0.05,NSW,1000,0,0,nem
+7,wind_sa,wind,0,0,0,30,0.05,SA,1000,0,0,nem
+8,wind_vic,wind,0,0,0,30,0.05,VIC,1000,0,0,nem
+9,wind_tas,wind,0,0,0,30,0.05,TAS,1000,0,0,nem
+10,hydro_qld,water,0,0,0,50,0.05,QLD,1000,0,0,nem
+11,hydro_nsw,water,0,0,0,50,0.05,NSW,1000,0,0,nem
+12,hydro_sa,water,0,0,0,50,0.05,SA,1000,0,0,nem
+13,hydro_vic,water,0,0,0,50,0.05,VIC,1000,0,0,nem
+14,hydro_tas,water,0,0,0,50,0.05,TAS,1000,0,0,nem
+15,gas_qld,gas,0,0,0,30,0.05,QLD,1000,0,0,nem
+16,gas_nsw,gas,0,0,0,30,0.05,NSW,1000,0,0,nem
+17,gas_sa,gas,0,0,0,30,0.05,SA,1000,0,0,nem
+18,gas_vic,gas,0,0,0,30,0.05,VIC,1000,0,0,nem
+19,gas_tas,gas,0,0,0,30,0.05,TAS,1000,0,0,nem
+20,coal_qld,black coal,0,0,0,50,0.05,QLD,1000,0,0,nem
+21,coal_nsw,black coal,0,0,0,50,0.05,NSW,1000,0,0,nem
+22,coal_vic,brown coal,0,0,0,50,0.05,VIC,1000,0,0,nem
+23,coal_tas,black coal,0,0,0,50,0.05,TAS,1000,0,0,nem
