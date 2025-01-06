@@ -1,8 +1,8 @@
 from typing import Dict
 
 class Generator:
-    def __init__(self, generator_dict: Dict[str]) -> None:
-        self.id = int(generator_dict['id'])
+    def __init__(self, id: int, generator_dict: Dict[str, str]) -> None:
+        self.id = id
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
         self.fuel = str(generator_dict['fuel']) # Fuel type ### CHANGE TO Fuel OBJECT
@@ -15,9 +15,12 @@ class Generator:
         self.min_build = int(generator_dict['min_build'])  # MW/year
         self.capacity = int(generator_dict['capacity'])  # MW
 
+    def __repr__(self):
+        return f"{self.id}: {self.name}"
+
 class Storage:
-    def __init__(self, storage_dict: Dict[str]) -> None:
-        self.id = int(storage_dict['id'])
+    def __init__(self, id: int, storage_dict: Dict[str, str]) -> None:
+        self.id = id
         self.name = str(storage_dict['name'])
         self.node = str(storage_dict['node'])
         self.power_capacity = int(storage_dict['power_capacity'])  # MW
@@ -34,7 +37,13 @@ class Storage:
         self.min_build_p = int(storage_dict['min_build_p'])  # MW/year
         self.min_build_e = int(storage_dict['min_build_e'])  # MWh/year
 
+    def __repr__(self):
+        return f"{self.id}: {self.name}"
+
 class Fuel:
-    def __init__(self, id, name):
+    def __init__(self, id: int, name: str) -> None:
         self.id = int(id)
         self.name = str(name)
+
+    def __repr__(self):
+        return f"{self.id}: {self.name}"

@@ -10,7 +10,7 @@ class ImportCSV:
 
     def get_data(self, filename: str) -> dict:
         filepath = self.repository.joinpath(filename)
-        if not filename.is_file():
+        if not filepath.is_file():
             raise FileNotFoundError(f"File {filepath} does not exist.")
         return pd.read_csv(filepath, index_col="id").to_dict(orient='index')
     
@@ -33,12 +33,12 @@ class DataSheet:
     pass
     
 def import_csv_data() -> dict:
-    csv_importer = ImportCSV("config")
+    csv_importer = ImportCSV("firm_ce/config")
     data = {
         'scenarios': csv_importer.get_scenarios(),
         'generators': csv_importer.get_generators(),
         'lines': csv_importer.get_lines(),
-        'storage': csv_importer.get_storages(),
+        'storages': csv_importer.get_storages(),
         'constraints': csv_importer.get_constraints(),
     }
 

@@ -1,12 +1,12 @@
 from typing import Dict
 import numpy as np
 
-from components import Line, Node
+from firm_ce.components import Line, Node
 
 TRIANGULAR = np.array([0,1,3,6,10,15,21,28,36])
 
 class Network:
-    def __init__(self, lines: Dict[Line], nodes: Dict[Node]) -> None:
+    def __init__(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> None:
         self.topology = self._get_topology(lines, nodes)
         self.node_count = len(nodes)
         self.transmission_mask = self._get_transmission_mask()
@@ -17,7 +17,7 @@ class Network:
 
         self.direct_connections = self.direct_connections[:-1, :-1]
 
-    def _get_topology(lines: Dict[Line], nodes: Dict[Node]) -> np.ndarray:
+    def _get_topology(lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
         num_lines = len(lines)
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
 
@@ -38,8 +38,9 @@ class Network:
     def _get_direct_connections(self) -> np.ndarray:
         direct_connections = np.full((self.node_count+1, self.node_count+1), -1, dtype=np.int64)
         for n, row in enumerate(self.topology):
-            direct_connections[*row] = n
-            direct_connections[*row[::-1]] = n
+            i, j = row
+            direct_connections[i, j] = n
+            direct_connections[j,i] = n
         return direct_connections
     
     def network_neighbours(self, n):

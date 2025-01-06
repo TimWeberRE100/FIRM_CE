@@ -1,2 +1,2 @@
-id,scenario_name,resolution,firstyear,finalyear,nodes,lines,constraints,type
-0,nem,1,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,capacity_expansion
+id,scenario_name,resolution,firstyear,finalyear,nodes,lines,constraints,type,solar_datafile,wind_datafile,flexible_datafile,demand_datafile
+0,nem,1,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,capacity_expansion,solar.csv,wind.csv,hydrobio.csv,electricity.csv

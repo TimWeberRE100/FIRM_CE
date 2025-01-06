@@ -5,9 +5,12 @@ class Node:
         self.id = int(id)
         self.name = str(name)
 
+    def __repr__(self):
+        return f"{self.id}: {self.name}"
+
 class Line:
-    def __init__(self, line_dict: Dict[str]) -> None:
-        self.id = int(line_dict['id'])
+    def __init__(self, id: int, line_dict: Dict[str, str]) -> None:
+        self.id = id
         self.name = str(line_dict['name'])
         self.length = int(line_dict['length']) # km
         self.capex = float(line_dict['capex'])  # $
@@ -18,3 +21,6 @@ class Line:
         self.node_start = str(line_dict['node_start'])  # Starting node name
         self.node_end = str(line_dict['node_end'])  # Ending node name
         self.loss_factor = float(line_dict['loss_factor'])  # Transmission losses % per 1000 km
+
+    def __repr__(self):
+        return f"{self.id}: {self.name}"
