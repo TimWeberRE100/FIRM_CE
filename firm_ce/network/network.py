@@ -2,8 +2,7 @@ from typing import Dict
 import numpy as np
 
 from firm_ce.components import Line, Node
-
-TRIANGULAR = np.array([0,1,3,6,10,15,21,28,36])
+from firm_ce import TRIANGULAR
 
 class Network:
     def __init__(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> None:
@@ -17,20 +16,21 @@ class Network:
 
         self.direct_connections = self.direct_connections[:-1, :-1]
 
-    def _get_topology(lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
+    def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
         num_lines = len(lines)
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
 
-        for line in lines.values():
-            line_id = line['id']
-            start_node_id = nodes[line['node_start']]['id']
-            end_node_id = nodes[line['node_end']]['id']
+        for key in lines:
+            line = lines[key]
+            line_id = line.id
+            start_node_id = nodes[line.node_start].id
+            end_node_id = nodes[line.node_end].id
             topology[line_id] = [start_node_id, end_node_id]
 
         return topology
     
     def _get_transmission_mask(self) -> np.ndarray:
-        transmission_mask = np.zeros((MLoad.shape[1], len(self.topology)), dtype=np.bool_)
+        transmission_mask = np.zeros((self.node_count, len(self.topology)), dtype=np.bool_)
         for n, row in enumerate(self.topology):
             transmission_mask[row[0], n] = True
         return transmission_mask
@@ -92,8 +92,9 @@ class Network:
                 topologies_nd.append(n)
             else: 
                 break
+        return topologies_nd
 
-    def count_lines(network):
+    def count_lines(self, network):
         _, counts = np.unique(network[:, np.array([0,-1])], return_counts=True)
         if counts.size > 0:
             return counts.max()

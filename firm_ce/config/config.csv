@@ -1,0 +1,5 @@
+id,name,value,scenarios
+0,mutations,0.5,nem
+1,iterations,2000,nem
+2,population,10,nem
+3,recombination,0.3,nem

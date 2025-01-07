@@ -1,5 +1,6 @@
 from pathlib import Path
 import pandas as pd
+from typing import List
 
 class ImportCSV:
     def __init__(self, repository: Path) -> None:
@@ -29,9 +30,36 @@ class ImportCSV:
     def get_constraints(self) -> dict:
         return self.get_data("constraints.csv")
     
-class DataSheet:
-    pass
+    def get_datafiles(self) -> dict:
+        return self.get_data("datafiles.csv")
     
+    def get_config(self) -> dict:
+        return self.get_data("config.csv")
+        
+class ImportDatafile:
+    def __init__(self, repository: Path, filename: str) -> None:
+        self.repository = Path(repository)
+        self.filename = filename
+
+        if not self.repository.is_dir():
+            raise FileNotFoundError(f"Repository {repository} does not exist.")
+
+    def get_data(self) -> dict:
+        filepath = self.repository.joinpath(self.filename)
+        if not filepath.is_file():
+            raise FileNotFoundError(f"File {filepath} does not exist.")
+        df = pd.read_csv(filepath)
+        return df.to_dict(orient='list')
+
+class DataFile:
+    def __init__(self, filename, datafile_type):
+        self.name = filename
+        self.type = datafile_type
+        self.data = ImportDatafile("firm_ce/data", filename).get_data()
+
+    def __repr__(self):
+        return f"{self.name} ({self.type})"
+
 def import_csv_data() -> dict:
     csv_importer = ImportCSV("firm_ce/config")
     data = {
@@ -40,6 +68,7 @@ def import_csv_data() -> dict:
         'lines': csv_importer.get_lines(),
         'storages': csv_importer.get_storages(),
         'constraints': csv_importer.get_constraints(),
+        'datafiles': csv_importer.get_datafiles(),
+        'config': csv_importer.get_config(),
     }
-
     return data

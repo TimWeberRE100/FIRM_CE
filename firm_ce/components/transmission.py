@@ -1,12 +1,18 @@
 from typing import Dict
+from firm_ce.file_manager import DataFile 
 
 class Node:
-    def __init__(self, id: int, name: str) -> None:
+    def __init__(self, id: int, name: str, datafiles: Dict[str, DataFile]) -> None:
         self.id = int(id)
         self.name = str(name)
 
+        for key in datafiles:
+            if datafiles[key].type != 'demand':
+                continue
+            self.demand_data = list(datafiles[key].data[self.name])
+
     def __repr__(self):
-        return f"{self.id}: {self.name}"
+        return f"<Node object [{self.id}]{self.name}>"
 
 class Line:
     def __init__(self, id: int, line_dict: Dict[str, str]) -> None:
@@ -23,4 +29,4 @@ class Line:
         self.loss_factor = float(line_dict['loss_factor'])  # Transmission losses % per 1000 km
 
     def __repr__(self):
-        return f"{self.id}: {self.name}"
+        return f"<Line object [{self.id}]{self.name}>"

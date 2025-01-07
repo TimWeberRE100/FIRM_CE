@@ -1,0 +1,4 @@
+id,scenarios,filename,datafile_type
+1,nem,electricity.csv,demand
+2,nem,solar.csv,generation
+3,nem,wind.csv,generation

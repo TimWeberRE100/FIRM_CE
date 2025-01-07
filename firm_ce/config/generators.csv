@@ -1,4 +1,4 @@
-id,name,fuel,capex,fom,vom,lifetime,discount_rate,node,max_build,min_build,capacity,scenarios
+id,name,fuel,capex,fom,vom,lifetime,discount_rate,node,max_build,min_build,initial_capacity,scenarios
 0,pv_qld,solar,0,0,0,30,0.05,QLD,1000,0,0,nem
 1,pv_nsw,solar,0,0,0,30,0.05,NSW,1000,0,0,nem
 2,pv_sa,solar,0,0,0,30,0.05,SA,1000,0,0,nem
