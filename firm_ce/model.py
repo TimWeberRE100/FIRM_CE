@@ -34,10 +34,8 @@ class Scenario:
         self.constraints = self._get_constraints(model_data.constraints)
         self.generators = self._get_generators(model_data.generators, datafiles)
         self.storages = self._get_storages(model_data.storages)
-        self.config = self._get_config(model_data.config)
         self.type = scenario_data.get('type', '')
         self.network = Network(self.lines, self.nodes)
-        self.x = self._get_decision_x()
 
     def __repr__(self):
         return f"<Scenario object [{self.id}]{self.name}>"
@@ -71,21 +69,23 @@ class Scenario:
         """Filter or prepare datafiles specific to this scenario."""
         return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
 
-    def _get_config(self, all_configs: Dict[str,Dict[str,str]]) -> Dict[str,float]:
-        """Filter or prepare optimiser config specific to this scenario."""
-        return {all_configs[idx]['name']: float(all_configs[idx]['value']) for idx in all_configs if self.name in self._parse_comma_separated(all_configs[idx]['scenarios'])}
-
-    def _get_decision_x(self):
-        pass
-
     def solve(self):
         solver = Solver(self.type,self.config)
         solver.solve()
 
+class ModelConfig:
+    def __init__(self, config_dict: Dict[str, str]) -> None:
+        self.type = config_dict['type']
+        self.iterations = config_dict['iterations']
+        self.population = config_dict['population']
+        self.mutation = config_dict['mutation']
+        self.recombination = config_dict['recombination']
+
 class Model:
-    def __init__(self):
+    def __init__(self) -> None:
         model_data = ModelData()
 
+        self.config = ModelConfig(model_data.config)
         self.scenarios = {
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }

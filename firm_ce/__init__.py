@@ -8,7 +8,8 @@ from firm_ce import (
 
 from firm_ce.model import (
     Model,
-    Scenario
+    Scenario,
+    ModelConfig
 )
 
 TRIANGULAR = np.array([0,1,3,6,10,15,21,28,36])
