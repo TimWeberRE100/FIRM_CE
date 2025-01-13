@@ -6,3 +6,8 @@ from firm_ce.components.transmission import (
     Line,
     Node
 )
+
+from firm_ce.components.costs import (
+    UnitCost,
+    SolutionCost,
+)

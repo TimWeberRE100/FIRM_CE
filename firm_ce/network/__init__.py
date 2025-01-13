@@ -1,1 +1,1 @@
-from firm_ce.network.network import Network
+from firm_ce.network.network import Network, get_transmission_flows_t
