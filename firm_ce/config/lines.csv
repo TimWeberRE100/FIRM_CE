@@ -1,5 +1,5 @@
-id,name,length,capex,transformer_capex,fom,vom,lifetime,discount_rate,node_start,node_end,loss_factor,scenarios
-0,QLD-NSW,1000,0,0,0,0,50,0.05,QLD,NSW,0.03,nem
-1,NSW-VIC,1000,0,0,0,0,50,0.05,NSW,VIC,0.03,nem
-2,VIC-SA,1000,0,0,0,0,50,0.05,VIC,SA,0.03,nem
-3,VIC-TAS,1000,0,0,0,0,50,0.05,VIC,TAS,0.03,nem
+id,name,length,capex,transformer_capex,fom,vom,lifetime,discount_rate,node_start,node_end,loss_factor,initial_capacity,max_build,min_build,scenarios
+0,QLD-NSW,1000,0,0,0,0,50,0.05,QLD,NSW,0.03,1000,0,0,nem
+1,NSW-VIC,1000,0,0,0,0,50,0.05,NSW,VIC,0.03,1000,0,0,nem
+2,VIC-SA,1000,0,0,0,0,50,0.05,VIC,SA,0.03,1000,0,0,nem
+3,VIC-TAS,1000,0,0,0,0,50,0.05,VIC,TAS,0.03,1000,0,0,nem

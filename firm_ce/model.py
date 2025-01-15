@@ -47,40 +47,40 @@ class Scenario:
     
     def _get_nodes(self, node_names: str, datafiles: Dict[str, DataFile]) -> Dict[str,Node]:
         node_names = self._parse_comma_separated(node_names)
-        return {node_names[idx]: Node(idx,node_names[idx], datafiles) for idx in range(len(node_names))}
+        return {idx: Node(idx,node_names[idx], datafiles) for idx in range(len(node_names))}
 
     def _get_lines(self, all_lines: Dict[str,Dict[str,str]]) -> Dict[str,Line]:
         """Extract line names from scenario data."""
-        return {all_lines[idx]['name']: Line(idx, all_lines[idx]) for idx in all_lines if self.name in self._parse_comma_separated(all_lines[idx]['scenarios'])}
+        return {idx: Line(idx, all_lines[idx]) for idx in all_lines if self.name in self._parse_comma_separated(all_lines[idx]['scenarios'])}
 
     def _get_generators(self, all_generators: Dict[str,Dict[str,str]], datafiles: Dict[str, DataFile]) -> Dict[str,Generator]:
         """Filter or prepare generator data specific to this scenario."""
-        return {all_generators[idx]['name'] : Generator(idx, all_generators[idx], datafiles) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
+        return {idx: Generator(idx, all_generators[idx], datafiles) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
     
     def _get_storages(self, all_storages: Dict[str,Dict[str,str]]) -> Dict[str,Storage]:
         """Filter or prepare storage data specific to this scenario."""
-        return {all_storages[idx]['name'] : Storage(idx, all_storages[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
+        return {idx: Storage(idx, all_storages[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
     
     def _get_constraints(self, all_constraints: Dict[str,Dict[str,str]]) -> Dict[str,Constraint]:
         """Filter or prepare constraint data specific to this scenario."""
-        return {all_constraints[idx]['name'] : Constraint(idx, all_constraints[idx]) for idx in all_constraints if self.name in self._parse_comma_separated(all_constraints[idx]['scenarios'])}
+        return {idx: Constraint(idx, all_constraints[idx]) for idx in all_constraints if self.name in self._parse_comma_separated(all_constraints[idx]['scenarios'])}
 
     def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,Constraint]:
         """Filter or prepare datafiles specific to this scenario."""
         return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
 
-    def solve(self):
-        solver = Solver(self.type,self.config)
-        solver.solve()
+    def solve(self, config):
+        solver = Solver(config, self)
+        solver.evaluate()
 
 class ModelConfig:
     def __init__(self, config_dict: Dict[str, str]) -> None:
         config_dict = { item['name']: item['value'] for item in config_dict.values() }
         self.type = config_dict['type']
-        self.iterations = config_dict['iterations']
-        self.population = config_dict['population']
-        self.mutation = config_dict['mutation']
-        self.recombination = config_dict['recombination']
+        self.iterations = int(config_dict['iterations'])
+        self.population = int(config_dict['population'])
+        self.mutation = float(config_dict['mutation'])
+        self.recombination = float(config_dict['recombination'])
 
 class Model:
     def __init__(self) -> None:
@@ -93,4 +93,4 @@ class Model:
 
     def solve(self):
         for scenario in self.scenarios.values():
-            scenario.solve()
+            scenario.solve(self.config)

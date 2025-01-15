@@ -18,6 +18,7 @@ class Generator:
                               int(generator_dict['lifetime']),
                               float(generator_dict['discount_rate']))
 
+        self.data = None
         for key in datafiles:
             if datafiles[key].type != 'generation':
                 continue

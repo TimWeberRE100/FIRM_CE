@@ -21,21 +21,45 @@ class Solution_SingleTime:
         self.efficiency = scenario_arrays['efficiency']
         self.resolution = scenario_arrays['resolution']
         self.years = scenario_arrays['years']
+        self.energy = self.MLoad.sum() * self.resolution / self.years
         #self.allowance = scenario_arrays['allowance']
-
+        
+        self.TLoss = scenario_arrays['TLoss']
         self.TFlows = scenario_arrays['TFlows']
         self.TFlowsAbs = scenario_arrays['TFlowsAbs']
         self.Discharge = scenario_arrays['Discharge']
         self.Charge = scenario_arrays['Charge']
-        self.GFlexible = scenario_arrays['GFlexible']
-        self.GBaseload = scenario_arrays['GBaseload']
+        self.CPeak = scenario_arrays['CPeak']
+        self.GBaseload = scenario_arrays['CBaseload'][np.newaxis, :] * np.ones((self.intervals,self.nodes), dtype=np.int64)
         self.network = scenario_arrays['network']
+        
+        self.CPV = x[: scenario_arrays['pv_idx']]
+        self.CWind = x[scenario_arrays['pv_idx'] : scenario_arrays['wind_idx']]
+        CPHP = x[scenario_arrays['wind_idx'] : scenario_arrays['storage_p_idx']]
+        CPHS = x[scenario_arrays['storage_p_idx'] : scenario_arrays['storage_e_idx']]
+        self.CTrans = x[scenario_arrays['storage_e_idx'] :]
 
-        self.GPV = scenario_arrays['GPV']
-        self.GWind = scenario_arrays['GWind']
-        self.CPHP = scenario_arrays['CPHP']
-        self.CPHS = scenario_arrays['CPHS']
-        self.CTrans = scenario_arrays['CTrans']
+        GPV = self.CPV[np.newaxis, :] * scenario_arrays['TSPV'] * 1000
+        GWind = self.CWind[np.newaxis, :] * scenario_arrays['TSWind'] * 1000   
+
+
+        self.CPHP = np.zeros(self.nodes, dtype=np.float64)
+        for val, idx in zip(CPHP, scenario_arrays['storage_nodes']):
+            self.CPHP[idx] += val
+
+        self.CPHS = np.zeros(self.nodes, dtype=np.float64)
+        for val, idx in zip(CPHS, scenario_arrays['storage_nodes']):
+            self.CPHS[idx] += val
+
+        self.GPV = np.zeros((self.intervals, self.nodes), dtype=np.float64) 
+        for idx in scenario_arrays['pv_nodes']:
+            mask = (scenario_arrays['pv_nodes'] == idx)
+            self.GPV[:,idx] = GPV[:,mask].sum(axis=1)
+        
+        self.GWind = np.zeros((self.intervals, self.nodes), dtype=np.float64)
+        for idx in scenario_arrays['wind_nodes']:
+            mask = (scenario_arrays['wind_nodes'] == idx)
+            self.GWind[:,idx] = GWind[:,mask].sum(axis=1)
 
         self.flexible = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Spillage = np.zeros((self.intervals,self.nodes), dtype=np.float64)
@@ -48,12 +72,10 @@ class Solution_SingleTime:
 
     def _reliability(self, flexible, start=None, end=None):
         network = self.network
-        trans_tdc_mask = self.trans_tdc_mask
         networksteps = np.where(TRIANGULAR == network.shape[2])[0][0]
         
-        Netload = (self.MLoad - self.GPV - self.GWind - self.baseload)[start:end]
+        Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload)[start:end]
         Netload -= flexible
-
         shape2d = intervals, nodes = len(Netload), self.nodes
 
         Pcapacity = self.CPHP * 1000
@@ -68,7 +90,6 @@ class Solution_SingleTime:
         Storage = np.zeros(shape2d, dtype=np.float64)
         Deficit = np.zeros(shape2d, dtype=np.float64)
         Transmission = np.zeros((intervals, ntrans, nodes), dtype = np.float64)
-
         Storaget_1 = 0.5*Scapacity
 
         for t in range(intervals):
@@ -83,7 +104,6 @@ class Solution_SingleTime:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
                 Surplust = -1 * np.minimum(0, Netloadt) + (np.minimum(Pcapacity, Storaget_1 / resolution) - Discharget)
-
                 Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
@@ -98,7 +118,6 @@ class Solution_SingleTime:
                 Fillt = (Discharget # load not met by gen and transmission
                         + np.minimum(Pcapacity, (Scapacity - Storaget_1) / efficiency / resolution) #full charging capacity
                         - Charget) #charge capacity already in use
-
                 Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps,
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 #print(Netload[t])
@@ -113,7 +132,7 @@ class Solution_SingleTime:
             Charge[t] = Charget
             Storage[t] = Storaget
             Transmission[t] = Transmissiont
-            
+        
         ImpExp = Transmission.sum(axis=1)
         
         Deficit = np.maximum(0, Netload - ImpExp - Discharge)
@@ -128,26 +147,26 @@ class Solution_SingleTime:
         self.Import = np.maximum(0, ImpExp)
         self.Export = -1 * np.minimum(0, ImpExp)
 
-        self.CTrans = (np.atleast_3d(trans_tdc_mask).T*Transmission).sum(axis=2)
+        self.TFlows = (Transmission).sum(axis=2)
         
         return Deficit
 
     def _calculate_costs(self):
-        solution_cost = SolutionCost(self.generators, self.storages, self.lines)
-        return solution_cost.cost
+        solution_cost = 0
+        return solution_cost
 
     def _objective(self) -> List[float]:
         deficit = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
         flexible = deficit.sum(axis=0) * self.resolution / self.years / (0.5 * (1 + self.efficiency))
 
         deficit = self._reliability(flexible=flexible)
-        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000 # MWh
+        #pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000 # MWh
+        pen_deficit = np.maximum(0., deficit.sum() * self.resolution) * 1000000 # MWh
         self.TFlowsAbs = np.abs(self.TFlows)
 
-        cost, _ = self._calculate_costs()
+        cost = self._calculate_costs()
 
-        loss = np.zeros(len(self.network_mask), dtype=np.float64)
-        loss[self.network_mask] = self.TFlowsAbs.sum(axis=0) * self.TLoss[self.network_mask]
+        loss = self.TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
@@ -163,47 +182,75 @@ class Solver:
         self.config = config
         self.scenario = scenario
         self.decision_x0 = None
-        self.upper_bounds = None
-        self.lower_bounds = None   
+        self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.result = None
+
+    def _get_bounds(self):
+        solar_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'solar']
+        wind_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'wind']
+        storages = [self.scenario.storages[idx] for idx in range(0,max(self.scenario.storages)+1)]
+        lines = [self.scenario.lines[idx] for idx in range(0,max(self.scenario.lines)+1)]
+
+        solar_lb = [generator.capacity + generator.min_build for generator in solar_generators]
+        wind_lb = [generator.capacity + generator.min_build for generator in wind_generators]
+        storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages]
+        storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages]
+        line_lb = [line.capacity + line.min_build for line in lines]
+        lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb)
+
+        solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
+        wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
+        storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages]
+        storage_e_ub = [storage.energy_capacity + storage.max_build_e for storage in storages]
+        line_ub = [line.capacity + line.max_build for line in lines]
+        upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub)
+
+        return lower_bounds, upper_bounds
 
     def _prepare_scenario_arrays(self):
         
         scenario_arrays = {}
+        node_names = {self.scenario.nodes[idx].name : self.scenario.nodes[idx].id for idx in self.scenario.nodes}
 
         # Static parameters
-        scenario_arrays['MLoad'] = np.array([self.scenario.nodes[idx].demand_data for idx in range(0,max(self.scenario.nodes))], dtype=np.float64)
+        scenario_arrays['MLoad'] = np.array([self.scenario.nodes[idx].demand_data for idx in range(0,max(self.scenario.nodes)+1)], dtype=np.float64).T
         scenario_arrays['intervals'], scenario_arrays['nodes'] = scenario_arrays['MLoad'].shape
         scenario_arrays['lines'] = len(self.scenario.lines)
         scenario_arrays['years'] = self.scenario.final_year - self.scenario.first_year   
         scenario_arrays['efficiency'] = 0.8
         scenario_arrays['resolution'] = self.scenario.resolution
         scenario_arrays['network'] = self.scenario.network.network  
+        scenario_arrays['TLoss'] = np.array([self.scenario.lines[idx].loss_factor for idx in self.scenario.lines])
         #scenario_arrays['allowance']
 
         # Dynamic parameters
-        scenario_arrays['TFlows'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)))
-        scenario_arrays['TFlowsAbs'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)))
-        scenario_arrays['Discharge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))
-        scenario_arrays['Charge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))
-        scenario_arrays['GFlexible'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))              
+        scenario_arrays['TFlows'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)+1))
+        scenario_arrays['TFlowsAbs'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)+1))
+        scenario_arrays['Discharge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))
+        scenario_arrays['Charge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))
+        scenario_arrays['GFlexible'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))              
 
         # Data Files
-        solar_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)) if self.scenario.generators[idx].unit_type == 'solar']
-        wind_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)) if self.scenario.generators[idx].unit_type == 'wind']
-        baseload_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)) if self.scenario.generators[idx].unit_type == 'baseload']
-        flexible_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)) if self.scenario.generators[idx].unit_type == 'flexible']
-        scenario_arrays['TSPV'] = np.array([np.sum([generator.data for generator in solar_generators if generator.node == self.scenario.nodes[idx].name], axis=1) for idx in range(0,max(self.scenario.nodes))])
-        scenario_arrays['TSWind'] = np.array([np.sum([generator.data for generator in wind_generators if generator.node == self.scenario.nodes[idx].name], axis=1) for idx in range(0,max(self.scenario.nodes))])
-        scenario_arrays['GBaseload'] = np.array([np.sum([generator.data for generator in baseload_generators if generator.node == self.scenario.nodes[idx].name], axis=1) for idx in range(0,max(self.scenario.nodes))])
-        scenario_arrays['CPeak'] = np.array([np.sum([generator.capacity for generator in flexible_generators if generator.node == self.scenario.nodes[idx].name], axis=1) for idx in range(0,max(self.scenario.nodes))])
+        solar_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'solar']
+        wind_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'wind']
+        baseload_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'baseload']
+        flexible_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'flexible']
+        scenario_arrays['TSPV'] = np.array([generator.data for generator in solar_generators]).T 
+        scenario_arrays['TSWind'] = np.array([generator.data for generator in wind_generators]).T
+        scenario_arrays['CBaseload'] = np.array([np.sum([generator.capacity for generator in baseload_generators if generator.node == self.scenario.nodes[idx].name]) for idx in range(0,max(self.scenario.nodes)+1)])
+        scenario_arrays['CPeak'] = np.array([np.sum([generator.capacity for generator in flexible_generators if generator.node == self.scenario.nodes[idx].name]) for idx in range(0,max(self.scenario.nodes)+1)])
 
-        # Decision Variables
-        scenario_arrays['CPV'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes))) 
-        scenario_arrays['CWind'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))
-        scenario_arrays['CPHP'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))
-        scenario_arrays['CPHS'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)))
-        scenario_arrays['CTrans'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)))
+        # Decision variable indices
+        scenario_arrays['pv_idx'] = scenario_arrays['TSPV'].shape[1]
+        scenario_arrays['wind_idx'] = scenario_arrays['pv_idx'] + scenario_arrays['TSWind'].shape[1]
+        scenario_arrays['storage_p_idx'] = scenario_arrays['wind_idx'] + len(self.scenario.storages)
+        scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages)
+        scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
+
+        # Node ID lists
+        scenario_arrays['pv_nodes'] = np.array([node_names[generator.node] for generator in solar_generators])
+        scenario_arrays['wind_nodes'] = np.array([node_names[generator.node] for generator in wind_generators])
+        scenario_arrays['storage_nodes'] = np.array([node_names[self.scenario.storages[idx].node] for idx in self.scenario.storages])
         
         return scenario_arrays
 
@@ -241,7 +288,7 @@ class Solver:
             self.solution = self._capacity_expansion()
 
 def parallel_wrapper_st_factory(scenario_arrays):
-    @njit(parallel=True)
+    #@njit(parallel=True)
     def parallel_wrapper_st(xs):
         result = np.empty(xs.shape[1], dtype=np.float64)
         for i in prange(xs.shape[1]):

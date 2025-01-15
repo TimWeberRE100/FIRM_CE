@@ -5,7 +5,7 @@ from firm_ce.components import Line, Node
 from firm_ce.constants import TRIANGULAR
 
 class Network:
-    def __init__(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> None:
+    def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node]) -> None:
         self.topology = self._get_topology(lines, nodes)
         self.node_count = len(nodes)
         self.transmission_mask = self._get_transmission_mask()
@@ -19,12 +19,13 @@ class Network:
     def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
         num_lines = len(lines)
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
+        node_names = {nodes[idx].name : nodes[idx].id for idx in nodes}
 
         for key in lines:
             line = lines[key]
             line_id = line.id
-            start_node_id = nodes[line.node_start].id
-            end_node_id = nodes[line.node_end].id
+            start_node_id = node_names[line.node_start]
+            end_node_id = node_names[line.node_end]
             topology[line_id] = [start_node_id, end_node_id]
 
         return topology

@@ -23,6 +23,9 @@ class Line:
         self.node_start = str(line_dict['node_start'])  # Starting node name
         self.node_end = str(line_dict['node_end'])  # Ending node name
         self.loss_factor = float(line_dict['loss_factor'])  # Transmission losses % per 1000 km
+        self.max_build = int(line_dict['max_build'])  # MW/year
+        self.min_build = int(line_dict['min_build'])  # MW/year
+        self.capacity = int(line_dict['initial_capacity'])  # MW
 
         self.cost = UnitCost(int(line_dict['capex']),
                               float(line_dict['fom']),
