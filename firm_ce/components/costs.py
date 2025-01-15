@@ -1,6 +1,7 @@
 class UnitCost:
-    def __init__(self, capex, fom, vom, lifetime, discount_rate, transformer_capex = 0, length = 0):
-        self.capex = capex
+    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0):
+        self.capex_p = capex_p
+        self.capex_e = capex_e
         self.fom = fom
         self.vom = vom
         self.lifetime = lifetime
@@ -9,68 +10,107 @@ class UnitCost:
         self.transformer_capex = transformer_capex
         self.length = length
 
-    def _get_present_value(self):
-        return (1-(1+self.discount_rate)**(-1*self.lifetime))/self.discount_rate
+def get_present_value(discount_rate, lifetime):
+    return (1-(1+discount_rate)**(-1*lifetime))/discount_rate
 
-    def annualisation_component(self, power_capacity, annual_generation):
-        present_value = self._get_present_value()
+def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
+    present_value = get_present_value(discount_rate, lifetime)
 
-        return power_capacity * pow(10,6) * self.capex / present_value + power_capacity * pow(10,6) * self.fom + annual_generation * self.vom
+    return (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom
     
-    def annualisation_transmission(self,power_capacity, annual_energy_flows):
-        present_value = self._get_present_value()
+def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom, vom, lifetime, discount_rate, transformer_capex, length):
+    present_value = get_present_value(discount_rate, lifetime)
 
-        return (power_capacity * pow(10,3) * self.length * self.capex + power_capacity * pow(10,3) * self.transformer_capex) / present_value + power_capacity * pow(10,3) * self.length * self.fom + annual_energy_flows * self.vom
+    return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * vom
 
-class SolutionCost:
-    def __init__(self, generators, storages, lines):
-        """ fuels = {generator.fuel.name for generator in generators}
-        self.tech_costs = {}
-        for fuel in fuels:
-            self.tech_costs[fuel] = {'generators': [generator.cost for generator in generators if generator.fuel.name == fuel],
-                                     'connections': [generator.connection_cost for generator in generators if generator.fuel.name == fuel],
-                                     'capacities': [generator.capacity for generator in generators if generator.fuel.name == fuel],
-                                     'avg_annual_generations': [generator.avg_annual_generation for generator in generators if generator.fuel.name == fuel],
-                                     }
-
-        self.storage_costs = [storage.cost for storage in storages]
-        self.hv_line_costs = [line.cost for line in lines]
-
-        self.CPV = sum([generator.capacity for generator in generators if generator.fuel.name == "solar"]) """
-
-        self.cost = 1
+def calculate_costs(solution): 
+    costs = solution.costs
+    # NEED TO MATCH GENERATOR ID WITH CAPACITIES
+    # CPV IDS, CWIND IDS, CFLEXIBLE IDS, CBASELOAD IDS, STORAGE IDS, CTRANS IDS may not be in same order as the IDs in costs
     
-    """ def calculate_costs(self):
-        PV_costs = sum(generator.cost.annualisation_component() for generator in self.tech_costs['solar']['generators'])
-        PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20)
-        wind_costs = 0
-        
-        transmission_costs = PV_Wind_transmission_cost
-        for i in range(len(S.CHVDC)):
-            if S.hvdc_mask[i]: # HVDC line costs
-                transmission_costs += annulization_transmission(S.UnitCosts[24],0,S.UnitCosts[25],S.UnitCosts[26],S.UnitCosts[27],S.UnitCosts[-1],S.CHVDC[i],S.TDCabs.sum(axis=0)[i]/S.years,S.DCdistance[i])
-            else: # HVAC line + transformer costs
-                transmission_costs += annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],S.CHVDC[i],S.TDCabs.sum(axis=0)[i]/S.years,S.DCdistance[i])
-        
-        # Converter and substation costs, a pair of stations per line
-        for i in range(len(S.CHVDC)):
-            if S.hvdc_mask[i]:
-                converter_costs = 2 * annulization(S.UnitCosts[28],S.UnitCosts[29],S.UnitCosts[30],S.UnitCosts[31],S.UnitCosts[-1],sum(S.CHVDC),0)
-                transmission_costs += converter_costs
+    pv_costs = sum([
+        annualisation_component(
+            power_capacity=solution.CPV[idx],
+            annual_generation=solution.GPV_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5]
+        ) for idx in range(0,solution.gencost_idx+1)
+        if costs[idx,8] == 0
+        ])
+    
+    wind_costs = sum([
+        annualisation_component(
+            power_capacity=solution.CWind[idx],
+            annual_generation=solution.GWind_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5]
+        ) for idx in range(0,solution.gencost_idx+1)
+        if costs[idx,8] == 1
+        ])
+    
+    flexible_costs = sum([
+        annualisation_component(
+            power_capacity=solution.CPeak[idx],
+            annual_generation=solution.GFlexible_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5]
+        ) for idx in range(0,solution.gencost_idx+1)
+        if costs[idx,8] == 2
+        ])
+    
+    baseload_costs = sum([
+        annualisation_component(
+            power_capacity=solution.CBaseload[idx],
+            annual_generation=solution.GFlexible_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5]
+        ) for idx in range(0,solution.gencost_idx+1)
+        if costs[idx,8] == 3
+        ])
+    
+    storage_costs = sum([
+        annualisation_component(
+            power_capacity=solution.CPHSP[idx],
+            energy_capacity=solution.CPHSE[idx],
+            annual_generation=solution.GPHES_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5]
+        ) for idx in range(solution.gencost_idx+1,solution.storagecost_idx+1)
+        if costs[idx,8] == 4
+        ])
+    
+    transmission_costs = sum([
+        annualisation_transmission(
+            power_capacity=solution.CTrans[idx],
+            annual_energy_flows=solution.GTFlowsAbs_annual[idx],
+            capex_p=costs[idx,0],
+            fom=costs[idx,2],
+            vom=costs[idx,3],
+            lifetime=costs[idx,4],
+            discount_rate=costs[idx,5],
+            transformer_capex=costs[idx,6],
+            length=costs[idx,7]
+        ) for idx in range(solution.storagecost_idx+1,solution.linecost_idx+1)
+        if costs[idx,8] == 6
+    ])
 
-        pv_phes = (1-(1+S.UnitCosts[-1])**(-1*S.UnitCosts[18]))/S.UnitCosts[-1]
-        phes_costs = (S.UnitCosts[12] * S.CPHP.sum() * pow(10,6) + S.UnitCosts[13] * S.CPHS.sum() * pow(10,6)) / pv_phes \
-                        + S.UnitCosts[14] * S.CPHP.sum() * pow(10,6) + S.UnitCosts[15] * GDischarge.sum() / S.years \
-                        + S.UnitCosts[16] * ((1+S.UnitCosts[-1])**(-1*S.UnitCosts[17]) + (1+S.UnitCosts[-1])**(-1*S.UnitCosts[17]*2)) / pv_phes
-                            
-        pv_battery = (1-(1+S.UnitCosts[-1])**(-1*S.UnitCosts[22]))/S.UnitCosts[-1] # 19, 20, 21, 22
-        battery_costs = (S.UnitCosts[19] * S.CBP.sum() * pow(10,6) + S.UnitCosts[20] * S.CBS.sum() * pow(10,6)) / pv_battery \
-                        + S.UnitCosts[21] * S.CBS.sum() * pow(10,6)
-                                    
-        hydro_costs = S.UnitCosts[23] * GHydro
-        import_costs = S.UnitCosts[32] * GImports
-        baseload_costs = S.UnitCosts[33] * GBaseload
+    #PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20) 
 
-        costs = PV_costs + wind_costs + transmission_costs + phes_costs + battery_costs + hydro_costs + import_costs + baseload_costs
+    costs = pv_costs + wind_costs + storage_costs + flexible_costs + baseload_costs + transmission_costs
         
-        return costs """
+    return solution

@@ -22,6 +22,7 @@ class Solution_SingleTime:
         self.resolution = scenario_arrays['resolution']
         self.years = scenario_arrays['years']
         self.energy = self.MLoad.sum() * self.resolution / self.years
+        self.costs = scenario_arrays['costs']
         #self.allowance = scenario_arrays['allowance']
         
         self.TLoss = scenario_arrays['TLoss']
@@ -251,6 +252,62 @@ class Solver:
         scenario_arrays['pv_nodes'] = np.array([node_names[generator.node] for generator in solar_generators])
         scenario_arrays['wind_nodes'] = np.array([node_names[generator.node] for generator in wind_generators])
         scenario_arrays['storage_nodes'] = np.array([node_names[self.scenario.storages[idx].node] for idx in self.scenario.storages])
+
+        # Costs
+        '''
+        np array of form:
+            (
+            [generator capex_p][storage capex_p][line capex_p]
+            [generator capex_e][storage capex_e][line capex_e]
+            [generator fom][storage fom][line fom]
+            [generator vom][storage vom][line vom]
+            [generator lifetime][storage lifetime][line lifetime]
+            [generator discount_rate][storage discount_rate][line discount_rate]
+            [generator transformer_capex][storage transformer_capex][line transformer_capex]
+            [generator length][storage length][line length]
+            [unit_types]
+            )
+        '''
+        unit_types = {'solar': 0,
+                      'wind': 1,
+                      'flexible': 2,
+                      'baseload': 3,
+                      'phes': 4,
+                      'bess': 5,
+                      'hvdc': 6} ######## MOVE THIS TO BE GENERATED IN THE SCENARIO CLASS BASED ON WHAT IS USED
+        
+        scenario_arrays['gencost_idx'] = len(self.scenario.generators)
+        scenario_arrays['storagecost_idx'] = scenario_arrays['gencost_idx'] + len(self.scenario.storages)
+        scenario_arrays['linecost_idx'] = scenario_arrays['storagecost_idx'] + len(self.scenario.lines)
+        scenario_arrays['costs'] = np.zeros((8,scenario_arrays['linecost_idx']+1))
+        for idx in range(0,len(self.scenario.generators)+1):
+            scenario_arrays['costs'][0,idx] = self.scenario.generators[idx].cost.capex_p
+            scenario_arrays['costs'][2,idx] = self.scenario.generators[idx].cost.fom
+            scenario_arrays['costs'][3,idx] = self.scenario.generators[idx].cost.vom
+            scenario_arrays['costs'][4,idx] = self.scenario.generators[idx].cost.lifetime
+            scenario_arrays['costs'][5,idx] = self.scenario.generators[idx].cost.discount_rate
+            scenario_arrays['costs'][8,idx] = unit_types[self.scenario.generators[idx].unit_type]
+
+        for idx in range(0,len(self.scenario.storages)+1):
+            storage_idx = scenario_arrays['gencost_idx']+idx+1
+            scenario_arrays['costs'][0,storage_idx] = self.scenario.storages[idx].cost.capex_p
+            scenario_arrays['costs'][1,storage_idx] = self.scenario.storages[idx].cost.capex_e
+            scenario_arrays['costs'][2,storage_idx] = self.scenario.storages[idx].cost.fom
+            scenario_arrays['costs'][3,storage_idx] = self.scenario.storages[idx].cost.vom
+            scenario_arrays['costs'][4,storage_idx] = self.scenario.storages[idx].cost.lifetime
+            scenario_arrays['costs'][5,storage_idx] = self.scenario.storages[idx].cost.discount_rate
+            scenario_arrays['costs'][8,storage_idx] = unit_types[self.scenario.storages[idx].unit_type]
+            
+        for idx in range(0,len(self.scenario.lines)+1):
+            line_idx = scenario_arrays['storagecost_idx']+idx+1
+            scenario_arrays['costs'][0,line_idx] = self.scenario.lines[idx].cost.capex_p
+            scenario_arrays['costs'][2,line_idx] = self.scenario.lines[idx].cost.fom
+            scenario_arrays['costs'][3,line_idx] = self.scenario.lines[idx].cost.vom
+            scenario_arrays['costs'][4,line_idx] = self.scenario.lines[idx].cost.lifetime
+            scenario_arrays['costs'][5,line_idx] = self.scenario.lines[idx].cost.discount_rate
+            scenario_arrays['costs'][6,line_idx] = self.scenario.lines[idx].cost.transformer_capex
+            scenario_arrays['costs'][7,line_idx] = self.scenario.lines[idx].cost.length
+            scenario_arrays['costs'][8,line_idx] = unit_types[self.scenario.lines[idx].unit_type]
         
         return scenario_arrays
 

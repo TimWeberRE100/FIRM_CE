@@ -43,12 +43,15 @@ class Storage:
         self.max_build_e = int(storage_dict['max_build_e'])  # MWh/year
         self.min_build_p = int(storage_dict['min_build_p'])  # MW/year
         self.min_build_e = int(storage_dict['min_build_e'])  # MWh/year
+        self.unit_type = str(storage_dict['unit_type'])
 
-        self.cost = UnitCost(int(storage_dict['capex']),
+        self.cost = UnitCost(int(storage_dict['capex_p']),
                               float(storage_dict['fom']),
                               float(storage_dict['vom']),
                               int(storage_dict['lifetime']),
-                              float(storage_dict['discount_rate']))
+                              float(storage_dict['discount_rate']),
+                              capex_e=int(storage_dict['capex_e']),
+                              )
 
     def __repr__(self):
         return f"<Storage object [{self.id}]{self.name}>"

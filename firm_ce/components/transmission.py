@@ -32,8 +32,8 @@ class Line:
                               float(line_dict['vom']),
                               int(line_dict['lifetime']),
                               float(line_dict['discount_rate']),
-                              int(line_dict['transformer_capex']),
-                              self.length)
+                              transformer_capex=int(line_dict['transformer_capex']),
+                              length=self.length)
 
     def __repr__(self):
         return f"<Line object [{self.id}]{self.name}>"
