@@ -189,11 +189,11 @@ class Solution_SingleTime:
     def _apportion_nodal_generation(self):
         for idx in range(0,len(self.flexible_nodes)):
             mask = (self.flexible_nodes == self.flexible_nodes[idx])
-            self.GFlexible[idx] = self.CPeak[idx] / self.CPeak[mask].sum() * self.GFlexible_nodal[:,self.flexible_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GFlexible_nodal[:,self.flexible_nodes[idx]]
-
+            self.GFlexible[:,idx] = self.CPeak[idx] / self.CPeak[mask].sum() * self.GFlexible_nodal[:,self.flexible_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GFlexible_nodal[:,self.flexible_nodes[idx]]
+        
         for idx in range(0,len(self.baseload_nodes)):
             mask = (self.baseload_nodes == self.baseload_nodes[idx])
-            self.GBaseload[idx] = self.CBaseload[idx] / self.CBaseload[mask].sum() * self.GBaseload_nodal[:,self.baseload_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GBaseload_nodal[:,self.baseload_nodes[idx]]
+            self.GBaseload[:,idx] = self.CBaseload[idx] / self.CBaseload[mask].sum() * self.GBaseload_nodal[:,self.baseload_nodes[idx]] if self.CBaseload[mask].sum() > 0 else self.GBaseload_nodal[:,self.baseload_nodes[idx]]
 
         return None
 
@@ -345,7 +345,7 @@ class Solver:
         scenario_arrays['storagecost_idx'] = scenario_arrays['gencost_idx'] + len(self.scenario.storages)
         scenario_arrays['linecost_idx'] = scenario_arrays['storagecost_idx'] + len(self.scenario.lines)
         
-        scenario_arrays['costs'] = np.zeros((9,scenario_arrays['linecost_idx']+1))
+        scenario_arrays['costs'] = np.zeros((9,scenario_arrays['linecost_idx']))
         for idx in range(0,len(self.scenario.generators)):
             scenario_arrays['costs'][0,idx] = self.scenario.generators[idx].cost.capex_p
             scenario_arrays['costs'][2,idx] = self.scenario.generators[idx].cost.fom
@@ -355,7 +355,7 @@ class Solver:
             scenario_arrays['costs'][8,idx] = unit_types[self.scenario.generators[idx].unit_type]
 
         for idx in range(0,len(self.scenario.storages)):
-            storage_idx = scenario_arrays['gencost_idx']+idx+1
+            storage_idx = scenario_arrays['gencost_idx']+idx
             scenario_arrays['costs'][0,storage_idx] = self.scenario.storages[idx].cost.capex_p
             scenario_arrays['costs'][1,storage_idx] = self.scenario.storages[idx].cost.capex_e
             scenario_arrays['costs'][2,storage_idx] = self.scenario.storages[idx].cost.fom
@@ -365,7 +365,7 @@ class Solver:
             scenario_arrays['costs'][8,storage_idx] = unit_types[self.scenario.storages[idx].unit_type]
             
         for idx in range(0,len(self.scenario.lines)):
-            line_idx = scenario_arrays['storagecost_idx']+idx+1
+            line_idx = scenario_arrays['storagecost_idx']+idx
             scenario_arrays['costs'][0,line_idx] = self.scenario.lines[idx].cost.capex_p
             scenario_arrays['costs'][2,line_idx] = self.scenario.lines[idx].cost.fom
             scenario_arrays['costs'][3,line_idx] = self.scenario.lines[idx].cost.vom
