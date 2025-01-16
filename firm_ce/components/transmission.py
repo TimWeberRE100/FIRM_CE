@@ -26,6 +26,7 @@ class Line:
         self.max_build = int(line_dict['max_build'])  # MW/year
         self.min_build = int(line_dict['min_build'])  # MW/year
         self.capacity = int(line_dict['initial_capacity'])  # MW
+        self.unit_type = str(line_dict['unit_type'])
 
         self.cost = UnitCost(int(line_dict['capex']),
                               float(line_dict['fom']),

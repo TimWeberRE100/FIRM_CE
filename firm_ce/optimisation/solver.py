@@ -3,9 +3,9 @@ import numpy as np
 from numba import njit, prange
 from scipy.optimize import differential_evolution
 
-from firm_ce.components import SolutionCost
 from firm_ce.network import get_transmission_flows_t
 from firm_ce.constants import TRIANGULAR
+from firm_ce.components import calculate_costs
 
 class Solution_SingleTime:
     def __init__(self, x, scenario_arrays) -> None:
@@ -22,17 +22,37 @@ class Solution_SingleTime:
         self.resolution = scenario_arrays['resolution']
         self.years = scenario_arrays['years']
         self.energy = self.MLoad.sum() * self.resolution / self.years
-        self.costs = scenario_arrays['costs']
         #self.allowance = scenario_arrays['allowance']
+
+        self.costs = scenario_arrays['costs']
+        self.gencost_idx = scenario_arrays['gencost_idx']
+        self.storagecost_idx = scenario_arrays['storagecost_idx']
+        self.linecost_idx = scenario_arrays['linecost_idx']
+
+        self.pv_ids = scenario_arrays['pv_ids']
+        self.wind_ids = scenario_arrays['wind_ids']
+        self.flexible_ids = scenario_arrays['flexible_ids']
+        self.baseload_ids = scenario_arrays['baseload_ids']
+        self.storage_ids = scenario_arrays['storage_ids']
+        self.line_ids = scenario_arrays['line_ids']
+
+        self.pv_nodes = scenario_arrays['pv_nodes']
+        self.wind_nodes = scenario_arrays['wind_nodes']
+        self.flexible_nodes = scenario_arrays['flexible_nodes']
+        self.baseload_nodes = scenario_arrays['baseload_nodes']
+        self.storage_nodes = scenario_arrays['storage_nodes']
         
         self.TLoss = scenario_arrays['TLoss']
         self.TFlows = scenario_arrays['TFlows']
         self.TFlowsAbs = scenario_arrays['TFlowsAbs']
         self.Discharge = scenario_arrays['Discharge']
         self.Charge = scenario_arrays['Charge']
-        self.CPeak = scenario_arrays['CPeak']
-        self.GBaseload = scenario_arrays['CBaseload'][np.newaxis, :] * np.ones((self.intervals,self.nodes), dtype=np.int64)
+        self.CPeak = scenario_arrays['CPeak'] 
+        self.CBaseload = scenario_arrays['CBaseload']
         self.network = scenario_arrays['network']
+
+        self.GFlexible = np.zeros((self.intervals,len(self.CPeak)), dtype=np.float64)
+        self.GBaseload = np.zeros((self.intervals,len(self.CBaseload)), dtype=np.float64)
         
         self.CPV = x[: scenario_arrays['pv_idx']]
         self.CWind = x[scenario_arrays['pv_idx'] : scenario_arrays['wind_idx']]
@@ -42,7 +62,6 @@ class Solution_SingleTime:
 
         GPV = self.CPV[np.newaxis, :] * scenario_arrays['TSPV'] * 1000
         GWind = self.CWind[np.newaxis, :] * scenario_arrays['TSWind'] * 1000   
-
 
         self.CPHP = np.zeros(self.nodes, dtype=np.float64)
         for val, idx in zip(CPHP, scenario_arrays['storage_nodes']):
@@ -62,7 +81,18 @@ class Solution_SingleTime:
             mask = (scenario_arrays['wind_nodes'] == idx)
             self.GWind[:,idx] = GWind[:,mask].sum(axis=1)
 
-        self.flexible = np.zeros((self.intervals,self.nodes), dtype=np.float64)
+        self.CPeak_nodal = np.zeros(self.nodes, dtype=np.float64)
+        for idx in scenario_arrays['flexible_nodes']:
+            mask = (scenario_arrays['flexible_nodes'] == idx)
+            self.CPeak_nodal[idx] = self.CPeak[mask].sum()          
+
+        self.CBaseload_nodal = np.zeros(self.nodes, dtype=np.float64)
+        for idx in scenario_arrays['baseload_nodes']:
+            mask = (scenario_arrays['baseload_nodes'] == idx)
+            self.CBaseload_nodal[idx] = self.CBaseload[mask].sum()
+        self.GBaseload_nodal = self.CBaseload_nodal[np.newaxis, :] * np.ones((self.intervals,self.nodes), dtype=np.int64) 
+
+        self.GFlexible_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Spillage = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Charge = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Discharge = np.zeros((self.intervals,self.nodes), dtype=np.float64)
@@ -75,7 +105,7 @@ class Solution_SingleTime:
         network = self.network
         networksteps = np.where(TRIANGULAR == network.shape[2])[0][0]
         
-        Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload)[start:end]
+        Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload_nodal)[start:end]
         Netload -= flexible
         shape2d = intervals, nodes = len(Netload), self.nodes
 
@@ -139,7 +169,7 @@ class Solution_SingleTime:
         Deficit = np.maximum(0, Netload - ImpExp - Discharge)
         Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)
 
-        self.flexible = flexible
+        #self.flexible = flexible
         self.Spillage = Spillage
         self.Charge = Charge
         self.Discharge = Discharge
@@ -153,24 +183,49 @@ class Solution_SingleTime:
         return Deficit
 
     def _calculate_costs(self):
-        solution_cost = 0
+        solution_cost = calculate_costs(self)
         return solution_cost
+    
+    def _apportion_nodal_generation(self):
+        for idx in range(0,len(self.flexible_nodes)):
+            mask = (self.flexible_nodes == self.flexible_nodes[idx])
+            self.GFlexible[idx] = self.CPeak[idx] / self.CPeak[mask].sum() * self.GFlexible_nodal[:,self.flexible_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GFlexible_nodal[:,self.flexible_nodes[idx]]
+
+        for idx in range(0,len(self.baseload_nodes)):
+            mask = (self.baseload_nodes == self.baseload_nodes[idx])
+            self.GBaseload[idx] = self.CBaseload[idx] / self.CBaseload[mask].sum() * self.GBaseload_nodal[:,self.baseload_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GBaseload_nodal[:,self.baseload_nodes[idx]]
+
+        return None
+
+    def _calculate_annual_generation(self):
+        self.GPV_annual = self.GPV.sum(axis=0) * self.resolution / self.years
+        self.GWind_annual = self.GWind.sum(axis=0) * self.resolution / self.years
+        self.GFlexible_annual = self.GFlexible.sum(axis=0) * self.resolution / self.efficiency / self.years
+        self.GBaseload_annual = self.GBaseload.sum(axis=0) * self.resolution / self.years
+        self.GDischarge_annual = self.Discharge.sum(axis=0) * self.resolution / self.years
+        self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
+
+        return None
 
     def _objective(self) -> List[float]:
         deficit = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
-        flexible = deficit.sum(axis=0) * self.resolution / self.years / (0.5 * (1 + self.efficiency))
+        self.GFlexible_nodal = deficit * self.resolution / self.years / (0.5 * (1 + self.efficiency))
 
-        deficit = self._reliability(flexible=flexible)
+        deficit = self._reliability(flexible=self.GFlexible_nodal)
         #pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000 # MWh
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution) * 1000000 # MWh
         self.TFlowsAbs = np.abs(self.TFlows)
 
+        self._apportion_nodal_generation()
+        self._calculate_annual_generation()
         cost = self._calculate_costs()
 
         loss = self.TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
+
+        print(lcoe)
 
         return lcoe, pen_deficit
 
@@ -229,7 +284,7 @@ class Solver:
         scenario_arrays['TFlowsAbs'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.lines)+1))
         scenario_arrays['Discharge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))
         scenario_arrays['Charge'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))
-        scenario_arrays['GFlexible'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))              
+        scenario_arrays['GFlexible_nodal'] = np.zeros((scenario_arrays['intervals'],max(self.scenario.nodes)+1))              
 
         # Data Files
         solar_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'solar']
@@ -238,8 +293,8 @@ class Solver:
         flexible_generators = [self.scenario.generators[idx] for idx in range(0,max(self.scenario.generators)+1) if self.scenario.generators[idx].unit_type == 'flexible']
         scenario_arrays['TSPV'] = np.array([generator.data for generator in solar_generators]).T 
         scenario_arrays['TSWind'] = np.array([generator.data for generator in wind_generators]).T
-        scenario_arrays['CBaseload'] = np.array([np.sum([generator.capacity for generator in baseload_generators if generator.node == self.scenario.nodes[idx].name]) for idx in range(0,max(self.scenario.nodes)+1)])
-        scenario_arrays['CPeak'] = np.array([np.sum([generator.capacity for generator in flexible_generators if generator.node == self.scenario.nodes[idx].name]) for idx in range(0,max(self.scenario.nodes)+1)])
+        scenario_arrays['CBaseload'] = np.array([generator.capacity for generator in baseload_generators])
+        scenario_arrays['CPeak'] = np.array([generator.capacity for generator in flexible_generators])
 
         # Decision variable indices
         scenario_arrays['pv_idx'] = scenario_arrays['TSPV'].shape[1]
@@ -251,7 +306,17 @@ class Solver:
         # Node ID lists
         scenario_arrays['pv_nodes'] = np.array([node_names[generator.node] for generator in solar_generators])
         scenario_arrays['wind_nodes'] = np.array([node_names[generator.node] for generator in wind_generators])
+        scenario_arrays['flexible_nodes'] = np.array([node_names[generator.node] for generator in flexible_generators])
+        scenario_arrays['baseload_nodes'] = np.array([node_names[generator.node] for generator in baseload_generators])
         scenario_arrays['storage_nodes'] = np.array([node_names[self.scenario.storages[idx].node] for idx in self.scenario.storages])
+
+        # Component ID lists
+        scenario_arrays['pv_ids'] = np.array([generator.id for generator in solar_generators])
+        scenario_arrays['wind_ids'] = np.array([generator.id for generator in wind_generators])
+        scenario_arrays['flexible_ids'] = np.array([generator.id for generator in flexible_generators])
+        scenario_arrays['baseload_ids'] = np.array([generator.id for generator in baseload_generators])
+        scenario_arrays['storage_ids'] = np.array([idx for idx in self.scenario.storages])
+        scenario_arrays['line_ids'] = np.array([idx for idx in self.scenario.lines])
 
         # Costs
         '''
@@ -279,8 +344,9 @@ class Solver:
         scenario_arrays['gencost_idx'] = len(self.scenario.generators)
         scenario_arrays['storagecost_idx'] = scenario_arrays['gencost_idx'] + len(self.scenario.storages)
         scenario_arrays['linecost_idx'] = scenario_arrays['storagecost_idx'] + len(self.scenario.lines)
-        scenario_arrays['costs'] = np.zeros((8,scenario_arrays['linecost_idx']+1))
-        for idx in range(0,len(self.scenario.generators)+1):
+        
+        scenario_arrays['costs'] = np.zeros((9,scenario_arrays['linecost_idx']+1))
+        for idx in range(0,len(self.scenario.generators)):
             scenario_arrays['costs'][0,idx] = self.scenario.generators[idx].cost.capex_p
             scenario_arrays['costs'][2,idx] = self.scenario.generators[idx].cost.fom
             scenario_arrays['costs'][3,idx] = self.scenario.generators[idx].cost.vom
@@ -288,7 +354,7 @@ class Solver:
             scenario_arrays['costs'][5,idx] = self.scenario.generators[idx].cost.discount_rate
             scenario_arrays['costs'][8,idx] = unit_types[self.scenario.generators[idx].unit_type]
 
-        for idx in range(0,len(self.scenario.storages)+1):
+        for idx in range(0,len(self.scenario.storages)):
             storage_idx = scenario_arrays['gencost_idx']+idx+1
             scenario_arrays['costs'][0,storage_idx] = self.scenario.storages[idx].cost.capex_p
             scenario_arrays['costs'][1,storage_idx] = self.scenario.storages[idx].cost.capex_e
@@ -298,7 +364,7 @@ class Solver:
             scenario_arrays['costs'][5,storage_idx] = self.scenario.storages[idx].cost.discount_rate
             scenario_arrays['costs'][8,storage_idx] = unit_types[self.scenario.storages[idx].unit_type]
             
-        for idx in range(0,len(self.scenario.lines)+1):
+        for idx in range(0,len(self.scenario.lines)):
             line_idx = scenario_arrays['storagecost_idx']+idx+1
             scenario_arrays['costs'][0,line_idx] = self.scenario.lines[idx].cost.capex_p
             scenario_arrays['costs'][2,line_idx] = self.scenario.lines[idx].cost.fom

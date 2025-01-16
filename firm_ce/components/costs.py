@@ -1,3 +1,5 @@
+import numpy as np
+
 class UnitCost:
     def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0):
         self.capex_p = capex_p
@@ -25,13 +27,47 @@ def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom
 
 def calculate_costs(solution): 
     costs = solution.costs
-    # NEED TO MATCH GENERATOR ID WITH CAPACITIES
-    # CPV IDS, CWIND IDS, CFLEXIBLE IDS, CBASELOAD IDS, STORAGE IDS, CTRANS IDS may not be in same order as the IDs in costs
     
+    print(solution.GFlexible_annual)
+
+    capacities = np.zeros(solution.linecost_idx, dtype=np.float64)
+    energy_capacities = np.zeros(solution.linecost_idx, dtype=np.float64)
+    annual_generation = np.zeros(solution.linecost_idx, dtype=np.float64)
+    for idx in range(0,len(solution.CPV)):
+        component_id = solution.pv_ids[idx]
+        capacities[component_id] = solution.CPV[idx]
+        annual_generation[component_id] = solution.GPV_annual[idx]
+    
+    for idx in range(0,len(solution.CWind)):
+        component_id = solution.wind_ids[idx]
+        capacities[component_id] = solution.CWind[idx]
+        annual_generation[component_id] = solution.GWind_annual[idx]
+
+    for idx in range(0,len(solution.CPeak)):
+        component_id = solution.flexible_ids[idx]
+        capacities[component_id] = solution.CPeak[idx]
+        annual_generation[component_id] = solution.GFlexible_annual[idx]
+
+    for idx in range(0,len(solution.CBaseload)):
+        component_id = solution.baseload_ids[idx]
+        capacities[component_id] = solution.CBaseload[idx]
+        annual_generation[component_id] = solution.GBaseload_annual[idx]
+
+    for idx in range(0,len(solution.CPHP)):
+        component_id = solution.storage_ids[idx] + solution.gencost_idx + 1
+        capacities[component_id] = solution.CPHP[idx]
+        energy_capacities[component_id] = solution.CPHS[idx]
+        annual_generation[component_id] = solution.GDischarge_annual[idx]
+
+    for idx in range(0,len(solution.CTrans)):
+        component_id = solution.storage_ids[idx] + solution.storagecost_idx + 1
+        capacities[component_id] = solution.CTrans[idx]
+        annual_generation[component_id] = solution.TFlowsAbs_annual[idx]
+
     pv_costs = sum([
         annualisation_component(
-            power_capacity=solution.CPV[idx],
-            annual_generation=solution.GPV_annual[idx],
+            power_capacity=capacities[idx],
+            annual_generation=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],
@@ -43,8 +79,8 @@ def calculate_costs(solution):
     
     wind_costs = sum([
         annualisation_component(
-            power_capacity=solution.CWind[idx],
-            annual_generation=solution.GWind_annual[idx],
+            power_capacity=capacities[idx],
+            annual_generation=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],
@@ -56,8 +92,8 @@ def calculate_costs(solution):
     
     flexible_costs = sum([
         annualisation_component(
-            power_capacity=solution.CPeak[idx],
-            annual_generation=solution.GFlexible_annual[idx],
+            power_capacity=capacities[idx],
+            annual_generation=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],
@@ -69,8 +105,8 @@ def calculate_costs(solution):
     
     baseload_costs = sum([
         annualisation_component(
-            power_capacity=solution.CBaseload[idx],
-            annual_generation=solution.GFlexible_annual[idx],
+            power_capacity=capacities[idx],
+            annual_generation=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],
@@ -82,9 +118,9 @@ def calculate_costs(solution):
     
     storage_costs = sum([
         annualisation_component(
-            power_capacity=solution.CPHSP[idx],
-            energy_capacity=solution.CPHSE[idx],
-            annual_generation=solution.GPHES_annual[idx],
+            power_capacity=capacities[idx],
+            energy_capacity=energy_capacities[idx],
+            annual_generation=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],
@@ -96,8 +132,8 @@ def calculate_costs(solution):
     
     transmission_costs = sum([
         annualisation_transmission(
-            power_capacity=solution.CTrans[idx],
-            annual_energy_flows=solution.GTFlowsAbs_annual[idx],
+            power_capacity=capacities[idx],
+            annual_energy_flows=annual_generation[idx],
             capex_p=costs[idx,0],
             fom=costs[idx,2],
             vom=costs[idx,3],

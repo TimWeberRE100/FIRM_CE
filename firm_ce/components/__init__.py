@@ -9,5 +9,5 @@ from firm_ce.components.transmission import (
 
 from firm_ce.components.costs import (
     UnitCost,
-    SolutionCost,
+    calculate_costs,
 )
