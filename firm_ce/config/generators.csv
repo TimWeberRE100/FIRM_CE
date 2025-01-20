@@ -22,4 +22,3 @@ id,name,fuel,capex,fom,vom,lifetime,discount_rate,node,max_build,min_build,initi
 20,coal_qld,black coal,0,0,0,50,0.05,QLD,1000,0,0,baseload,nem
 21,coal_nsw,black coal,0,0,0,50,0.05,NSW,1000,0,0,baseload,nem
 22,coal_vic,brown coal,0,0,0,50,0.05,VIC,1000,0,0,baseload,nem
-23,coal_tas,black coal,0,0,0,50,0.05,TAS,1000,0,0,baseload,nem

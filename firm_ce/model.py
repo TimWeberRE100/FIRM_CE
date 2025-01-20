@@ -27,6 +27,7 @@ class Scenario:
         datafiles = self._get_datafiles(model_data.datafiles)
 
         self.resolution = float(scenario_data.get('resolution', 0.0))
+        self.allowance = float(scenario_data.get('allowance', 0.0))
         self.first_year = int(scenario_data.get('firstyear', 0))
         self.final_year = int(scenario_data.get('finalyear', 0))
         self.nodes = self._get_nodes(scenario_data.get('nodes', ''), datafiles)
