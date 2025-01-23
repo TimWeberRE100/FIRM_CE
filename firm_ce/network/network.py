@@ -2,7 +2,17 @@ from typing import Dict
 import numpy as np
 
 from firm_ce.components import Line, Node
-from firm_ce.constants import TRIANGULAR
+from firm_ce.constants import TRIANGULAR, JIT_ENABLED
+
+if JIT_ENABLED:
+    from numba import njit
+else:
+    def njit(func=None, **kwargs):
+        if func is not None:
+            return func
+        def wrapper(f):
+            return f
+        return wrapper
 
 class Network:
     def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node]) -> None:
@@ -121,7 +131,7 @@ class Network:
                     network[1, i, j, k] = self.direct_connections[start, network[0, i, j, k]]
         return network
     
-#@njit
+@njit
 def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, Importt, Exportt):
     # The primary connections are simpler (and faster) to model than the general
     #   nthary connection

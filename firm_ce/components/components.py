@@ -16,7 +16,8 @@ class Generator:
                               float(generator_dict['fom']),
                               float(generator_dict['vom']),
                               int(generator_dict['lifetime']),
-                              float(generator_dict['discount_rate']))
+                              float(generator_dict['discount_rate']),
+                              float(generator_dict['lcoe']))
 
         self.data = None
         for key in datafiles:

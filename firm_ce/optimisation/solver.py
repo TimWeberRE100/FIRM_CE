@@ -1,112 +1,377 @@
 from typing import Dict, List, Tuple
 import numpy as np
-from numba import njit, prange
 from scipy.optimize import differential_evolution
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import TRIANGULAR
+from firm_ce.constants import TRIANGULAR, JIT_ENABLED
 from firm_ce.components import calculate_costs
 
+if JIT_ENABLED:
+    from numba import njit, prange, float64, int64, boolean
+    from numba.experimental import jitclass
+
+    """ scenario_arrays_spec = [
+        ('MLoad', float64[:, :]),
+        ('intervals', int64),
+        ('nodes', int64),
+        ('lines', int64),
+        ('efficiency', float64),
+        ('resolution', float64),
+        ('years', int64),
+        ('energy', float64),
+        ('allowance', float64),
+
+        ('solar_code', int64),
+        ('wind_code', int64),
+        ('flexible_code', int64),
+        ('baseload_code', int64),
+
+        ('generator_ids', int64[:]),
+        ('generator_nodes', int64[:]),
+        ('generator_capacities', float64[:]),
+        ('generator_annual_generation', float64[:]),
+        ('generator_unit_types', int64[:]),
+        ('generator_costs', float64[:, :]),
+
+        ('TSPV', float64[:, :]),
+        ('TSWind', float64[:, :]),
+        ('CPeak', float64[:]),
+        ('CBaseload', float64[:]),
+        ('GBaseload', float64[:, :]),
+        ('GFlexible', float64[:, :]),
+
+        ('storage_ids', int64[:]),
+        ('storage_nodes', int64[:]),
+        ('storage_power_capacities', float64[:]),
+        ('storage_energy_capacities', float64[:]),
+        ('storage_annual_discharge', float64[:]),
+        ('storage_costs', float64[:, :]),
+        ('Discharge', float64[:, :]),
+        ('Charge', float64[:, :]),
+
+        ('line_ids', int64[:]),
+        ('line_lengths', float64[:]),
+        ('line_annual_TFlowsAbs', float64[:]),
+        ('line_costs', float64[:, :]),
+        
+        ('network', int64[:, :, :, :]),
+
+        ('TLoss', float64[:]),
+        ('TFlows', float64[:, :]),
+        ('TFlowsAbs', float64[:, :]),
+
+        ('pv_idx', int64),
+        ('wind_idx', int64),
+        ('storage_p_idx', int64),
+        ('storage_e_idx', int64),
+        ('lines_idx', int64),
+    ] """
+
+    solution_spec = [
+        ('x', float64[:]),
+        ('evaluated', boolean),
+        ('lcoe', float64),
+        ('penalties', float64),
+
+        ('MLoad', float64[:, :]),
+        ('intervals', int64),
+        ('nodes', int64),
+        ('lines', int64),
+        ('efficiency', float64),
+        ('resolution', float64),
+        ('years', int64),
+        ('energy', float64),
+        ('allowance', float64),
+
+        ('solar_code', int64),
+        ('wind_code', int64),
+        ('flexible_code', int64),
+        ('baseload_code', int64),
+
+        ('generator_ids', int64[:]),
+        ('generator_nodes', int64[:]),
+        ('generator_capacities', float64[:]),
+        ('generator_unit_types', int64[:]),
+        ('generator_costs', float64[:, :]),
+
+        ('TSPV', float64[:, :]),
+        ('TSWind', float64[:, :]),
+        ('CPeak', float64[:]),
+        ('CBaseload', float64[:]),
+        ('GBaseload', float64[:, :]),
+        ('GFlexible', float64[:, :]),
+
+        ('storage_ids', int64[:]),
+        ('storage_nodes', int64[:]),
+        ('storage_power_capacities', float64[:]),
+        ('storage_energy_capacities', float64[:]),
+        ('storage_costs', float64[:, :]),
+        ('Discharge', float64[:, :]),
+        ('Charge', float64[:, :]),
+
+        ('line_ids', int64[:]),
+        ('line_lengths', float64[:]),
+        ('line_costs', float64[:, :]),
+        
+        ('network', int64[:, :, :, :]),
+
+        ('TLoss', float64[:]),
+        ('TFlows', float64[:, :]),
+        ('TFlowsAbs', float64[:, :]),
+
+        ('CPV', float64[:]),
+        ('CWind', float64[:]),
+        ('CPHP', float64[:]),
+        ('CPHS', float64[:]),
+        ('CTrans', float64[:]),
+
+        ('solar_nodes', int64[:]),
+        ('wind_nodes', int64[:]),
+        ('flexible_nodes', int64[:]),
+        ('baseload_nodes', int64[:]),
+
+        ('CPHP_nodal', float64[:]),
+        ('CPHS_nodal', float64[:]),
+        ('GPV', float64[:, :]),
+        ('GPV_nodal', float64[:, :]),
+        ('GWind', float64[:, :]),
+        ('GWind_nodal', float64[:, :]),
+
+        ('CPeak_nodal', float64[:]),
+        ('CBaseload_nodal', float64[:]),
+        ('GBaseload_nodal', float64[:, :]),
+        ('GFlexible_nodal', float64[:, :]),
+        ('Spillage_nodal', float64[:, :]),
+        ('Charge_nodal', float64[:, :]),
+        ('Discharge_nodal', float64[:, :]),
+        ('Storage_nodal', float64[:, :]),
+        ('Deficit_nodal', float64[:, :]),
+        ('Import_nodal', float64[:, :]),
+        ('Export_nodal', float64[:, :]),
+
+        ('GPV_annual', float64[:]),
+        ('GWind_annual', float64[:]),
+        ('GFlexible_annual', float64[:]),
+        ('GBaseload_annual', float64[:]),
+        ('GDischarge_annual', float64[:]),
+        ('TFlowsAbs_annual', float64[:]),
+    ]
+else:
+    def njit(func=None, **kwargs):
+        if func is not None:
+            return func
+        def wrapper(f):
+            return f
+        return wrapper
+    
+    def jitclass(spec):
+        def decorator(cls):
+            return cls
+        return decorator
+    
+    def prange(x):
+        return range(x)
+    
+    solution_spec = []
+    scenario_arrays_spec = []
+
+""" @jitclass(scenario_arrays_spec)
+class ScenarioArrays:
+    def __init__(self):
+        # 2D arrays initialized as (1,1) by default:
+        self.MLoad = np.zeros((0, 0), dtype=np.float64)
+        self.generator_costs = np.zeros((0, 0), dtype=np.float64)
+        self.TSPV = np.zeros((0, 0), dtype=np.float64)
+        self.TSWind = np.zeros((0, 0), dtype=np.float64)
+        self.GBaseload = np.zeros((0, 0), dtype=np.float64)
+        self.GFlexible = np.zeros((0, 0), dtype=np.float64)
+        self.storage_costs = np.zeros((0, 0), dtype=np.float64)
+        self.Discharge = np.zeros((0, 0), dtype=np.float64)
+        self.Charge = np.zeros((0, 0), dtype=np.float64)
+        self.line_costs = np.zeros((0, 0), dtype=np.float64)
+        self.TFlows = np.zeros((0, 0), dtype=np.float64)
+        self.TFlowsAbs = np.zeros((0, 0), dtype=np.float64)
+
+        self.solar_code = 0
+        self.wind_code = 1
+        self.flexible_code = 2
+        self.baseload_code = 3
+
+        # 3D array
+        self.network = np.zeros((0, 0, 0, 0), dtype=np.int64)
+
+        # 1D arrays (length 1) by default:
+        self.generator_ids = np.zeros(0, dtype=np.int64)
+        self.generator_nodes = np.zeros(0, dtype=np.int64)
+        self.generator_capacities = np.zeros(0, dtype=np.float64)
+        self.generator_annual_generation = np.zeros(0, dtype=np.float64)
+        self.generator_unit_types = np.zeros(0, dtype=np.int64)
+
+        self.CPeak = np.zeros(0, dtype=np.float64)
+        self.CBaseload = np.zeros(0, dtype=np.float64)
+
+        self.storage_ids = np.zeros(0, dtype=np.int64)
+        self.storage_nodes = np.zeros(0, dtype=np.int64)
+        self.storage_power_capacities = np.zeros(0, dtype=np.float64)
+        self.storage_energy_capacities = np.zeros(0, dtype=np.float64)
+        self.storage_annual_discharge = np.zeros(0, dtype=np.float64)
+
+        self.line_ids = np.zeros(0, dtype=np.int64)
+        self.line_lengths = np.zeros(0, dtype=np.float64)
+        self.line_annual_TFlowsAbs = np.zeros(0, dtype=np.float64)
+
+        self.TLoss = np.zeros(0, dtype=np.float64)
+
+        # Scalar fields:
+        self.intervals = 0
+        self.nodes = 0
+        self.lines = 0
+        self.efficiency = 0.0
+        self.resolution = 0.0
+        self.years = 0
+        self.energy = 0.0
+        self.allowance = 0.0
+
+        self.pv_idx = 0
+        self.wind_idx = 0
+        self.storage_p_idx = 0
+        self.storage_e_idx = 0
+        self.lines_idx = 0 """
+
+@jitclass(solution_spec)
 class Solution_SingleTime:
-    def __init__(self, x, scenario_arrays) -> None:
+    def __init__(self,
+        x,
+        MLoad,
+        TSPV,
+        TSWind,
+        network,
+        intervals,
+        nodes,
+        lines,
+        years,
+        efficiency,
+        resolution,
+        allowance,
+        generator_ids,
+        generator_nodes,
+        generator_capacities,
+        generator_costs,
+        generator_unit_types,
+        storage_ids,
+        storage_nodes,
+        storage_power_capacities,
+        storage_energy_capacities,
+        storage_costs,
+        line_ids,
+        line_lengths,
+        line_costs,
+        TLoss,
+        pv_idx,
+        wind_idx,
+        storage_p_idx,
+        storage_e_idx,
+        lines_idx,) -> None:
+
         self.x = x  
         self.evaluated=False   
         self.lcoe = 0.0
         self.penalties = 0.0
 
-        self.MLoad = scenario_arrays['MLoad']
-        self.intervals = scenario_arrays['intervals']
-        self.nodes = scenario_arrays['nodes']
-        self.lines = scenario_arrays['lines']
-        self.efficiency = scenario_arrays['efficiency'] ########## BASE THIS ON STORAGE-LEVEL EFFICIENCIES?
-        self.resolution = scenario_arrays['resolution']
-        self.years = scenario_arrays['years']
+        self.MLoad = MLoad
+        self.intervals = intervals
+        self.nodes = nodes
+        self.lines = lines
+        self.efficiency = efficiency
+        self.resolution = resolution
+        self.years = years
         self.energy = self.MLoad.sum() * self.resolution / self.years
-        self.allowance = scenario_arrays['allowance']
+        self.allowance = allowance
 
-        self.unit_types = scenario_arrays['unit_types']
+        # Unit Types
+        self.solar_code = 0
+        self.wind_code = 1
+        self.flexible_code = 2
+        self.baseload_code = 3
 
         # Generators
-        self.generator_ids = scenario_arrays['generator_ids'] 
-        self.generator_nodes = scenario_arrays['generator_nodes'] 
-        self.generator_capacities = scenario_arrays['generator_capacities'] 
-        self.generator_annual_generation = scenario_arrays['generator_annual_generation'] 
-        self.generator_unit_types = scenario_arrays['generator_unit_types'] 
-        self.generator_costs = scenario_arrays['generator_costs']
+        self.generator_ids = generator_ids
+        self.generator_nodes = generator_nodes
+        self.generator_capacities = generator_capacities
+        self.generator_costs = generator_costs
+        self.generator_unit_types = generator_unit_types
 
-        self.TSPV = scenario_arrays['TSPV'] 
-        self.TSWind = scenario_arrays['TSWind'] 
-        self.CPeak = self.generator_capacities[np.where(self.generator_unit_types == self.unit_types['flexible'])[0]]
-        self.CBaseload = self.generator_capacities[np.where(self.generator_unit_types == self.unit_types['baseload'])[0]]
-        self.GBaseload = self.CBaseload * np.ones((self.intervals,len(self.CBaseload)), dtype=np.float64)
-        self.GFlexible = np.zeros((self.intervals,len(self.CPeak)), dtype=np.float64)
+        self.TSPV = TSPV 
+        self.TSWind = TSWind 
+        self.CPeak = self.generator_capacities[np.where(self.generator_unit_types == self.flexible_code)[0]]
+        self.CBaseload = self.generator_capacities[np.where(self.generator_unit_types == self.baseload_code)[0]]
+        self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
+        self.GFlexible = np.zeros((self.intervals, len(self.CPeak)), dtype=np.float64)
 
         # Storages
-        self.storage_ids = scenario_arrays['storage_ids'] 
-        self.storage_nodes = scenario_arrays['storage_nodes'] 
-        self.storage_power_capacities = scenario_arrays['storage_power_capacities'] 
-        self.storage_energy_capacities = scenario_arrays['storage_energy_capacities'] 
-        self.storage_annual_discharge = scenario_arrays['storage_annual_discharge'] 
-        self.storage_costs = scenario_arrays['storage_costs']
+        self.storage_ids = storage_ids
+        self.storage_nodes = storage_nodes
+        self.storage_power_capacities = storage_power_capacities
+        self.storage_energy_capacities = storage_energy_capacities
+        self.storage_costs = storage_costs
 
-        self.Discharge = scenario_arrays['storage_discharges']
-        self.Charge = scenario_arrays['storage_charges'] 
+        self.Discharge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
+        self.Charge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
 
         # Lines
-        self.line_ids = scenario_arrays['line_ids'] 
-        self.line_lengths = scenario_arrays['line_lengths']
-        self.line_annual_TFlowsAbs = scenario_arrays['line_annual_TFlowsAbs'] 
-        self.line_costs = scenario_arrays['line_costs']
+        self.line_ids = line_ids
+        self.line_lengths = line_lengths
+        self.line_costs = line_costs
         
-        self.network = scenario_arrays['network'] 
-        self.TLoss = scenario_arrays['TLoss'] 
-        self.TFlows = scenario_arrays['TFlows'] 
-        self.TFlowsAbs = scenario_arrays['TFlowsAbs'] 
+        self.network = network
+        self.TLoss = TLoss
+        self.TFlows = np.zeros((intervals, lines), dtype=np.float64)
+        self.TFlowsAbs = np.zeros((intervals, lines), dtype=np.float64)
 
         # Decision Variables
-        self.CPV = x[: scenario_arrays['pv_idx']]
-        self.CWind = x[scenario_arrays['pv_idx'] : scenario_arrays['wind_idx']]
-        self.CPHP = x[scenario_arrays['wind_idx'] : scenario_arrays['storage_p_idx']]
-        self.CPHS = x[scenario_arrays['storage_p_idx'] : scenario_arrays['storage_e_idx']]
-        self.CTrans = x[scenario_arrays['storage_e_idx'] :] ###### THIS NEEDS TO BE TREATED AS A BOUND
+        self.CPV = x[: pv_idx]
+        self.CWind = x[pv_idx : wind_idx]
+        self.CPHP = x[wind_idx : storage_p_idx]
+        self.CPHS = x[storage_p_idx : storage_e_idx]
+        self.CTrans = x[storage_e_idx :] ###### THIS NEEDS TO BE TREATED AS A BOUND
 
         # Nodal Values
-        self.solar_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.unit_types['solar'])[0]] 
-        self.wind_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.unit_types['wind'])[0]] 
-        self.flexible_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.unit_types['flexible'])[0]] 
-        self.baseload_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.unit_types['baseload'])[0]] 
+        self.solar_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.solar_code)[0]] 
+        self.wind_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.wind_code)[0]] 
+        self.flexible_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.flexible_code)[0]] 
+        self.baseload_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.baseload_code)[0]] 
         self.storage_nodes = self.storage_nodes
 
-        self.CPHP_nodal = np.zeros(self.nodes, dtype=np.float64)
-        self.CPHS_nodal = np.zeros(self.nodes, dtype=np.float64)
-        for idx in self.storage_nodes:
+        self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
+        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)
+        """ for idx in self.storage_nodes:
             mask = (self.storage_nodes == idx)
             self.CPHP_nodal[idx] = self.CPHP[mask].sum() 
-            self.CPHS_nodal[idx] = self.CPHS[mask].sum()            
+            self.CPHS_nodal[idx] = self.CPHS[mask].sum()  """           
 
-        self.GPV = self.CPV[np.newaxis, :] * scenario_arrays['TSPV'] * 1000
-        self.GPV_nodal = np.zeros((self.intervals, self.nodes), dtype=np.float64) 
-        for idx in self.solar_nodes:
+        self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
+        self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
+        """ for idx in self.solar_nodes:
             mask = (self.solar_nodes == idx)
-            self.GPV_nodal[:,idx] = self.GPV[:,mask].sum(axis=1)
+            self.GPV_nodal[:,idx] = self.GPV[:,mask].sum(axis=1) """
 
-        self.GWind = self.CWind[np.newaxis, :] * scenario_arrays['TSWind'] * 1000 
-        self.GWind_nodal = np.zeros((self.intervals, self.nodes), dtype=np.float64)
-        for idx in self.wind_nodes:
+        self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
+        self.GWind_nodal = self._fill_nodal_array_2d(self.GWind, self.wind_nodes)
+        """ for idx in self.wind_nodes:
             mask = (self.wind_nodes == idx)
-            self.GWind_nodal[:,idx] = self.GWind[:,mask].sum(axis=1)
+            self.GWind_nodal[:,idx] = self.GWind[:,mask].sum(axis=1) """
 
-        self.CPeak_nodal = np.zeros(self.nodes, dtype=np.float64)
-        for idx in self.flexible_nodes:
+        self.CPeak_nodal = self._fill_nodal_array_1d(self.CPeak, self.flexible_nodes)
+        """ for idx in self.flexible_nodes:
             mask = (self.flexible_nodes == idx)
-            self.CPeak_nodal[idx] = self.CPeak[mask].sum()   
+            self.CPeak_nodal[idx] = self.CPeak[mask].sum()  """  
         
-        self.CBaseload_nodal = np.zeros(self.nodes, dtype=np.float64)
-        self.GBaseload_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64) 
-        for idx in self.baseload_nodes:
+        self.CBaseload_nodal = self._fill_nodal_array_1d(self.CBaseload, self.baseload_nodes)
+        self.GBaseload_nodal = self._fill_nodal_array_2d(self.GBaseload, self.baseload_nodes)
+        """ for idx in self.baseload_nodes:
             mask = (self.baseload_nodes == idx)
             self.CBaseload_nodal[idx] = self.CBaseload[mask].sum()  
-            self.GBaseload_nodal[:,idx] = self.GBaseload[:,mask].sum(axis=1)
+            self.GBaseload_nodal[:,idx] = self.GBaseload[:,mask].sum(axis=1) """
 
         self.GFlexible_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Spillage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
@@ -116,6 +381,32 @@ class Solution_SingleTime:
         self.Deficit_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Import_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64) 
         self.Export_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64)   
+
+        self.GPV_annual = np.zeros(0, dtype=np.float64)
+        self.GWind_annual = np.zeros(0, dtype=np.float64)
+        self.GFlexible_annual = np.zeros(0, dtype=np.float64)
+        self.GBaseload_annual = np.zeros(0, dtype=np.float64)
+        self.GDischarge_annual = np.zeros(0, dtype=np.float64)
+        self.TFlowsAbs_annual = np.zeros(0, dtype=np.float64)
+
+    def _fill_nodal_array_2d(self, generation_array, node_array):
+        result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
+
+        for t in range(self.intervals):
+            for n in range(len(node_array)):
+                node_idx = node_array[n]
+                result[t, node_idx] += generation_array[t, n]
+
+        return result
+    
+    def _fill_nodal_array_1d(self, capacity_array, node_array):
+        result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
+
+        for n in range(len(node_array)):
+            node_idx = node_array[n]
+            result[node_idx] += capacity_array[n]
+
+        return result
 
     def _reliability(self, flexible, start=None, end=None):
         network = self.network
@@ -201,18 +492,35 @@ class Solution_SingleTime:
         solution_cost = calculate_costs(self)
         return solution_cost
     
-    def _apportion_nodal_generation(self):
-        for idx in range(0,len(self.flexible_nodes)):
-            mask = (self.flexible_nodes == self.flexible_nodes[idx])
-            self.GFlexible[:,idx] = self.CPeak[idx] / self.CPeak[mask].sum() * self.GFlexible_nodal[:,self.flexible_nodes[idx]] if self.CPeak[mask].sum() > 0 else self.GFlexible_nodal[:,self.flexible_nodes[idx]]
-        
-        for idx in range(0,len(self.baseload_nodes)):
-            mask = (self.baseload_nodes == self.baseload_nodes[idx])
-            self.GBaseload[:,idx] = self.CBaseload[idx] / self.CBaseload[mask].sum() * self.GBaseload_nodal[:,self.baseload_nodes[idx]] if self.CBaseload[mask].sum() > 0 else self.GBaseload_nodal[:,self.baseload_nodes[idx]]
+    def _apportion_nodal_array(self, capacity_array, nodal_generation, node_array):
+        n_components = node_array.shape[0]
 
-        for idx in range(0,len(self.storage_nodes)):
-            mask = (self.storage_nodes == self.storage_nodes[idx])
-            self.Discharge[:,idx] = self.CPHP[idx] / self.CPHP[mask].sum() * self.Discharge_nodal[:,self.storage_nodes[idx]] if self.CPHP[mask].sum() > 0 else self.Discharge_nodal[:,self.storage_nodes[idx]]
+        cap_node_sum = np.zeros(self.nodes, dtype=np.float64)
+        for i in range(n_components):
+            node_i = node_array[i]
+            cap_node_sum[node_i] += capacity_array[i]
+
+        result = np.zeros((self.intervals, n_components), dtype=np.float64)
+        for i in prange(n_components):
+            node_i = node_array[i]
+            denom = cap_node_sum[node_i]
+            if denom > 0.0:
+                ratio = capacity_array[i] / denom
+                for t in range(self.intervals):
+                    result[t, i] = ratio * nodal_generation[t, node_i]
+            else:
+                # If the node's total capacity is zero, fall back to "no scaling"
+                for t in range(self.intervals):
+                    result[t, i] = nodal_generation[t, node_i]
+
+        return result
+    
+    def _apportion_nodal_generation(self):
+        self.GFlexible = self._apportion_nodal_array(self.CPeak,self.GFlexible_nodal,self.flexible_nodes)
+        
+        self.GBaseload = self._apportion_nodal_array(self.CBaseload,self.GBaseload_nodal,self.baseload_nodes)
+
+        self.Discharge = self._apportion_nodal_array(self.CPHP,self.Discharge_nodal,self.storage_nodes)
 
         return None
 
@@ -243,7 +551,7 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss)
 
-        print(lcoe, cost, self.energy, loss)
+        #print(lcoe, pen_deficit, self.x)
 
         return lcoe, pen_deficit
 
@@ -287,54 +595,141 @@ class Solver:
         node_names = {self.scenario.nodes[idx].name : self.scenario.nodes[idx].id for idx in self.scenario.nodes}
 
         # Static parameters
-        scenario_arrays['MLoad'] = np.array([self.scenario.nodes[idx].demand_data for idx in range(0,max(self.scenario.nodes)+1)], dtype=np.float64).T
+        scenario_arrays['MLoad'] = np.array(
+            [self.scenario.nodes[idx].demand_data
+            for idx in range(0, max(self.scenario.nodes)+1)],
+            dtype=np.float64
+        ).T
+
         scenario_arrays['intervals'], scenario_arrays['nodes'] = scenario_arrays['MLoad'].shape
         scenario_arrays['lines'] = len(self.scenario.lines)
-        scenario_arrays['years'] = self.scenario.final_year - self.scenario.first_year   
+        scenario_arrays['years'] = self.scenario.final_year - self.scenario.first_year
         scenario_arrays['efficiency'] = 0.8
         scenario_arrays['resolution'] = self.scenario.resolution
         scenario_arrays['allowance'] = self.scenario.allowance
+        print('Success 1')
 
         # Unit types
-        scenario_arrays['unit_types'] = {'solar': 0,
+        unit_types = {'solar': 0,
                                         'wind': 1,
                                         'flexible': 2,
                                         'baseload': 3
                                         } ############ GENERATE THIS IN SCENARIOS
         
         # Generators
-        scenario_arrays['generator_ids'] = np.array([self.scenario.generators[idx].id for idx in self.scenario.generators], dtype=np.int16)
-        scenario_arrays['generator_nodes'] = np.array([node_names[self.scenario.generators[idx].node] for idx in self.scenario.generators], dtype=np.int16)
-        scenario_arrays['generator_capacities'] = np.array([self.scenario.generators[idx].capacity for idx in self.scenario.generators], dtype=np.float64)
-        scenario_arrays['generator_annual_generation'] = np.zeros(len(self.scenario.generators), dtype=np.float64)
-        scenario_arrays['generator_unit_types'] = np.array([scenario_arrays['unit_types'][self.scenario.generators[idx].unit_type] for idx in self.scenario.generators], dtype=np.int16)
-        scenario_arrays['generator_costs'] = np.zeros((7,len(self.scenario.generators)), dtype=np.float64)
+        scenario_arrays['generator_ids'] = np.array(
+            [self.scenario.generators[idx].id 
+            for idx in self.scenario.generators],
+            dtype=np.int64
+        )
 
-        scenario_arrays['TSPV'] = np.array([self.scenario.generators[idx].data for idx in self.scenario.generators if self.scenario.generators[idx].unit_type == 'solar']).T 
-        scenario_arrays['TSWind'] = np.array([self.scenario.generators[idx].data for idx in self.scenario.generators if self.scenario.generators[idx].unit_type == 'wind']).T
-        
+        scenario_arrays['generator_nodes'] = np.array(
+            [node_names[self.scenario.generators[idx].node]
+            for idx in self.scenario.generators],
+            dtype=np.int64
+        )
+
+        scenario_arrays['generator_capacities'] = np.array(
+            [self.scenario.generators[idx].capacity 
+            for idx in self.scenario.generators],
+            dtype=np.float64
+        )
+
+        scenario_arrays['generator_unit_types'] = np.array(
+            [unit_types[self.scenario.generators[idx].unit_type]
+            for idx in self.scenario.generators],
+            dtype=np.int64
+        )
+
+        scenario_arrays['generator_costs'] = np.zeros(
+            (8, len(self.scenario.generators)), dtype=np.float64
+        )
+
+        scenario_arrays['TSPV'] = np.array([
+            self.scenario.generators[idx].data
+            for idx in self.scenario.generators
+            if self.scenario.generators[idx].unit_type == 'solar'
+        ], dtype=np.float64).T
+
+        scenario_arrays['TSWind'] = np.array([
+            self.scenario.generators[idx].data
+            for idx in self.scenario.generators
+            if self.scenario.generators[idx].unit_type == 'wind'
+        ], dtype=np.float64).T
+
+        print('Success 2')
+
         # Storages
-        scenario_arrays['storage_ids'] = np.array([self.scenario.storages[idx].id for idx in self.scenario.storages], dtype=np.int16)
-        scenario_arrays['storage_nodes'] = np.array([node_names[self.scenario.storages[idx].node] for idx in self.scenario.storages], dtype=np.int16)
-        scenario_arrays['storage_power_capacities'] = np.array([self.scenario.storages[idx].power_capacity for idx in self.scenario.storages], dtype=np.float64)
-        scenario_arrays['storage_energy_capacities'] = np.array([self.scenario.storages[idx].energy_capacity for idx in self.scenario.storages], dtype=np.float64)
-        scenario_arrays['storage_annual_discharge'] = np.zeros(len(self.scenario.storages), dtype=np.float64)
-        scenario_arrays['storage_costs'] = np.zeros((7,len(self.scenario.storages)), dtype=np.float64)
+        scenario_arrays['storage_ids'] = np.array(
+            [self.scenario.storages[idx].id 
+            for idx in self.scenario.storages],
+            dtype=np.int64
+        )
 
-        scenario_arrays['storage_discharges'] = np.zeros((scenario_arrays['intervals'],len(self.scenario.storages)), dtype=np.float64)
-        scenario_arrays['storage_charges'] = np.zeros((scenario_arrays['intervals'],len(self.scenario.storages)), dtype=np.float64)
+        scenario_arrays['storage_nodes'] = np.array(
+            [node_names[self.scenario.storages[idx].node]
+            for idx in self.scenario.storages],
+            dtype=np.int64
+        )
+
+        scenario_arrays['storage_power_capacities'] = np.array(
+            [self.scenario.storages[idx].power_capacity
+            for idx in self.scenario.storages],
+            dtype=np.float64
+        )
+
+        scenario_arrays['storage_energy_capacities'] = np.array(
+            [self.scenario.storages[idx].energy_capacity
+            for idx in self.scenario.storages],
+            dtype=np.float64
+        )
+
+        scenario_arrays['storage_costs'] = np.zeros(
+            (7, len(self.scenario.storages)), dtype=np.float64
+        )
+
+        scenario_arrays['Discharge'] = np.zeros(
+            (scenario_arrays['intervals'], len(self.scenario.storages)), dtype=np.float64
+        )
+        scenario_arrays['Charge'] = np.zeros(
+            (scenario_arrays['intervals'], len(self.scenario.storages)), dtype=np.float64
+        )
+
+        print('Success 3')
 
         # Lines
-        scenario_arrays['line_ids'] = np.array([self.scenario.lines[idx].id for idx in self.scenario.lines], dtype=np.int16)
-        scenario_arrays['line_capacities'] = np.array([self.scenario.lines[idx].capacity for idx in self.scenario.lines], dtype=np.float64)
-        scenario_arrays['line_lengths'] = np.array([self.scenario.lines[idx].length for idx in self.scenario.lines], dtype=np.int32)
-        scenario_arrays['line_annual_TFlowsAbs'] = np.array([0.0 for idx in self.scenario.lines], dtype=np.float64)
-        scenario_arrays['line_costs'] =  np.zeros((7,len(self.scenario.lines)), dtype=np.float64)
-        
-        scenario_arrays['network'] = self.scenario.network.network  
-        scenario_arrays['TLoss'] = np.array([self.scenario.lines[idx].loss_factor for idx in self.scenario.lines], dtype=np.float64)
-        scenario_arrays['TFlows'] = np.zeros((scenario_arrays['intervals'],len(self.scenario.lines)), dtype=np.float64)
-        scenario_arrays['TFlowsAbs'] = np.zeros((scenario_arrays['intervals'],len(self.scenario.lines)), dtype=np.float64) 
+        scenario_arrays['line_ids'] = np.array(
+            [self.scenario.lines[idx].id for idx in self.scenario.lines],
+            dtype=np.int64
+        )
+
+        """ scenario_arrays.line_capacities = np.array(
+            [self.scenario.lines[idx].capacity for idx in self.scenario.lines],
+            dtype=np.float64
+        ) """
+
+        scenario_arrays['line_lengths'] = np.array(
+            [self.scenario.lines[idx].length for idx in self.scenario.lines],
+            dtype=np.float64
+        )
+
+        scenario_arrays['line_costs'] = np.zeros(
+            (7, len(self.scenario.lines)), dtype=np.float64
+        )
+        print('Success 4',type(self.scenario.network.network))
+        scenario_arrays['network'] = self.scenario.network.network
+        print('Success 4.1')
+        scenario_arrays['TLoss'] = np.array(
+            [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines],
+            dtype=np.float64
+        )
+
+        scenario_arrays['TFlows'] = np.zeros(
+            (scenario_arrays['intervals'], len(self.scenario.lines)), dtype=np.float64
+        )
+        scenario_arrays['TFlowsAbs'] = np.zeros(
+            (scenario_arrays['intervals'], len(self.scenario.lines)), dtype=np.float64
+        )       
 
         # Decision variable indices
         scenario_arrays['pv_idx'] = scenario_arrays['TSPV'].shape[1]
@@ -342,6 +737,8 @@ class Solver:
         scenario_arrays['storage_p_idx'] = scenario_arrays['wind_idx'] + len(self.scenario.storages)
         scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages)
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
+
+        print('Success 5')
 
         # Costs
         '''
@@ -354,31 +751,38 @@ class Solver:
             [lifetime]
             [discount_rate]
             [transformer_capex]
+            [lcoe]
             )
         '''       
         
-        for idx in range(0,len(self.scenario.generators)):
-            scenario_arrays['generator_costs'][0,idx] = self.scenario.generators[idx].cost.capex_p
-            scenario_arrays['generator_costs'][2,idx] = self.scenario.generators[idx].cost.fom
-            scenario_arrays['generator_costs'][3,idx] = self.scenario.generators[idx].cost.vom
-            scenario_arrays['generator_costs'][4,idx] = self.scenario.generators[idx].cost.lifetime
-            scenario_arrays['generator_costs'][5,idx] = self.scenario.generators[idx].cost.discount_rate
+        for i, idx in enumerate(self.scenario.generators):
+            g = self.scenario.generators[idx]
+            scenario_arrays['generator_costs'][0, i] = g.cost.capex_p
+            scenario_arrays['generator_costs'][2, i] = g.cost.fom
+            scenario_arrays['generator_costs'][3, i] = g.cost.vom
+            scenario_arrays['generator_costs'][4, i] = g.cost.lifetime
+            scenario_arrays['generator_costs'][5, i] = g.cost.discount_rate
+            scenario_arrays['generator_costs'][7, i] = g.cost.lcoe
 
-        for idx in range(0,len(self.scenario.storages)):
-            scenario_arrays['storage_costs'][0,idx] = self.scenario.storages[idx].cost.capex_p
-            scenario_arrays['storage_costs'][1,idx] = self.scenario.storages[idx].cost.capex_e
-            scenario_arrays['storage_costs'][2,idx] = self.scenario.storages[idx].cost.fom
-            scenario_arrays['storage_costs'][3,idx] = self.scenario.storages[idx].cost.vom
-            scenario_arrays['storage_costs'][4,idx] = self.scenario.storages[idx].cost.lifetime
-            scenario_arrays['storage_costs'][5,idx] = self.scenario.storages[idx].cost.discount_rate
+        for i, idx in enumerate(self.scenario.storages):
+            s = self.scenario.storages[idx]
+            scenario_arrays['storage_costs'][0, i] = s.cost.capex_p
+            scenario_arrays['storage_costs'][1, i] = s.cost.capex_e
+            scenario_arrays['storage_costs'][2, i] = s.cost.fom
+            scenario_arrays['storage_costs'][3, i] = s.cost.vom
+            scenario_arrays['storage_costs'][4, i] = s.cost.lifetime
+            scenario_arrays['storage_costs'][5, i] = s.cost.discount_rate
             
-        for idx in range(0,len(self.scenario.lines)):
-            scenario_arrays['line_costs'][0,idx] = self.scenario.lines[idx].cost.capex_p
-            scenario_arrays['line_costs'][2,idx] = self.scenario.lines[idx].cost.fom
-            scenario_arrays['line_costs'][3,idx] = self.scenario.lines[idx].cost.vom
-            scenario_arrays['line_costs'][4,idx] = self.scenario.lines[idx].cost.lifetime
-            scenario_arrays['line_costs'][5,idx] = self.scenario.lines[idx].cost.discount_rate
-            scenario_arrays['line_costs'][6,idx] = self.scenario.lines[idx].cost.transformer_capex
+        for i, idx in enumerate(self.scenario.lines):
+            l = self.scenario.lines[idx]
+            scenario_arrays['line_costs'][0, i] = l.cost.capex_p
+            scenario_arrays['line_costs'][2, i] = l.cost.fom
+            scenario_arrays['line_costs'][3, i] = l.cost.vom
+            scenario_arrays['line_costs'][4, i] = l.cost.lifetime
+            scenario_arrays['line_costs'][5, i] = l.cost.discount_rate
+            scenario_arrays['line_costs'][6, i] = l.cost.transformer_capex
+
+        print('Success 6')
         
         return scenario_arrays
 
@@ -416,15 +820,143 @@ class Solver:
             self.solution = self._capacity_expansion()
 
 def parallel_wrapper_st_factory(scenario_arrays):
+    MLoad = scenario_arrays["MLoad"] 
+    TSPV = scenario_arrays["TSPV"]   
+    TSWind = scenario_arrays["TSWind"]
+    network = scenario_arrays["network"]
+
+    intervals = scenario_arrays["intervals"]
+    nodes = scenario_arrays["nodes"]
+    lines = scenario_arrays["lines"]
+    years = scenario_arrays["years"]
+    efficiency = scenario_arrays["efficiency"]
+    resolution = scenario_arrays["resolution"]
+    allowance = scenario_arrays["allowance"]
+
+    generator_ids = scenario_arrays["generator_ids"]
+    generator_nodes = scenario_arrays["generator_nodes"]
+    generator_capacities = scenario_arrays["generator_capacities"]
+    generator_costs = scenario_arrays["generator_costs"]
+    generator_unit_types = scenario_arrays["generator_unit_types"]
+
+    storage_ids = scenario_arrays["storage_ids"]
+    storage_nodes = scenario_arrays["storage_nodes"]
+    storage_power_capacities = scenario_arrays["storage_power_capacities"]
+    storage_energy_capacities = scenario_arrays["storage_energy_capacities"]
+    storage_costs = scenario_arrays["storage_costs"]
+
+    line_ids = scenario_arrays["line_ids"]
+    line_lengths = scenario_arrays["line_lengths"]
+    line_costs = scenario_arrays["line_costs"]
+    TLoss = scenario_arrays["TLoss"]
+
+    pv_idx = scenario_arrays["pv_idx"]
+    wind_idx = scenario_arrays["wind_idx"]
+    storage_p_idx = scenario_arrays["storage_p_idx"]
+    storage_e_idx = scenario_arrays["storage_e_idx"]
+    lines_idx = scenario_arrays["lines_idx"]
+
     #@njit(parallel=True)
+    @njit
     def parallel_wrapper_st(xs):
         result = np.empty(xs.shape[1], dtype=np.float64)
         for i in prange(xs.shape[1]):
-            result[i] = objective_st(xs[:,i], scenario_arrays)
+            result[i] = objective_st(xs[:,i],
+                MLoad,
+                TSPV,
+                TSWind,
+                network,
+                intervals,
+                nodes,
+                lines,
+                years,
+                efficiency,
+                resolution,
+                allowance,
+                generator_ids,
+                generator_nodes,
+                generator_capacities,
+                generator_costs,
+                generator_unit_types,
+                storage_ids,
+                storage_nodes,
+                storage_power_capacities,
+                storage_energy_capacities,
+                storage_costs,
+                line_ids,
+                line_lengths,
+                line_costs,
+                TLoss,
+                pv_idx,
+                wind_idx,
+                storage_p_idx,
+                storage_e_idx,
+                lines_idx)
         return result
     return parallel_wrapper_st
 
-def objective_st(x, scenario_arrays):
-    solution = Solution_SingleTime(x, scenario_arrays)
+@njit
+def objective_st(x,
+                MLoad,
+                TSPV,
+                TSWind,
+                network,
+                intervals,
+                nodes,
+                lines,
+                years,
+                efficiency,
+                resolution,
+                allowance,
+                generator_ids,
+                generator_nodes,
+                generator_capacities,
+                generator_costs,
+                generator_unit_types,
+                storage_ids,
+                storage_nodes,
+                storage_power_capacities,
+                storage_energy_capacities,
+                storage_costs,
+                line_ids,
+                line_lengths,
+                line_costs,
+                TLoss,
+                pv_idx,
+                wind_idx,
+                storage_p_idx,
+                storage_e_idx,
+                lines_idx):
+    solution = Solution_SingleTime(x,
+                MLoad,
+                TSPV,
+                TSWind,
+                network,
+                intervals,
+                nodes,
+                lines,
+                years,
+                efficiency,
+                resolution,
+                allowance,
+                generator_ids,
+                generator_nodes,
+                generator_capacities,
+                generator_costs,
+                generator_unit_types,
+                storage_ids,
+                storage_nodes,
+                storage_power_capacities,
+                storage_energy_capacities,
+                storage_costs,
+                line_ids,
+                line_lengths,
+                line_costs,
+                TLoss,
+                pv_idx,
+                wind_idx,
+                storage_p_idx,
+                storage_e_idx,
+                lines_idx)
     solution.evaluate()
     return solution.lcoe + solution.penalties

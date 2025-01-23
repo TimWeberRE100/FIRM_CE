@@ -1,6 +1,6 @@
 id,name,initial_power_capacity,initial_energy_capacity,capex_p,capex_e,fom,vom,lifetime,discount_rate,node,charge_efficiency,discharge_efficiency,max_build_p,max_build_e,min_build_p,min_build_e,unit_type,scenarios
-0,phes_qld,0,0,0,0,0,0,60,0.05,QLD,0.9,0.9,500,10000,0,0,phes,nem
-1,phes_nsw,0,0,0,0,0,0,60,0.05,NSW,0.9,0.9,500,10000,0,0,phes,nem
-2,phes_sa,0,0,0,0,0,0,60,0.05,SA,0.9,0.9,500,10000,0,0,phes,nem
-3,phes_vic,0,0,0,0,0,0,60,0.05,VIC,0.9,0.9,500,10000,0,0,phes,nem
-4,phes_tas,0,0,0,0,0,0,60,0.05,TAS,0.9,0.9,500,10000,0,0,phes,nem
+0,phes_qld,0,0,533,47,0,0,60,0.05,QLD,0.8,1,500,10000,0,0,phes,nem
+1,phes_nsw,0,0,533,47,0,0,60,0.05,NSW,0.8,1,500,10000,0,0,phes,nem
+2,phes_sa,0,0,533,47,0,0,60,0.05,SA,0.8,1,500,10000,0,0,phes,nem
+3,phes_vic,0,0,533,47,0,0,60,0.05,VIC,0.8,1,500,10000,0,0,phes,nem
+4,phes_tas,0,0,533,47,0,0,60,0.05,TAS,0.8,1,500,10000,0,0,phes,nem

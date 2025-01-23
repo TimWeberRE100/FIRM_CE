@@ -1,35 +1,53 @@
 import numpy as np
 
+from firm_ce.constants import JIT_ENABLED
+
+if JIT_ENABLED:
+    from numba import njit
+else:
+    def njit(func=None, **kwargs):
+        if func is not None:
+            return func
+        def wrapper(f):
+            return f
+        return wrapper
+
 class UnitCost:
-    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0):
+    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0, lcoe = 0):
         self.capex_p = capex_p
         self.capex_e = capex_e
         self.fom = fom
         self.vom = vom
         self.lifetime = lifetime
         self.discount_rate = discount_rate
+
+        self.lcoe = lcoe # Used for existing generators
         
         self.transformer_capex = transformer_capex
         self.length = length
 
+@njit
 def get_present_value(discount_rate, lifetime):
     return (1-(1+discount_rate)**(-1*lifetime))/discount_rate
 
+@njit
 def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
     present_value = get_present_value(discount_rate, lifetime)
+    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else 0
+    return annualised_cost
 
-    return (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom
-    
+@njit   
 def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom, vom, lifetime, discount_rate, transformer_capex, length):
     present_value = get_present_value(discount_rate, lifetime)
 
     return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * vom
 
+@njit
 def calculate_costs(solution): 
-    pv_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.unit_types['solar'])]
-    wind_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.unit_types['wind'])]
-    flexible_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.unit_types['flexible'])]
-    baseload_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.unit_types['baseload'])]
+    pv_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.solar_code)]
+    wind_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.wind_code)]
+    flexible_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.flexible_code)]
+    baseload_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.baseload_code)]
 
     generator_capacities = np.zeros(len(solution.generator_ids), dtype=np.float64)
     generator_annual_generations = np.zeros(len(solution.generator_ids), dtype=np.float64)
@@ -54,11 +72,11 @@ def calculate_costs(solution):
         generator_capacities[gen_idx] = solution.CBaseload[idx]
         generator_annual_generations[gen_idx] = solution.GBaseload_annual[idx]
 
-    print(len(solution.CWind), len(solution.CPV), len(solution.CPeak), len(solution.CBaseload), len(solution.CPHP), len(solution.CTrans))
-    print(generator_capacities)
-    print(generator_annual_generations)
+    #print(len(solution.CWind), len(solution.CPV), len(solution.CPeak), len(solution.CBaseload), len(solution.CPHP), len(solution.CTrans))
+    #print(generator_capacities)
+    #print(generator_annual_generations)
 
-    generator_costs = np.array([
+    generator_newbuild_costs = np.array([
         annualisation_component(
             power_capacity=generator_capacities[idx],
             annual_generation=generator_annual_generations[idx],
@@ -69,12 +87,16 @@ def calculate_costs(solution):
             discount_rate=solution.generator_costs[5,idx]
         ) for idx in range(0,len(generator_capacities))
         ], dtype=np.float64).sum()
+
+    generator_existing_costs = np.array([
+        solution.generator_costs[7,idx] for idx in range(0,len(generator_capacities))
+    ], dtype=np.float64).sum()
     
     storage_costs = np.array([
         annualisation_component(
             power_capacity=solution.CPHP[idx],
             energy_capacity=solution.CPHS[idx],
-            annual_generation=solution.Discharge[idx],
+            annual_generation=solution.GDischarge_annual[idx],
             capex_p=solution.storage_costs[0,idx],
             fom=solution.storage_costs[2,idx],
             vom=solution.storage_costs[3,idx],
@@ -86,7 +108,7 @@ def calculate_costs(solution):
     transmission_costs = np.array([
         annualisation_transmission(
             power_capacity=solution.CTrans[idx],
-            annual_energy_flows=solution.line_annual_TFlowsAbs[idx],
+            annual_energy_flows=solution.TFlowsAbs_annual[idx],
             capex_p=solution.line_costs[0,idx],
             fom=solution.line_costs[2,idx],
             vom=solution.line_costs[3,idx],
@@ -98,7 +120,8 @@ def calculate_costs(solution):
         ], dtype=np.float64).sum()
 
     #PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20) 
+    #print(generator_newbuild_costs, generator_existing_costs, storage_costs, transmission_costs)
 
-    costs = generator_costs + storage_costs + transmission_costs
+    costs = generator_newbuild_costs + generator_existing_costs + storage_costs + transmission_costs
         
     return costs
