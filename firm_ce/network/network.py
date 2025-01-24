@@ -23,8 +23,12 @@ class Network:
         self.topologies_nd = self._get_topologies_nd()
         self.max_connections = max([self.count_lines(topology) for topology in self.topologies_nd])
         self.network = self._get_network()
+        self.networksteps = self._get_network_steps()
 
         self.direct_connections = self.direct_connections[:-1, :-1]
+
+    def _get_network_steps(self):
+        return np.where(TRIANGULAR == self.network.shape[2])[0][0]
 
     def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
         num_lines = len(lines)
@@ -140,7 +144,10 @@ def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, 
     if network.size == 0:
         return Importt+Exportt
 
-    for n in np.where(Fillt>0)[0]:
+    for n in range(len(Fillt)):
+        if Fillt[n] <= 0:
+            continue
+
         pdonors = network[:, n, 0, :]
         valid_mask = pdonors[0] != -1
         pdonors, pdonor_lines = pdonors[0, valid_mask], pdonors[1, valid_mask]
@@ -165,7 +172,10 @@ def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, 
     # Note: This code block works for primary transmission too, but is slower
     if Surplust.sum() > 0 and Fillt.sum() > 0:
         for leg in range(1, networksteps):
-            for n in np.where(Fillt>0)[0]:
+            for n in range(len(Fillt)):
+                if Fillt[n] <= 0:
+                    continue
+
                 donors = network[:, n, TRIANGULAR[leg]:TRIANGULAR[leg+1], :]
                 donors, donor_lines = donors[0, :, :], donors[1, :, :]
       

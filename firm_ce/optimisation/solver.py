@@ -3,69 +3,12 @@ import numpy as np
 from scipy.optimize import differential_evolution
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import TRIANGULAR, JIT_ENABLED
+from firm_ce.constants import JIT_ENABLED
 from firm_ce.components import calculate_costs
 
 if JIT_ENABLED:
     from numba import njit, prange, float64, int64, boolean
     from numba.experimental import jitclass
-
-    """ scenario_arrays_spec = [
-        ('MLoad', float64[:, :]),
-        ('intervals', int64),
-        ('nodes', int64),
-        ('lines', int64),
-        ('efficiency', float64),
-        ('resolution', float64),
-        ('years', int64),
-        ('energy', float64),
-        ('allowance', float64),
-
-        ('solar_code', int64),
-        ('wind_code', int64),
-        ('flexible_code', int64),
-        ('baseload_code', int64),
-
-        ('generator_ids', int64[:]),
-        ('generator_nodes', int64[:]),
-        ('generator_capacities', float64[:]),
-        ('generator_annual_generation', float64[:]),
-        ('generator_unit_types', int64[:]),
-        ('generator_costs', float64[:, :]),
-
-        ('TSPV', float64[:, :]),
-        ('TSWind', float64[:, :]),
-        ('CPeak', float64[:]),
-        ('CBaseload', float64[:]),
-        ('GBaseload', float64[:, :]),
-        ('GFlexible', float64[:, :]),
-
-        ('storage_ids', int64[:]),
-        ('storage_nodes', int64[:]),
-        ('storage_power_capacities', float64[:]),
-        ('storage_energy_capacities', float64[:]),
-        ('storage_annual_discharge', float64[:]),
-        ('storage_costs', float64[:, :]),
-        ('Discharge', float64[:, :]),
-        ('Charge', float64[:, :]),
-
-        ('line_ids', int64[:]),
-        ('line_lengths', float64[:]),
-        ('line_annual_TFlowsAbs', float64[:]),
-        ('line_costs', float64[:, :]),
-        
-        ('network', int64[:, :, :, :]),
-
-        ('TLoss', float64[:]),
-        ('TFlows', float64[:, :]),
-        ('TFlowsAbs', float64[:, :]),
-
-        ('pv_idx', int64),
-        ('wind_idx', int64),
-        ('storage_p_idx', int64),
-        ('storage_e_idx', int64),
-        ('lines_idx', int64),
-    ] """
 
     solution_spec = [
         ('x', float64[:]),
@@ -114,6 +57,7 @@ if JIT_ENABLED:
         ('line_costs', float64[:, :]),
         
         ('network', int64[:, :, :, :]),
+        ('networksteps', int64),
 
         ('TLoss', float64[:]),
         ('TFlows', float64[:, :]),
@@ -155,6 +99,11 @@ if JIT_ENABLED:
         ('GBaseload_annual', float64[:]),
         ('GDischarge_annual', float64[:]),
         ('TFlowsAbs_annual', float64[:]),
+
+        ('pv_cost_ids', int64[:]),
+        ('wind_cost_ids', int64[:]),
+        ('flexible_cost_ids', int64[:]),
+        ('baseload_cost_ids', int64[:]),
     ]
 else:
     def njit(func=None, **kwargs):
@@ -175,103 +124,51 @@ else:
     solution_spec = []
     scenario_arrays_spec = []
 
-""" @jitclass(scenario_arrays_spec)
-class ScenarioArrays:
-    def __init__(self):
-        # 2D arrays initialized as (1,1) by default:
-        self.MLoad = np.zeros((0, 0), dtype=np.float64)
-        self.generator_costs = np.zeros((0, 0), dtype=np.float64)
-        self.TSPV = np.zeros((0, 0), dtype=np.float64)
-        self.TSWind = np.zeros((0, 0), dtype=np.float64)
-        self.GBaseload = np.zeros((0, 0), dtype=np.float64)
-        self.GFlexible = np.zeros((0, 0), dtype=np.float64)
-        self.storage_costs = np.zeros((0, 0), dtype=np.float64)
-        self.Discharge = np.zeros((0, 0), dtype=np.float64)
-        self.Charge = np.zeros((0, 0), dtype=np.float64)
-        self.line_costs = np.zeros((0, 0), dtype=np.float64)
-        self.TFlows = np.zeros((0, 0), dtype=np.float64)
-        self.TFlowsAbs = np.zeros((0, 0), dtype=np.float64)
-
-        self.solar_code = 0
-        self.wind_code = 1
-        self.flexible_code = 2
-        self.baseload_code = 3
-
-        # 3D array
-        self.network = np.zeros((0, 0, 0, 0), dtype=np.int64)
-
-        # 1D arrays (length 1) by default:
-        self.generator_ids = np.zeros(0, dtype=np.int64)
-        self.generator_nodes = np.zeros(0, dtype=np.int64)
-        self.generator_capacities = np.zeros(0, dtype=np.float64)
-        self.generator_annual_generation = np.zeros(0, dtype=np.float64)
-        self.generator_unit_types = np.zeros(0, dtype=np.int64)
-
-        self.CPeak = np.zeros(0, dtype=np.float64)
-        self.CBaseload = np.zeros(0, dtype=np.float64)
-
-        self.storage_ids = np.zeros(0, dtype=np.int64)
-        self.storage_nodes = np.zeros(0, dtype=np.int64)
-        self.storage_power_capacities = np.zeros(0, dtype=np.float64)
-        self.storage_energy_capacities = np.zeros(0, dtype=np.float64)
-        self.storage_annual_discharge = np.zeros(0, dtype=np.float64)
-
-        self.line_ids = np.zeros(0, dtype=np.int64)
-        self.line_lengths = np.zeros(0, dtype=np.float64)
-        self.line_annual_TFlowsAbs = np.zeros(0, dtype=np.float64)
-
-        self.TLoss = np.zeros(0, dtype=np.float64)
-
-        # Scalar fields:
-        self.intervals = 0
-        self.nodes = 0
-        self.lines = 0
-        self.efficiency = 0.0
-        self.resolution = 0.0
-        self.years = 0
-        self.energy = 0.0
-        self.allowance = 0.0
-
-        self.pv_idx = 0
-        self.wind_idx = 0
-        self.storage_p_idx = 0
-        self.storage_e_idx = 0
-        self.lines_idx = 0 """
-
 @jitclass(solution_spec)
 class Solution_SingleTime:
-    def __init__(self,
-        x,
-        MLoad,
-        TSPV,
-        TSWind,
-        network,
-        intervals,
-        nodes,
-        lines,
-        years,
-        efficiency,
-        resolution,
-        allowance,
-        generator_ids,
-        generator_nodes,
-        generator_capacities,
-        generator_costs,
-        generator_unit_types,
-        storage_ids,
-        storage_nodes,
-        storage_power_capacities,
-        storage_energy_capacities,
-        storage_costs,
-        line_ids,
-        line_lengths,
-        line_costs,
-        TLoss,
-        pv_idx,
-        wind_idx,
-        storage_p_idx,
-        storage_e_idx,
-        lines_idx,) -> None:
+    def __init__(self, 
+                x, 
+                MLoad,
+                TSPV,
+                TSWind,
+                network,
+                intervals,
+                nodes,
+                lines,
+                years,
+                efficiency,
+                resolution,
+                allowance,
+                generator_ids,
+                generator_nodes,
+                generator_capacities,
+                generator_costs,
+                generator_unit_types,
+                storage_ids,
+                storage_nodes,
+                storage_power_capacities,
+                storage_energy_capacities,
+                storage_costs,
+                line_ids,
+                line_lengths,
+                line_costs,
+                TLoss,
+                pv_idx,
+                wind_idx,
+                storage_p_idx,
+                storage_e_idx,
+                lines_idx,
+                solar_nodes,
+                wind_nodes,
+                flexible_nodes,
+                baseload_nodes,
+                CPeak,
+                CBaseload,
+                pv_cost_ids,
+                wind_cost_ids,
+                flexible_cost_ids,
+                baseload_cost_ids,
+                networksteps,) -> None:
 
         self.x = x  
         self.evaluated=False   
@@ -303,8 +200,8 @@ class Solution_SingleTime:
 
         self.TSPV = TSPV 
         self.TSWind = TSWind 
-        self.CPeak = self.generator_capacities[np.where(self.generator_unit_types == self.flexible_code)[0]]
-        self.CBaseload = self.generator_capacities[np.where(self.generator_unit_types == self.baseload_code)[0]]
+        self.CPeak = CPeak
+        self.CBaseload = CBaseload
         self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
         self.GFlexible = np.zeros((self.intervals, len(self.CPeak)), dtype=np.float64)
 
@@ -324,6 +221,7 @@ class Solution_SingleTime:
         self.line_costs = line_costs
         
         self.network = network
+        self.networksteps = networksteps
         self.TLoss = TLoss
         self.TFlows = np.zeros((intervals, lines), dtype=np.float64)
         self.TFlowsAbs = np.zeros((intervals, lines), dtype=np.float64)
@@ -336,42 +234,23 @@ class Solution_SingleTime:
         self.CTrans = x[storage_e_idx :] ###### THIS NEEDS TO BE TREATED AS A BOUND
 
         # Nodal Values
-        self.solar_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.solar_code)[0]] 
-        self.wind_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.wind_code)[0]] 
-        self.flexible_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.flexible_code)[0]] 
-        self.baseload_nodes = self.generator_nodes[np.where(self.generator_unit_types == self.baseload_code)[0]] 
+        self.solar_nodes = solar_nodes
+        self.wind_nodes = wind_nodes
+        self.flexible_nodes = flexible_nodes 
+        self.baseload_nodes = baseload_nodes
         self.storage_nodes = self.storage_nodes
 
         self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
-        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)
-        """ for idx in self.storage_nodes:
-            mask = (self.storage_nodes == idx)
-            self.CPHP_nodal[idx] = self.CPHP[mask].sum() 
-            self.CPHS_nodal[idx] = self.CPHS[mask].sum()  """           
-
+        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)   
         self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
-        """ for idx in self.solar_nodes:
-            mask = (self.solar_nodes == idx)
-            self.GPV_nodal[:,idx] = self.GPV[:,mask].sum(axis=1) """
-
         self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
         self.GWind_nodal = self._fill_nodal_array_2d(self.GWind, self.wind_nodes)
-        """ for idx in self.wind_nodes:
-            mask = (self.wind_nodes == idx)
-            self.GWind_nodal[:,idx] = self.GWind[:,mask].sum(axis=1) """
-
         self.CPeak_nodal = self._fill_nodal_array_1d(self.CPeak, self.flexible_nodes)
-        """ for idx in self.flexible_nodes:
-            mask = (self.flexible_nodes == idx)
-            self.CPeak_nodal[idx] = self.CPeak[mask].sum()  """  
-        
         self.CBaseload_nodal = self._fill_nodal_array_1d(self.CBaseload, self.baseload_nodes)
         self.GBaseload_nodal = self._fill_nodal_array_2d(self.GBaseload, self.baseload_nodes)
-        """ for idx in self.baseload_nodes:
-            mask = (self.baseload_nodes == idx)
-            self.CBaseload_nodal[idx] = self.CBaseload[mask].sum()  
-            self.GBaseload_nodal[:,idx] = self.GBaseload[:,mask].sum(axis=1) """
+
+        #print("Nodals: ", self.CPHP_nodal, self.CPHS_nodal)
 
         self.GFlexible_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Spillage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
@@ -389,6 +268,12 @@ class Solution_SingleTime:
         self.GDischarge_annual = np.zeros(0, dtype=np.float64)
         self.TFlowsAbs_annual = np.zeros(0, dtype=np.float64)
 
+        # Cost Values
+        self.pv_cost_ids = pv_cost_ids
+        self.wind_cost_ids = wind_cost_ids
+        self.flexible_cost_ids = flexible_cost_ids
+        self.baseload_cost_ids = baseload_cost_ids
+
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
 
@@ -400,7 +285,7 @@ class Solution_SingleTime:
         return result
     
     def _fill_nodal_array_1d(self, capacity_array, node_array):
-        result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
+        result = np.zeros(self.nodes, dtype=np.float64)
 
         for n in range(len(node_array)):
             node_idx = node_array[n]
@@ -410,7 +295,6 @@ class Solution_SingleTime:
 
     def _reliability(self, flexible, start=None, end=None):
         network = self.network
-        networksteps = np.where(TRIANGULAR == network.shape[2])[0][0]
         
         Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload_nodal)[start:end]
         Netload -= flexible
@@ -442,7 +326,8 @@ class Solution_SingleTime:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
                 Surplust = -1 * np.minimum(0, Netloadt) + (np.minimum(Pcapacity, Storaget_1 / resolution) - Discharget)
-                Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, networksteps, 
+                #print("1: ", Deficitt)
+                Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
@@ -456,7 +341,8 @@ class Solution_SingleTime:
                 Fillt = (Discharget # load not met by gen and transmission
                         + np.minimum(Pcapacity, (Scapacity - Storaget_1) / efficiency / resolution) #full charging capacity
                         - Charget) #charge capacity already in use
-                Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps,
+                #print("2: ", Netloadt, Discharget, Pcapacity, Scapacity, Storaget_1, Charget)
+                Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, self.networksteps,
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 #print(Netload[t])
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
@@ -501,7 +387,7 @@ class Solution_SingleTime:
             cap_node_sum[node_i] += capacity_array[i]
 
         result = np.zeros((self.intervals, n_components), dtype=np.float64)
-        for i in prange(n_components):
+        for i in range(n_components):
             node_i = node_array[i]
             denom = cap_node_sum[node_i]
             if denom > 0.0:
@@ -550,8 +436,6 @@ class Solution_SingleTime:
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
-
-        #print(lcoe, pen_deficit, self.x)
 
         return lcoe, pen_deficit
 
@@ -718,6 +602,7 @@ class Solver:
         )
         print('Success 4',type(self.scenario.network.network))
         scenario_arrays['network'] = self.scenario.network.network
+        scenario_arrays['networksteps'] = self.scenario.network.networksteps
         print('Success 4.1')
         scenario_arrays['TLoss'] = np.array(
             [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines],
@@ -783,17 +668,123 @@ class Solver:
             scenario_arrays['line_costs'][6, i] = l.cost.transformer_capex
 
         print('Success 6')
+
+        solar_code = 0
+        wind_code = 1
+        flexible_code = 2
+        baseload_code = 3
+
+        scenario_arrays['pv_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == solar_code)]
+        scenario_arrays['wind_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == wind_code)]
+        scenario_arrays['flexible_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == flexible_code)]
+        scenario_arrays['baseload_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == baseload_code)]
+
+        scenario_arrays['solar_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == solar_code)[0]] 
+        scenario_arrays['wind_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == wind_code)[0]] 
+        scenario_arrays['flexible_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == flexible_code)[0]] 
+        scenario_arrays['baseload_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == baseload_code)[0]] 
+        scenario_arrays['CPeak'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == flexible_code)[0]]
+        scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == baseload_code)[0]]
         
         return scenario_arrays
 
     def _single_time(self):
         scenario_arrays = self._prepare_scenario_arrays()
-        wrapped_objective = parallel_wrapper_st_factory(scenario_arrays)
+
+        MLoad = scenario_arrays["MLoad"] 
+        TSPV = scenario_arrays["TSPV"]   
+        TSWind = scenario_arrays["TSWind"]
+        network = scenario_arrays["network"]
+        networksteps = scenario_arrays['networksteps'] 
+
+        intervals = scenario_arrays["intervals"]
+        nodes = scenario_arrays["nodes"]
+        lines = scenario_arrays["lines"]
+        years = scenario_arrays["years"]
+        efficiency = scenario_arrays["efficiency"]
+        resolution = scenario_arrays["resolution"]
+        allowance = scenario_arrays["allowance"]
+
+        generator_ids = scenario_arrays["generator_ids"]
+        generator_nodes = scenario_arrays["generator_nodes"]
+        generator_capacities = scenario_arrays["generator_capacities"]
+        generator_costs = scenario_arrays["generator_costs"]
+        generator_unit_types = scenario_arrays["generator_unit_types"]
+
+        storage_ids = scenario_arrays["storage_ids"]
+        storage_nodes = scenario_arrays["storage_nodes"]
+        storage_power_capacities = scenario_arrays["storage_power_capacities"]
+        storage_energy_capacities = scenario_arrays["storage_energy_capacities"]
+        storage_costs = scenario_arrays["storage_costs"]
+
+        line_ids = scenario_arrays["line_ids"]
+        line_lengths = scenario_arrays["line_lengths"]
+        line_costs = scenario_arrays["line_costs"]
+        TLoss = scenario_arrays["TLoss"]
+
+        pv_idx = scenario_arrays["pv_idx"]
+        wind_idx = scenario_arrays["wind_idx"]
+        storage_p_idx = scenario_arrays["storage_p_idx"]
+        storage_e_idx = scenario_arrays["storage_e_idx"]
+        lines_idx = scenario_arrays["lines_idx"]
+
+        solar_nodes = scenario_arrays['solar_nodes'] 
+        wind_nodes = scenario_arrays['wind_nodes'] 
+        flexible_nodes = scenario_arrays['flexible_nodes'] 
+        baseload_nodes = scenario_arrays['baseload_nodes'] 
+        CPeak = scenario_arrays['CPeak'] 
+        CBaseload = scenario_arrays['CBaseload']
+
+        pv_cost_ids = scenario_arrays['pv_cost_ids']
+        wind_cost_ids = scenario_arrays['wind_cost_ids']
+        flexible_cost_ids = scenario_arrays['flexible_cost_ids']
+        baseload_cost_ids = scenario_arrays['baseload_cost_ids']
 
         self.result = differential_evolution(
             x0=self.decision_x0,
-            func=wrapped_objective, 
+            func=parallel_wrapper, 
             bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
+            args=(MLoad,
+                TSPV,
+                TSWind,
+                network,
+                intervals,
+                nodes,
+                lines,
+                years,
+                efficiency,
+                resolution,
+                allowance,
+                generator_ids,
+                generator_nodes,
+                generator_capacities,
+                generator_costs,
+                generator_unit_types,
+                storage_ids,
+                storage_nodes,
+                storage_power_capacities,
+                storage_energy_capacities,
+                storage_costs,
+                line_ids,
+                line_lengths,
+                line_costs,
+                TLoss,
+                pv_idx,
+                wind_idx,
+                storage_p_idx,
+                storage_e_idx,
+                lines_idx,
+                solar_nodes,
+                wind_nodes,
+                flexible_nodes,
+                baseload_nodes,
+                CPeak,
+                CBaseload,
+                pv_cost_ids,
+                wind_cost_ids,
+                flexible_cost_ids,
+                baseload_cost_ids,
+                networksteps,),
             tol=0,
             maxiter=self.config.iterations, 
             popsize=self.config.population, 
@@ -819,84 +810,97 @@ class Solver:
         elif self.config.type == 'capacity_expansion':
             self.solution = self._capacity_expansion()
 
-def parallel_wrapper_st_factory(scenario_arrays):
-    MLoad = scenario_arrays["MLoad"] 
-    TSPV = scenario_arrays["TSPV"]   
-    TSWind = scenario_arrays["TSWind"]
-    network = scenario_arrays["network"]
-
-    intervals = scenario_arrays["intervals"]
-    nodes = scenario_arrays["nodes"]
-    lines = scenario_arrays["lines"]
-    years = scenario_arrays["years"]
-    efficiency = scenario_arrays["efficiency"]
-    resolution = scenario_arrays["resolution"]
-    allowance = scenario_arrays["allowance"]
-
-    generator_ids = scenario_arrays["generator_ids"]
-    generator_nodes = scenario_arrays["generator_nodes"]
-    generator_capacities = scenario_arrays["generator_capacities"]
-    generator_costs = scenario_arrays["generator_costs"]
-    generator_unit_types = scenario_arrays["generator_unit_types"]
-
-    storage_ids = scenario_arrays["storage_ids"]
-    storage_nodes = scenario_arrays["storage_nodes"]
-    storage_power_capacities = scenario_arrays["storage_power_capacities"]
-    storage_energy_capacities = scenario_arrays["storage_energy_capacities"]
-    storage_costs = scenario_arrays["storage_costs"]
-
-    line_ids = scenario_arrays["line_ids"]
-    line_lengths = scenario_arrays["line_lengths"]
-    line_costs = scenario_arrays["line_costs"]
-    TLoss = scenario_arrays["TLoss"]
-
-    pv_idx = scenario_arrays["pv_idx"]
-    wind_idx = scenario_arrays["wind_idx"]
-    storage_p_idx = scenario_arrays["storage_p_idx"]
-    storage_e_idx = scenario_arrays["storage_e_idx"]
-    lines_idx = scenario_arrays["lines_idx"]
-
-    #@njit(parallel=True)
-    @njit
-    def parallel_wrapper_st(xs):
-        result = np.empty(xs.shape[1], dtype=np.float64)
-        for i in prange(xs.shape[1]):
-            result[i] = objective_st(xs[:,i],
-                MLoad,
-                TSPV,
-                TSWind,
-                network,
-                intervals,
-                nodes,
-                lines,
-                years,
-                efficiency,
-                resolution,
-                allowance,
-                generator_ids,
-                generator_nodes,
-                generator_capacities,
-                generator_costs,
-                generator_unit_types,
-                storage_ids,
-                storage_nodes,
-                storage_power_capacities,
-                storage_energy_capacities,
-                storage_costs,
-                line_ids,
-                line_lengths,
-                line_costs,
-                TLoss,
-                pv_idx,
-                wind_idx,
-                storage_p_idx,
-                storage_e_idx,
-                lines_idx)
-        return result
-    return parallel_wrapper_st
+@njit(parallel=True)
+def parallel_wrapper(xs,
+                    MLoad,
+                    TSPV,
+                    TSWind,
+                    network,
+                    intervals,
+                    nodes,
+                    lines,
+                    years,
+                    efficiency,
+                    resolution,
+                    allowance,
+                    generator_ids,
+                    generator_nodes,
+                    generator_capacities,
+                    generator_costs,
+                    generator_unit_types,
+                    storage_ids,
+                    storage_nodes,
+                    storage_power_capacities,
+                    storage_energy_capacities,
+                    storage_costs,
+                    line_ids,
+                    line_lengths,
+                    line_costs,
+                    TLoss,
+                    pv_idx,
+                    wind_idx,
+                    storage_p_idx,
+                    storage_e_idx,
+                    lines_idx,
+                    solar_nodes,
+                    wind_nodes,
+                    flexible_nodes,
+                    baseload_nodes,
+                    CPeak,
+                    CBaseload,
+                    pv_cost_ids,
+                    wind_cost_ids,
+                    flexible_cost_ids,
+                    baseload_cost_ids,
+                    networksteps,):
+    result = np.empty(xs.shape[1], dtype=np.float64)
+    for i in prange(xs.shape[1]):
+        result[i] = objective_st(xs[:,i], 
+                                MLoad,
+                                TSPV,
+                                TSWind,
+                                network,
+                                intervals,
+                                nodes,
+                                lines,
+                                years,
+                                efficiency,
+                                resolution,
+                                allowance,
+                                generator_ids,
+                                generator_nodes,
+                                generator_capacities,
+                                generator_costs,
+                                generator_unit_types,
+                                storage_ids,
+                                storage_nodes,
+                                storage_power_capacities,
+                                storage_energy_capacities,
+                                storage_costs,
+                                line_ids,
+                                line_lengths,
+                                line_costs,
+                                TLoss,
+                                pv_idx,
+                                wind_idx,
+                                storage_p_idx,
+                                storage_e_idx,
+                                lines_idx,
+                                solar_nodes,
+                                wind_nodes,
+                                flexible_nodes,
+                                baseload_nodes,
+                                CPeak,
+                                CBaseload,
+                                pv_cost_ids,
+                                wind_cost_ids,
+                                flexible_cost_ids,
+                                baseload_cost_ids,
+                                networksteps,)
+    return result
 
 @njit
-def objective_st(x,
+def objective_st(x, 
                 MLoad,
                 TSPV,
                 TSWind,
@@ -926,37 +930,61 @@ def objective_st(x,
                 wind_idx,
                 storage_p_idx,
                 storage_e_idx,
-                lines_idx):
+                lines_idx,
+                solar_nodes,
+                wind_nodes,
+                flexible_nodes,
+                baseload_nodes,
+                CPeak,
+                CBaseload,
+                pv_cost_ids,
+                wind_cost_ids,
+                flexible_cost_ids,
+                baseload_cost_ids,
+                networksteps,):
     solution = Solution_SingleTime(x,
-                MLoad,
-                TSPV,
-                TSWind,
-                network,
-                intervals,
-                nodes,
-                lines,
-                years,
-                efficiency,
-                resolution,
-                allowance,
-                generator_ids,
-                generator_nodes,
-                generator_capacities,
-                generator_costs,
-                generator_unit_types,
-                storage_ids,
-                storage_nodes,
-                storage_power_capacities,
-                storage_energy_capacities,
-                storage_costs,
-                line_ids,
-                line_lengths,
-                line_costs,
-                TLoss,
-                pv_idx,
-                wind_idx,
-                storage_p_idx,
-                storage_e_idx,
-                lines_idx)
+                                MLoad,
+                                TSPV,
+                                TSWind,
+                                network,
+                                intervals,
+                                nodes,
+                                lines,
+                                years,
+                                efficiency,
+                                resolution,
+                                allowance,
+                                generator_ids,
+                                generator_nodes,
+                                generator_capacities,
+                                generator_costs,
+                                generator_unit_types,
+                                storage_ids,
+                                storage_nodes,
+                                storage_power_capacities,
+                                storage_energy_capacities,
+                                storage_costs,
+                                line_ids,
+                                line_lengths,
+                                line_costs,
+                                TLoss,
+                                pv_idx,
+                                wind_idx,
+                                storage_p_idx,
+                                storage_e_idx,
+                                lines_idx,
+                                solar_nodes,
+                                wind_nodes,
+                                flexible_nodes,
+                                baseload_nodes,
+                                CPeak,
+                                CBaseload,
+                                pv_cost_ids,
+                                wind_cost_ids,
+                                flexible_cost_ids,
+                                baseload_cost_ids,
+                                networksteps,)
     solution.evaluate()
+    #print(solution.lcoe + solution.penalties)
     return solution.lcoe + solution.penalties
+

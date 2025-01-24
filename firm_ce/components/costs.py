@@ -44,31 +44,27 @@ def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom
 
 @njit
 def calculate_costs(solution): 
-    pv_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.solar_code)]
-    wind_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.wind_code)]
-    flexible_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.flexible_code)]
-    baseload_cost_ids = solution.generator_ids[np.where(solution.generator_unit_types == solution.baseload_code)]
-
     generator_capacities = np.zeros(len(solution.generator_ids), dtype=np.float64)
     generator_annual_generations = np.zeros(len(solution.generator_ids), dtype=np.float64)
+    #print("Annuals: ", solution.GPV_annual, solution.GWind_annual, solution.GFlexible_annual, solution.GBaseload_annual)
 
-    for idx in range(0,len(pv_cost_ids)):
-        gen_idx = pv_cost_ids[idx]
+    for idx in range(0,len(solution.pv_cost_ids)):
+        gen_idx = solution.pv_cost_ids[idx]
         generator_capacities[gen_idx] = solution.CPV[idx]
         generator_annual_generations[gen_idx] = solution.GPV_annual[idx]
 
-    for idx in range(0,len(wind_cost_ids)):
-        gen_idx = wind_cost_ids[idx]
+    for idx in range(0,len(solution.wind_cost_ids)):
+        gen_idx = solution.wind_cost_ids[idx]
         generator_capacities[gen_idx] = solution.CWind[idx]
         generator_annual_generations[gen_idx] = solution.GWind_annual[idx]
 
-    for idx in range(0,len(flexible_cost_ids)):
-        gen_idx = flexible_cost_ids[idx]
+    for idx in range(0,len(solution.flexible_cost_ids)):
+        gen_idx = solution.flexible_cost_ids[idx]
         generator_capacities[gen_idx] = solution.CPeak[idx]
         generator_annual_generations[gen_idx] = solution.GFlexible_annual[idx]
 
-    for idx in range(0,len(baseload_cost_ids)):
-        gen_idx = baseload_cost_ids[idx]
+    for idx in range(0,len(solution.baseload_cost_ids)):
+        gen_idx = solution.baseload_cost_ids[idx]
         generator_capacities[gen_idx] = solution.CBaseload[idx]
         generator_annual_generations[gen_idx] = solution.GBaseload_annual[idx]
 
