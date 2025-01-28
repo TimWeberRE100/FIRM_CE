@@ -4,6 +4,7 @@ from typing import List
 from firm_ce.network import get_transmission_flows_t
 from firm_ce.constants import JIT_ENABLED
 from firm_ce.components import calculate_costs
+import firm_ce.network.frequency as frequency
 
 if JIT_ENABLED:
     from numba import float64, int64, boolean, njit, prange
@@ -283,6 +284,9 @@ class Solution_SingleTime:
         self.storage_cost_ids = storage_cost_ids
         self.line_cost_ids = line_cost_ids
 
+        # Frequency attributes
+        self.storage_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
+
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
 
@@ -427,6 +431,30 @@ class Solution_SingleTime:
         self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
 
         return None
+    
+    def _get_storage_e_capacities(self):
+        self.storage_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
+        self.storage_e_capacities = np.zeros((self.nodes,len(self.storage_unit_types)), dtype=np.float64)
+
+        for node_idx in range(self.nodes):
+            frequency_profile = frequency.get_normalised_profile(self.Storage_nodal[:,node_idx])
+            dc_offset = frequency.get_dc_offset(frequency_profile)
+            total_magnitude = sum(frequency_profile)
+
+            for unit_type_idx in range(len(self.storage_unit_types)):
+                bandpass_filter = frequency.get_bandpass_filter(self.storage_cutoffs[unit_type_idx],self.storage_cutoffs[unit_type_idx+1])
+                filtered_frequency_profile = frequency.get_filtered_frequency(frequency_profile, bandpass_filter)
+                unit_magnitude = sum(filtered_frequency_profile)                
+                self.storage_e_capacities[node_idx,unit_type_idx] = self.CPHS_nodal[node_idx] * unit_magnitude / total_magnitude
+                
+                unit_timeseries = frequency.get_timeseries_profile(filtered_frequency_profile)
+                self.storage_profiles[:,node_idx,unit_type_idx] = unit_timeseries
+
+            self.storage_profiles[:,node_idx,:] = frequency.apportion_dc_offset(self.storage_profiles[:,node_idx,:], dc_offset)
+
+    def _get_storage_p_capacities(self):
+        # Create power profile from charge + discharge profiles
+        pass
 
     def _objective(self) -> List[float]:
         deficit = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
@@ -436,9 +464,14 @@ class Solution_SingleTime:
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000 # MWh
         self.TFlowsAbs = np.abs(self.TFlows)
 
+        ### Calculate storage profiles and power profiles for each storage unit type at each node
+        self._get_storage_e_capacities()
+        self._get_storage_p_capacities()
+
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
         cost = self._calculate_costs()
+        #### DETERMINE ORDER OF STORAGE_UNIT_TYPES WITH LOWEST COST
 
         loss = self.TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
