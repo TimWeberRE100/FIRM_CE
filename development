@@ -1,7 +1,7 @@
 1. Build basic PLEXOS validation model with scenarios:
-    a. Solar, wind, hydro, coal, PHES
-    b. Solar, wind, hydro, coal, gas, PHES
-    c. Solar, wind, hydro, coal, gas, PHES, batteries
+    a. Solar, wind, hydro, coal, PHES x
+    b. Solar, wind, hydro, coal, gas, PHES x
+    c. Solar, wind, hydro, coal, gas, PHES, batteries x
     d. Capacity expansion
 
 2. Build FIRM_CE single_time model and validate against scenarios a - c (Only have PHES power as decision variable, restrict at 48h size)
@@ -23,4 +23,6 @@
 
 PLEXOS bugs
 - Add transmission line costs
-- Make into mock single-time instead of capacity expansion
+
+FIRM_CE bugs
+- Add fuel costs into calculation

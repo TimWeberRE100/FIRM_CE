@@ -35,6 +35,9 @@ class ImportCSV:
     
     def get_config(self) -> dict:
         return self.get_data("config.csv")
+
+    def get_setting(self, setting_filename) -> dict:
+        return self.get_data(setting_filename)
         
 class ImportDatafile:
     def __init__(self, repository: Path, filename: str) -> None:
@@ -71,4 +74,11 @@ def import_csv_data() -> dict:
         'datafiles': csv_importer.get_datafiles(),
         'config': csv_importer.get_config(),
     }
+
+    csv_importer = ImportCSV("firm_ce/settings")
+    settings = csv_importer.get_setting('settings.csv')
+    data['settings'] = {}
+    for idx in range(len(settings)):
+        data['settings'][settings[idx]['name']] = csv_importer.get_setting(settings[idx]['filename'])
+
     return data

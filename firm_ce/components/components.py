@@ -38,6 +38,7 @@ class Storage:
         self.node = str(storage_dict['node'])
         self.power_capacity = int(storage_dict['initial_power_capacity'])  # MW
         self.energy_capacity = int(storage_dict['initial_energy_capacity'])  # MWh
+        self.duration = int(storage_dict['duration']) if int(storage_dict['duration']) > 0 else 0
         self.charge_efficiency = float(storage_dict['charge_efficiency'])  # %
         self.discharge_efficiency = float(storage_dict['discharge_efficiency'])  # %
         self.max_build_p = int(storage_dict['max_build_p'])  # MW/year

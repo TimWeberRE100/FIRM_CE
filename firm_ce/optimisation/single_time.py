@@ -47,6 +47,7 @@ if JIT_ENABLED:
         ('storage_nodes', int64[:]),
         ('storage_power_capacities', float64[:]),
         ('storage_energy_capacities', float64[:]),
+        ('storage_durations', float64[:]),
         ('storage_costs', float64[:, :]),
         ('Discharge', float64[:, :]),
         ('Charge', float64[:, :]),
@@ -103,6 +104,8 @@ if JIT_ENABLED:
         ('wind_cost_ids', int64[:]),
         ('flexible_cost_ids', int64[:]),
         ('baseload_cost_ids', int64[:]),
+        ('storage_cost_ids', int64[:]),
+        ('line_cost_ids', int64[:]),
     ]
 else:
     def jitclass(spec):
@@ -146,6 +149,7 @@ class Solution_SingleTime:
                 storage_nodes,
                 storage_power_capacities,
                 storage_energy_capacities,
+                storage_durations,
                 storage_costs,
                 line_ids,
                 line_lengths,
@@ -166,6 +170,8 @@ class Solution_SingleTime:
                 wind_cost_ids,
                 flexible_cost_ids,
                 baseload_cost_ids,
+                storage_cost_ids,
+                line_cost_ids,
                 networksteps,) -> None:
 
         self.x = x  
@@ -208,6 +214,7 @@ class Solution_SingleTime:
         self.storage_nodes = storage_nodes
         self.storage_power_capacities = storage_power_capacities
         self.storage_energy_capacities = storage_energy_capacities
+        self.storage_durations = storage_durations
         self.storage_costs = storage_costs
 
         self.Discharge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
@@ -229,7 +236,11 @@ class Solution_SingleTime:
         self.CWind = x[pv_idx : wind_idx]
         self.CPHP = x[wind_idx : storage_p_idx]
         self.CPHS = x[storage_p_idx : storage_e_idx]
-        self.CTrans = x[storage_e_idx :] ###### THIS NEEDS TO BE TREATED AS A BOUND
+        self.CTrans = x[storage_e_idx :]
+
+        for idx in range(len(storage_durations)):
+            if storage_durations[idx] > 0:
+                self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
 
         # Nodal Values
         self.solar_nodes = solar_nodes
@@ -269,6 +280,8 @@ class Solution_SingleTime:
         self.wind_cost_ids = wind_cost_ids
         self.flexible_cost_ids = flexible_cost_ids
         self.baseload_cost_ids = baseload_cost_ids
+        self.storage_cost_ids = storage_cost_ids
+        self.line_cost_ids = line_cost_ids
 
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
@@ -431,12 +444,15 @@ class Solution_SingleTime:
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
+        
+        #print(lcoe, pen_deficit)
 
         return lcoe, pen_deficit
 
     def evaluate(self):
         self.lcoe, self.penalties = self._objective()
         self.evaluated=True 
+        return self
 
 @njit(parallel=True)
 def parallel_wrapper(xs,
@@ -460,6 +476,7 @@ def parallel_wrapper(xs,
                     storage_nodes,
                     storage_power_capacities,
                     storage_energy_capacities,
+                    storage_durations,
                     storage_costs,
                     line_ids,
                     line_lengths,
@@ -480,6 +497,8 @@ def parallel_wrapper(xs,
                     wind_cost_ids,
                     flexible_cost_ids,
                     baseload_cost_ids,
+                    storage_cost_ids,
+                    line_cost_ids,
                     networksteps,):
     result = np.empty(xs.shape[1], dtype=np.float64)
     for i in prange(xs.shape[1]):
@@ -504,6 +523,7 @@ def parallel_wrapper(xs,
                                 storage_nodes,
                                 storage_power_capacities,
                                 storage_energy_capacities,
+                                storage_durations,
                                 storage_costs,
                                 line_ids,
                                 line_lengths,
@@ -524,6 +544,8 @@ def parallel_wrapper(xs,
                                 wind_cost_ids,
                                 flexible_cost_ids,
                                 baseload_cost_ids,
+                                storage_cost_ids,
+                                line_cost_ids,
                                 networksteps,)
     return result
 
@@ -549,6 +571,7 @@ def objective_st(x,
                 storage_nodes,
                 storage_power_capacities,
                 storage_energy_capacities,
+                storage_durations,
                 storage_costs,
                 line_ids,
                 line_lengths,
@@ -569,6 +592,8 @@ def objective_st(x,
                 wind_cost_ids,
                 flexible_cost_ids,
                 baseload_cost_ids,
+                storage_cost_ids,
+                line_cost_ids,
                 networksteps,):
     solution = Solution_SingleTime(x,
                                 MLoad,
@@ -591,6 +616,7 @@ def objective_st(x,
                                 storage_nodes,
                                 storage_power_capacities,
                                 storage_energy_capacities,
+                                storage_durations,
                                 storage_costs,
                                 line_ids,
                                 line_lengths,
@@ -611,6 +637,8 @@ def objective_st(x,
                                 wind_cost_ids,
                                 flexible_cost_ids,
                                 baseload_cost_ids,
+                                storage_cost_ids,
+                                line_cost_ids,
                                 networksteps,)
     solution.evaluate()
     return solution.lcoe + solution.penalties

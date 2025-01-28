@@ -16,6 +16,7 @@ class ModelData:
         self.constraints = objects.get('constraints')
         self.datafiles = objects.get('datafiles')
         self.config = objects.get('config')
+        self.settings = objects.get('settings')
 
 class Scenario:
     def __init__(self, model_data: ModelData, scenario_id: int) -> None:
@@ -73,25 +74,34 @@ class Scenario:
     def solve(self, config):
         solver = Solver(config, self)
         solver.evaluate()
+        return solver.solution
+
+class ModelSettings:
+    def __init__(self, settings_dict: Dict[str, str]) -> None:
+        self.generator_unit_types = settings_dict['generator_unit_types']
+        self.storage_unit_types = settings_dict['storage_unit_types']
+        self.line_unit_types = settings_dict['line_unit_types']
 
 class ModelConfig:
-    def __init__(self, config_dict: Dict[str, str]) -> None:
+    def __init__(self, config_dict: Dict[str, str], settings_dict: Dict[str, str]) -> None:
         config_dict = { item['name']: item['value'] for item in config_dict.values() }
         self.type = config_dict['type']
         self.iterations = int(config_dict['iterations'])
         self.population = int(config_dict['population'])
         self.mutation = float(config_dict['mutation'])
         self.recombination = float(config_dict['recombination'])
+        self.settings = ModelSettings(settings_dict)
 
 class Model:
     def __init__(self) -> None:
         model_data = ModelData()
 
-        self.config = ModelConfig(model_data.config)
+        self.config = ModelConfig(model_data.config, model_data.settings)
         self.scenarios = {
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }
+        self.results = {}
 
     def solve(self):
         for scenario in self.scenarios.values():
-            scenario.solve(self.config)
+            self.results[scenario.scenario_name] = scenario.solve(self.config)
