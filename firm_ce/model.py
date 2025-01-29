@@ -4,6 +4,7 @@ from firm_ce.file_manager import import_csv_data, DataFile
 from firm_ce.components import Generator, Storage, Line, Node
 from firm_ce.optimisation import Constraint, Solver
 from firm_ce.network import Network
+from firm_ce.network.frequency import get_frequencies
 
 class ModelData:
     def __init__(self) -> None:
@@ -38,6 +39,10 @@ class Scenario:
         self.storages = self._get_storages(model_data.storages)
         self.type = scenario_data.get('type', '')
         self.network = Network(self.lines, self.nodes)
+
+        self.intervals = len(self.nodes[0].demand_data)
+        self.storage_unit_types_count = len(set([self.storages[idx].unit_type for idx in self.storages]))
+        self.max_frequency = max(get_frequencies(self.intervals, self.resolution))
 
     def __repr__(self):
         return f"<Scenario object [{self.id}]{self.name}>"

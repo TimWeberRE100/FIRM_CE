@@ -1,6 +1,5 @@
 import numpy as np
 from scipy.optimize import differential_evolution
-
 from firm_ce.optimisation.single_time import parallel_wrapper
 
 class Solver:
@@ -22,14 +21,18 @@ class Solver:
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages]
         storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages]
         line_lb = [line.capacity + line.min_build for line in lines]
-        lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb)
+        storage_p_W_cutoffs_lb = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[0.0]
+        storage_e_W_cutoffs_lb = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[0.0]
+        lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb + storage_p_W_cutoffs_lb + storage_e_W_cutoffs_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
         wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
         storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages]
         storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages]
         line_ub = [line.capacity + line.max_build for line in lines]
-        upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub)
+        storage_p_W_cutoffs_ub = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[self.scenario.max_frequency]
+        storage_e_W_cutoffs_ub = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[self.scenario.max_frequency]
+        upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub + storage_p_W_cutoffs_ub + storage_e_W_cutoffs_ub)
 
         return lower_bounds, upper_bounds
 
@@ -53,8 +56,9 @@ class Solver:
         scenario_arrays['allowance'] = self.scenario.allowance
 
         # Unit types
-        scenario_arrays['unit_types'] = {self.config.settings.generator_unit_types[idx]['unit_type'] : idx for idx in self.config.settings.generator_unit_types}
-        
+        scenario_arrays['generator_unit_types_setting'] = {self.config.settings.generator_unit_types[idx]['unit_type'] : idx for idx in self.config.settings.generator_unit_types}
+        scenario_arrays['storage_unit_types_setting'] = {self.config.settings.storage_unit_types[idx]['unit_type'] : idx for idx in self.config.settings.storage_unit_types}
+
         # Generators
         scenario_arrays['generator_ids'] = np.array(
             [self.scenario.generators[idx].id 
@@ -75,7 +79,7 @@ class Solver:
         )
 
         scenario_arrays['generator_unit_types'] = np.array(
-            [scenario_arrays['unit_types'][self.scenario.generators[idx].unit_type]
+            [scenario_arrays['generator_unit_types_setting'][self.scenario.generators[idx].unit_type]
             for idx in self.scenario.generators],
             dtype=np.int64
         )
@@ -120,6 +124,15 @@ class Solver:
             for idx in self.scenario.storages],
             dtype=np.float64
         )
+
+        scenario_arrays['storage_unit_types'] = np.array(
+            [scenario_arrays['storage_unit_types_setting'][self.scenario.storages[idx].unit_type]
+            for idx in self.scenario.storages],
+            dtype=np.int64
+        )
+
+        scenario_arrays['max_frequency'] = self.scenario.max_frequency
+        scenario_arrays["unique_storage_unit_types"] = np.array(list(set(scenario_arrays['storage_unit_types'])), dtype=np.int64)
 
         scenario_arrays['storage_durations'] = np.array(
             [self.scenario.storages[idx].duration
@@ -174,6 +187,8 @@ class Solver:
         scenario_arrays['storage_p_idx'] = scenario_arrays['wind_idx'] + len(self.scenario.storages)
         scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages)
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
+        scenario_arrays['storage_p_W_idx'] = scenario_arrays['lines_idx'] + len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)
+        scenario_arrays['storage_e_W_idx'] = scenario_arrays['storage_p_W_idx'] + len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)
 
         # Costs
         '''
@@ -217,19 +232,19 @@ class Solver:
             scenario_arrays['line_costs'][5, i] = l.cost.discount_rate
             scenario_arrays['line_costs'][6, i] = l.cost.transformer_capex
 
-        scenario_arrays['pv_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['solar'])]
-        scenario_arrays['wind_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['wind'])]
-        scenario_arrays['flexible_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['flexible'])]
-        scenario_arrays['baseload_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['baseload'])]
+        scenario_arrays['pv_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['solar'])]
+        scenario_arrays['wind_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['wind'])]
+        scenario_arrays['flexible_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])]
+        scenario_arrays['baseload_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])]
         scenario_arrays['storage_cost_ids'] = scenario_arrays['storage_ids']
         scenario_arrays['line_cost_ids'] = scenario_arrays['line_ids']
 
-        scenario_arrays['solar_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['solar'])[0]] 
-        scenario_arrays['wind_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['wind'])[0]] 
-        scenario_arrays['flexible_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['flexible'])[0]] 
-        scenario_arrays['baseload_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['baseload'])[0]] 
-        scenario_arrays['CPeak'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['flexible'])[0]]
-        scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['unit_types']['baseload'])[0]]
+        scenario_arrays['solar_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['solar'])[0]] 
+        scenario_arrays['wind_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['wind'])[0]] 
+        scenario_arrays['flexible_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])[0]] 
+        scenario_arrays['baseload_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]] 
+        scenario_arrays['CPeak'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])[0]]
+        scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]]
         
         return scenario_arrays
 
@@ -260,6 +275,9 @@ class Solver:
                     scenario_arrays["storage_nodes"],
                     scenario_arrays["storage_power_capacities"],
                     scenario_arrays["storage_energy_capacities"],
+                    scenario_arrays["storage_unit_types"],
+                    scenario_arrays["unique_storage_unit_types"],
+                    scenario_arrays['max_frequency'],
                     scenario_arrays["storage_durations"],
                     scenario_arrays["storage_costs"],
                     scenario_arrays["line_ids"],
@@ -271,6 +289,8 @@ class Solver:
                     scenario_arrays["storage_p_idx"],
                     scenario_arrays["storage_e_idx"],
                     scenario_arrays["lines_idx"],
+                    scenario_arrays['storage_p_W_idx'],
+                    scenario_arrays['storage_e_W_idx'],
                     scenario_arrays["solar_nodes"],
                     scenario_arrays["wind_nodes"],
                     scenario_arrays["flexible_nodes"],

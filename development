@@ -26,3 +26,6 @@ PLEXOS bugs
 
 FIRM_CE bugs
 - Add fuel costs into calculation
+- Does it really make sense to FFT both the power and energy capacities? Perhaps only FFT power capacity and then determine energy capacity?
+- Test storage unit_types to find cheapest assignment
+- JIT for the frequency functions
