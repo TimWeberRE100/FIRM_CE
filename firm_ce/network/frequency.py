@@ -42,10 +42,44 @@ def get_filtered_frequency(frequency_profile, bandpass_filter_profile):
     filtered_frequency_profile = frequency_profile * bandpass_filter_profile
     return filtered_frequency_profile
 
-"""
+
 def get_timeseries_profile(frequency_profile):
+    timeseries_profile = irfft(frequency_profile)
     return timeseries_profile
 
+def factorial(n):
+    result = 1
+    for i in range(2, n+1):
+        result *= i
+    return result
+
+def generate_permutations(array_1d):
+    n = len(array_1d)
+    n_permutations = factorial(n)
+
+    if n == 1:
+        return array_1d
+
+    permutations = np.zeros((n_permutations, n), dtype=array_1d.dtype)
+
+    def permute(array_1d, index, current_perm):
+        if len(array_1d) == 0:
+            permutations[index[0]] = current_perm
+            index[0] += 1
+            return
+        
+        for i in range(len(array_1d)):
+            permute(np.concatenate((array_1d[:i], array_1d[i+1:])), index, np.append(current_perm, array_1d[i]))
+
+    permute(array_1d, [0], np.array([], dtype=array_1d.dtype))
+    return permutations
+
+    
+    
+    
+
+
+"""
 def apportion_dc_offset(dc_offset, timeseries_profiles):
     return timeseries_profiles_with_dc """
 

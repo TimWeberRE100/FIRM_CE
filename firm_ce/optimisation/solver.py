@@ -1,12 +1,14 @@
 import numpy as np
 from scipy.optimize import differential_evolution
 from firm_ce.optimisation.single_time import parallel_wrapper
+from firm_ce.file_manager import read_initial_guess
+import csv
 
 class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = None
+        self.decision_x0 = read_initial_guess()
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
 
@@ -21,8 +23,8 @@ class Solver:
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages]
         storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages]
         line_lb = [line.capacity + line.min_build for line in lines]
-        storage_p_W_cutoffs_lb = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[0.0]
-        storage_e_W_cutoffs_lb = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[0.0]
+        storage_p_W_cutoffs_lb = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[0.0]
+        storage_e_W_cutoffs_lb = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[0.0]
         lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb + storage_p_W_cutoffs_lb + storage_e_W_cutoffs_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
@@ -30,8 +32,8 @@ class Solver:
         storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages]
         storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages]
         line_ub = [line.capacity + line.max_build for line in lines]
-        storage_p_W_cutoffs_ub = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[self.scenario.max_frequency]
-        storage_e_W_cutoffs_ub = len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)*[self.scenario.max_frequency]
+        storage_p_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
+        storage_e_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
         upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub + storage_p_W_cutoffs_ub + storage_e_W_cutoffs_ub)
 
         return lower_bounds, upper_bounds
@@ -132,7 +134,7 @@ class Solver:
         )
 
         scenario_arrays['max_frequency'] = self.scenario.max_frequency
-        scenario_arrays["unique_storage_unit_types"] = np.array(list(set(scenario_arrays['storage_unit_types'])), dtype=np.int64)
+        scenario_arrays["nodes_with_storage"] = np.array(list(set(scenario_arrays['storage_nodes'])), dtype=np.int64)
 
         scenario_arrays['storage_durations'] = np.array(
             [self.scenario.storages[idx].duration
@@ -187,8 +189,8 @@ class Solver:
         scenario_arrays['storage_p_idx'] = scenario_arrays['wind_idx'] + len(self.scenario.storages)
         scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages)
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
-        scenario_arrays['storage_p_W_idx'] = scenario_arrays['lines_idx'] + len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)
-        scenario_arrays['storage_e_W_idx'] = scenario_arrays['storage_p_W_idx'] + len(self.scenario.nodes)*(self.scenario.storage_unit_types_count-1)
+        scenario_arrays['storage_p_W_idx'] = scenario_arrays['lines_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_storage']))
+        scenario_arrays['storage_e_W_idx'] = scenario_arrays['storage_p_W_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_storage']))
 
         # Costs
         '''
@@ -247,9 +249,14 @@ class Solver:
         scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]]
         
         return scenario_arrays
+    
+    def _initialise_callback(self):
+        with open('results/callback.csv', 'w', newline='') as csvfile:
+            csv.writer(csvfile)
 
     def _single_time(self):
         scenario_arrays = self._prepare_scenario_arrays()
+        self._initialise_callback()
 
         self.result = differential_evolution(
             x0=self.decision_x0,
@@ -276,7 +283,7 @@ class Solver:
                     scenario_arrays["storage_power_capacities"],
                     scenario_arrays["storage_energy_capacities"],
                     scenario_arrays["storage_unit_types"],
-                    scenario_arrays["unique_storage_unit_types"],
+                    scenario_arrays["nodes_with_storage"],
                     scenario_arrays['max_frequency'],
                     scenario_arrays["storage_durations"],
                     scenario_arrays["storage_costs"],
@@ -313,7 +320,7 @@ class Solver:
             disp=True, 
             polish=False, 
             updating='deferred',
-            callback=None, 
+            callback=callback, 
             workers=1,
             vectorized=True,
             )
@@ -330,5 +337,9 @@ class Solver:
         elif self.config.type == 'capacity_expansion':
             self.solution = self._capacity_expansion()
 
+def callback(xk, convergence=None):
+    with open('results/callback.csv', 'a', newline='') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(list(xk))
 
 

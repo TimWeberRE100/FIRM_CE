@@ -1,6 +1,7 @@
 from pathlib import Path
 import pandas as pd
 from typing import List
+import numpy as np
 
 class ImportCSV:
     def __init__(self, repository: Path) -> None:
@@ -82,3 +83,10 @@ def import_csv_data() -> dict:
         data['settings'][settings[idx]['name']] = csv_importer.get_setting(settings[idx]['filename'])
 
     return data
+
+def read_initial_guess():
+    try:
+        initial_guess = np.genfromtext('firm_ce/config/initial_guess.csv')
+    except Exception as e:
+        initial_guess = None
+    return initial_guess
