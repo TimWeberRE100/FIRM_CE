@@ -86,7 +86,8 @@ def import_csv_data() -> dict:
 
 def read_initial_guess():
     try:
-        initial_guess = np.genfromtext('firm_ce/config/initial_guess.csv')
+        initial_guess = np.genfromtxt(open('firm_ce/config/initial_guess.csv', "r"), delimiter=',', dtype=float)
     except Exception as e:
+        print(f"Failed to read initial_guess.csv: {e}")
         initial_guess = None
     return initial_guess

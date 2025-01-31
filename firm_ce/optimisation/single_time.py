@@ -250,15 +250,18 @@ class Solution_SingleTime:
         # Decision Variables
         self.CPV = x[: pv_idx]
         self.CWind = x[pv_idx : wind_idx]
-        self.CPHP = x[wind_idx : storage_p_idx]
-        self.CPHS = x[storage_p_idx : storage_e_idx]
+        self.CPHP_nodal = x[wind_idx : storage_p_idx]
+        self.CPHS_nodal = x[storage_p_idx : storage_e_idx]
         self.CTrans = x[storage_e_idx : lines_idx]
         self.storage_p_W_x = x[lines_idx : storage_p_W_idx]
         self.storage_e_W_x = x[storage_p_W_idx : ]
 
+        print(self.CPV,self.CWind,self.CPHP_nodal,self.CPHS_nodal,self.CTrans,self.storage_p_W_x)
+
+        """ nodal_durations = 
         for idx in range(len(storage_durations)):
             if storage_durations[idx] > 0:
-                self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
+                self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx] """
 
         # Nodal Values
         self.solar_nodes = solar_nodes
@@ -267,8 +270,8 @@ class Solution_SingleTime:
         self.baseload_nodes = baseload_nodes
         self.storage_nodes = self.storage_nodes
 
-        self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
-        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)   
+        """ self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
+        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes) """   
         self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
         self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
@@ -295,9 +298,10 @@ class Solution_SingleTime:
 
         self.storage_p_W_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_storage_count)), dtype=np.float64)
         self.storage_e_W_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_storage_count)), dtype=np.float64)
+
         for node_idx in range(len(self.nodal_storage_count)):
-            for current_node_count in range(self.nodal_storage_count[node_idx]):
-                W_idx = sum(self.nodal_storage_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
+            for current_node_count in range(self.nodal_storage_count[node_idx]-1):
+                W_idx = sum(self.nodal_storage_count[:node_idx]) - len(self.nodal_storage_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
                 self.storage_p_W_x_nodal[node_idx, current_node_count] = self.storage_p_W_x[W_idx]
                 self.storage_e_W_x_nodal[node_idx, current_node_count] = self.storage_e_W_x[W_idx]
 
@@ -320,7 +324,9 @@ class Solution_SingleTime:
         self.storage_p_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
         self.storage_e_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
         self.storage_p_W_cutoffs = np.zeros((self.nodes, self.storage_p_W_x_nodal.shape[1] + 2), dtype=np.float64)
-        self.storage_e_W_cutoffs = np.zeros((self.nodes, self.storage_e_W_x_nodal.shape[1] + 2), dtype=np.float64)        
+        self.storage_e_W_cutoffs = np.zeros((self.nodes, self.storage_e_W_x_nodal.shape[1] + 2), dtype=np.float64)  
+
+        print(x)      
 
         for node_idx in self.storage_nodes:
             for W_idx in range(self.storage_e_W_x_nodal.shape[1]):
@@ -413,7 +419,7 @@ class Solution_SingleTime:
                 Discharget = np.minimum(np.minimum(np.maximum(0, Netloadt), Pcapacity), Storaget_1 / resolution)
 
             for node_idx in range(len(StoragePowert)):
-                StoragePowert[node_idx] = Discharget[node_idx] if Discharget[node_idx] > 0.0 else Charget[node_idx]
+                StoragePowert[node_idx] = Discharget[node_idx] if Discharget[node_idx] > 0.0 else -1 * Charget[node_idx]
             Storaget = Storaget_1 - Discharget * resolution + Charget * resolution * efficiency
             Storaget_1 = Storaget.copy()
             
@@ -487,16 +493,20 @@ class Solution_SingleTime:
 
         return None
     
-    def _get_storage_capacities(self, output_timeseries=False):
+    def _get_storage_capacities(self, output_timeseries=True):
         self.storage_p_profiles = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_e_profiles = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_e_capacities = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        #self.storage_e_profiles = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        #self.storage_e_capacities = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
         self.storage_p_capacities = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        np.savetxt("results/StoragePower_nodal.csv", self.StoragePower_nodal, delimiter=",")
+        np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
+        np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
+        np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",")
         
         for node_idx in range(self.nodes):
-            frequency_profile_e = frequency.get_frequency_profile(self.Storage_nodal[:,node_idx])
+            """ frequency_profile_e = frequency.get_frequency_profile(self.Storage_nodal[:,node_idx])
             normalised_magnitudes_e = frequency.get_normalised_profile(frequency_profile_e)
-            total_magnitude_e = sum(normalised_magnitudes_e)
+            total_magnitude_e = sum(normalised_magnitudes_e) """
 
             frequency_profile_p = frequency.get_frequency_profile(self.StoragePower_nodal[:,node_idx])
             normalised_magnitudes_p = frequency.get_normalised_profile(frequency_profile_p)
@@ -505,7 +515,7 @@ class Solution_SingleTime:
             frequencies = frequency.get_frequencies(self.intervals, self.resolution)
 
             if output_timeseries:
-                dc_offset_e = frequency.get_dc_offset(frequency_profile_e)
+                #dc_offset_e = frequency.get_dc_offset(frequency_profile_e)
                 dc_offset_p = frequency.get_dc_offset(frequency_profile_p)
 
             for storage_i in range(self.nodal_storage_count[node_idx]):
@@ -513,21 +523,21 @@ class Solution_SingleTime:
                     break
 
                 # Energy Capacity
-                bandpass_filter_e = frequency.get_bandpass_filter(self.storage_e_W_cutoffs[node_idx, storage_i],self.storage_e_W_cutoffs[node_idx, storage_i+1], frequencies)
+                """ bandpass_filter_e = frequency.get_bandpass_filter(self.storage_e_W_cutoffs[node_idx, storage_i],self.storage_e_W_cutoffs[node_idx, storage_i+1], frequencies)
                 filtered_magnitudes_e = frequency.get_filtered_frequency(normalised_magnitudes_e, bandpass_filter_e)
                 unit_magnitude_e = sum(filtered_magnitudes_e)                
-                self.storage_e_capacities[node_idx,storage_i] = self.CPHS_nodal[node_idx] * unit_magnitude_e / total_magnitude_e
+                self.storage_e_capacities[node_idx,storage_i] = self.CPHS_nodal[node_idx] * unit_magnitude_e / total_magnitude_e """
 
                 # Power Capacity
                 bandpass_filter_p = frequency.get_bandpass_filter(self.storage_p_W_cutoffs[node_idx, storage_i],self.storage_p_W_cutoffs[node_idx, storage_i+1], frequencies)
-                filtered_magnitudes_p = frequency.get_filtered_frequency(normalised_magnitudes_p, bandpass_filter_p)
+                filtered_magnitudes_p = frequency.get_filtered_frequency(normalised_magnitudes_p, bandpass_filter_p, save=True)
                 unit_magnitude_p = sum(filtered_magnitudes_p)                
                 self.storage_p_capacities[node_idx,storage_i] = self.CPHP_nodal[node_idx] * unit_magnitude_p / total_magnitude_p
 
                 if output_timeseries:
-                    filtered_frequency_profile_e = frequency.get_filtered_frequency(frequency_profile_e, bandpass_filter_e)
+                    """ filtered_frequency_profile_e = frequency.get_filtered_frequency(frequency_profile_e, bandpass_filter_e)
                     unit_timeseries_e = frequency.get_timeseries_profile(filtered_frequency_profile_e)
-                    self.storage_e_profiles[:,node_idx,storage_i] = unit_timeseries_e
+                    self.storage_e_profiles[:,node_idx,storage_i] = unit_timeseries_e """
                     #self.storage_profiles[:,node_idx,:] = frequency.apportion_dc_offset(self.storage_profiles[:,node_idx,:], dc_offset)
                     
                     filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, bandpass_filter_p)
@@ -536,8 +546,10 @@ class Solution_SingleTime:
 
             #self.storage_e_capacities = self._determine_stored_electricity(self.storage_p_capacities)
         
-            print("Energy capacities: ", self.storage_e_capacities)
+            #print("Energy capacities: ", self.storage_e_capacities)
             print("Power capacities: ", self.storage_p_capacities)
+            if node_idx >0:
+                exit()
         return None
     
     """ def _determine_stored_electricity(self, storage_p_capacities):
@@ -553,7 +565,7 @@ class Solution_SingleTime:
 
         return storage_e_capacities """
     
-    def _determine_cheapest_storage(self):
+    """ def _determine_cheapest_storage(self):
         ##### PERMUTATIONS SHOULD BE BASED ON STORAGE_ID, NOT UNIT_TYPE
         ##### May be different n_permutations for each node since there may be different numbers of storage systems
         # Use storage_nodes to check if a storage is located at that node (location in array IDX)
@@ -578,7 +590,7 @@ class Solution_SingleTime:
                     cheapest_permutations[node_idx,:] = unit_type_permutations[perm_idx,:]
 
         storage_costs = sum(nodal_costs)
-        return storage_costs, cheapest_permutations
+        return storage_costs, cheapest_permutations """
 
     def _objective(self) -> List[float]:
         deficit = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
@@ -589,7 +601,7 @@ class Solution_SingleTime:
         self.TFlowsAbs = np.abs(self.TFlows)
 
         self._get_storage_capacities()
-        storage_costs, cheapest_permutations = self._determine_cheapest_storage()
+        #storage_costs, cheapest_permutations = self._determine_cheapest_storage()
 
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
