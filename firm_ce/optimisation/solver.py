@@ -26,9 +26,8 @@ class Solver:
         #storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] # For nodes
         #storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages] # For nodes
         line_lb = [line.capacity + line.min_build for line in lines]
-        storage_p_W_cutoffs_lb = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[0.0] 
         storage_e_W_cutoffs_lb = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[0.0]
-        lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb + storage_p_W_cutoffs_lb + storage_e_W_cutoffs_lb)
+        lower_bounds = np.array(solar_lb + wind_lb + storage_p_lb + storage_e_lb + line_lb + storage_e_W_cutoffs_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
         wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
@@ -37,9 +36,8 @@ class Solver:
         #storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages] # For nodes with storage else 0
         #storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages] # For nodes with storage else 0
         line_ub = [line.capacity + line.max_build for line in lines]
-        storage_p_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
         storage_e_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
-        upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub + storage_p_W_cutoffs_ub + storage_e_W_cutoffs_ub)
+        upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub + storage_e_W_cutoffs_ub)
 
         return lower_bounds, upper_bounds
 
@@ -194,8 +192,7 @@ class Solver:
         scenario_arrays['storage_p_idx'] = scenario_arrays['wind_idx'] + len(scenario_arrays['nodes_with_storage'])
         scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(scenario_arrays['nodes_with_storage'])
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
-        scenario_arrays['storage_p_W_idx'] = scenario_arrays['lines_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_storage']))
-        scenario_arrays['storage_e_W_idx'] = scenario_arrays['storage_p_W_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_storage']))
+        scenario_arrays['storage_e_W_idx'] = scenario_arrays['lines_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_storage']))
 
         # Costs
         '''
@@ -301,7 +298,6 @@ class Solver:
                     scenario_arrays["storage_p_idx"],
                     scenario_arrays["storage_e_idx"],
                     scenario_arrays["lines_idx"],
-                    scenario_arrays['storage_p_W_idx'],
                     scenario_arrays['storage_e_W_idx'],
                     scenario_arrays["solar_nodes"],
                     scenario_arrays["wind_nodes"],
