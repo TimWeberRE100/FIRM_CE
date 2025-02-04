@@ -73,11 +73,11 @@ def calculate_costs(solution):
         generator_capacities[gen_idx] = solution.CBaseload[idx]
         generator_annual_generations[gen_idx] = solution.GBaseload_annual[idx]
 
-    for idx in range(0,len(solution.storage_cost_ids)):
+    """ for idx in range(0,len(solution.storage_cost_ids)):
         storage_idx = solution.storage_cost_ids[idx]
         storage_p_capacities[storage_idx] = solution.CPHP[idx]
         storage_e_capacities[storage_idx] = solution.CPHS[idx]
-        storage_annual_discharge[storage_idx] = solution.GDischarge_annual[idx]
+        storage_annual_discharge[storage_idx] = solution.GDischarge_annual[idx] """
 
     for idx in range(0,len(solution.line_cost_ids)):
         line_idx = solution.line_cost_ids[idx]
@@ -105,7 +105,7 @@ def calculate_costs(solution):
         solution.generator_costs[7,idx] for idx in range(0,len(generator_capacities))
     ], dtype=np.float64).sum()
     
-    storage_costs = np.array([
+    """ storage_costs = np.array([
         annualisation_component(
             power_capacity=storage_p_capacities[idx],
             energy_capacity=storage_e_capacities[idx],
@@ -117,7 +117,7 @@ def calculate_costs(solution):
             discount_rate=solution.storage_costs[5,idx]
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
-        ], dtype=np.float64).sum()
+        ], dtype=np.float64).sum() """
     
     transmission_costs = np.array([
         annualisation_transmission(
@@ -137,6 +137,6 @@ def calculate_costs(solution):
     #PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20) 
     #print(generator_newbuild_costs, generator_existing_costs, storage_costs, transmission_costs)
 
-    costs = generator_newbuild_costs + generator_existing_costs + storage_costs + transmission_costs
+    costs = generator_newbuild_costs + generator_existing_costs + transmission_costs
         
     return costs

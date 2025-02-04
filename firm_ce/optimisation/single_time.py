@@ -2,8 +2,8 @@ import numpy as np
 from typing import List
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64
-from firm_ce.components import calculate_costs
+from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX
+from firm_ce.components.costs import calculate_costs, annualisation_component
 import firm_ce.network.frequency as frequency
 
 if JIT_ENABLED:
@@ -245,12 +245,12 @@ class Solution_SingleTime:
         # Decision Variables
         self.CPV = x[: pv_idx]
         self.CWind = x[pv_idx : wind_idx]
-        self.CPHP_nodal = x[wind_idx : storage_p_idx]
+        self.CPHP = x[wind_idx : storage_p_idx]
         self.CPHS_nodal = x[storage_p_idx : storage_e_idx]
         self.CTrans = x[storage_e_idx : lines_idx]
         self.storage_e_W_x = x[lines_idx : ]
 
-        print(self.CPV,self.CWind,self.CPHP_nodal,self.CPHS_nodal,self.CTrans,self.storage_e_W_x)
+        print(self.CPV,self.CWind,self.CPHP,self.CPHS_nodal,self.CTrans,self.storage_e_W_x)
 
         """ nodal_durations = 
         for idx in range(len(storage_durations)):
@@ -264,8 +264,8 @@ class Solution_SingleTime:
         self.baseload_nodes = baseload_nodes
         self.storage_nodes = self.storage_nodes
 
-        """ self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
-        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes) """   
+        self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
+        """ self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes) """   
         self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
         self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
@@ -312,9 +312,14 @@ class Solution_SingleTime:
         self.line_cost_ids = line_cost_ids
 
         # Frequency attributes
-        self.storage_p_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
-        self.storage_e_profiles = np.zeros((self.intervals,self.nodes,len(self.storage_unit_types)), dtype=np.float64)
+        self.storage_e_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        self.storage_e_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
         self.storage_e_W_cutoffs = np.zeros((self.nodes, self.storage_e_W_x_nodal.shape[1] + 2), dtype=np.float64)  
+
+        self.storage_p_profiles = np.zeros((self.intervals,len(self.CPHP)), dtype=np.float64)
+        self.storage_e_profiles = np.zeros((self.intervals,len(self.CPHP)), dtype=np.float64)                
+        self.storage_e_capacities = np.zeros(len(self.CPHP), dtype=np.float64)
+        self.storage_p_capacities = self.CPHP
 
         #print(x)      
 
@@ -472,11 +477,8 @@ class Solution_SingleTime:
         return None
     
     def _get_storage_capacities(self):
-        self.storage_e_profiles = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_e_capacities = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-
-        self.storage_p_profiles = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_p_capacities = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        self.storage_e_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        self.storage_e_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
         
         """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
         np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
@@ -500,53 +502,89 @@ class Solution_SingleTime:
                 bandpass_filter_e = frequency.get_bandpass_filter(self.storage_e_W_cutoffs[node_idx, storage_i],self.storage_e_W_cutoffs[node_idx, storage_i+1], frequencies)
                 filtered_magnitudes_e = frequency.get_filtered_frequency(normalised_magnitudes_e, bandpass_filter_e)
                 unit_magnitude_e = sum(filtered_magnitudes_e)                
-                self.storage_e_capacities[node_idx,storage_i] = self.CPHS_nodal[node_idx] * unit_magnitude_e / total_magnitude_e
-
+                self.storage_e_capacities_ifft[node_idx,storage_i] = self.CPHS_nodal[node_idx] * unit_magnitude_e / total_magnitude_e
+                
                 filtered_frequency_profile_e = frequency.get_filtered_frequency(frequency_profile_e, bandpass_filter_e)
                 unit_timeseries_e = frequency.get_timeseries_profile(filtered_frequency_profile_e)
-                self.storage_e_profiles[:,node_idx,storage_i] = unit_timeseries_e
+                self.storage_e_profiles_ifft[:,node_idx,storage_i] = unit_timeseries_e
                 
             # Apportion dc offset
-            self.storage_e_profiles[:,node_idx,0] = self.storage_e_profiles[:,node_idx,0] + dc_offset_e_timeseries
+            self.storage_e_profiles_ifft[:,node_idx,0] = self.storage_e_profiles_ifft[:,node_idx,0] + dc_offset_e_timeseries
 
-            # Apportion excess charging/generation
-            self.storage_p_profiles[:,node_idx,:], self.storage_e_profiles[:,node_idx,:] = frequency.reapportion_exceeded_capacity(self.storage_e_profiles[:,node_idx,:],self.storage_e_capacities[node_idx,:], self.resolution)
-
-            self.storage_p_capacities[node_idx,:] = np.abs(self.storage_p_profiles[:,node_idx,:]).max(axis=1)
             #np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles[:,node_idx,:], delimiter=",")
             #np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles[:,node_idx,:], delimiter=",")
 
-        print("Energy capacities: ", self.storage_e_capacities)
-        print("Power capacities: ", self.storage_p_capacities)
+        print("Energy capacities: ", self.storage_e_capacities_ifft)
+        #print("Power capacities: ", self.storage_p_capacities)
 
         return None
     
-    """ def _determine_cheapest_storage(self):
-        ##### PERMUTATIONS SHOULD BE BASED ON STORAGE_ID, NOT UNIT_TYPE
-        ##### May be different n_permutations for each node since there may be different numbers of storage systems
-        # Use storage_nodes to check if a storage is located at that node (location in array IDX)
-        # Use IDX to find the costs in storage_costs
-        nodal_costs = np.finfo(np.float64).max * np.ones(self.nodes, dtype=np.float64)
-        #cheapest_permutations = -1 * np.ones(self.nodes,###MAX_NODAL_STORAGES, dtype=np.int64)
+    def _determine_cheapest_storage(self):
+        #################### Use storage_nodes to check if a storage is located at that node (location in array IDX)
+        ############### Use IDX to find the costs in storage_costs
+        nodal_costs = NP_FLOAT_MAX * np.ones(self.nodes, dtype=np.float64)
+        nodal_n_permutations = np.zeros(self.nodes, dtype=np.int64)
 
         for node_idx in range(self.nodes): 
             node_mask = self.storage_nodes == node_idx
             node_storage_ids = self.storage_ids[node_mask]
 
             storage_permutations = frequency.generate_permutations(node_storage_ids)
-            n_permutations = storage_permutations.shape[0]
+            nodal_n_permutations[node_idx] = storage_permutations.shape[0]
 
-            for perm_idx in range(n_permutations):
+            for p in range(nodal_n_permutations[node_idx]):
+                storage_e_profile_ifft = self.storage_e_profiles_ifft[:,node_idx,:].copy()
                 perm_cost = 0
-                for i in range(len(self.unique_storage_unit_types)):
-                    perm_cost += calculate_storage_cost(unit_type_permutations[perm_idx, i], self.storage_costs)
+                permutation_storage_p_capacities = np.zeros(len(node_storage_ids), dtype=np.int64)
+                permutation_storage_costs = np.zeros((self.storage_costs.shape[0],len(node_storage_ids)), dtype=np.float64)
+                permutation_storage_d_efficiencies = np.zeros(len(node_storage_ids), dtype=np.float64)
+                permutation_storage_c_efficiencies = np.zeros(len(node_storage_ids), dtype=np.float64)
+
+                for i in range(len(node_storage_ids)):
+                    #### This should be fixed to reflect self.storage_ids in case some storage are not included in a scenario
+                    permutation_storage_p_capacities[i] = self.CPHP[storage_permutations[p,i]]
+                    permutation_storage_costs[:,i] = self.storage_costs[:,storage_permutations[p,i]]
+                    #permutation_storage_d_efficiencies = self.storage_d_efficiencies[i]
+                    #permutation_storage_c_efficiencies = self.storage_c_efficiencies[i]
+                    permutation_storage_d_efficiencies[i] = np.array([1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0,1.0], dtype=np.float64)[storage_permutations[p,i]] #### TEST
+                    permutation_storage_c_efficiencies[i] = np.array([0.8,0.8,0.8,0.8,0.8,0.9,0.9,0.9,0.9,0.9], dtype=np.float64)[storage_permutations[p,i]] ##### TEST
+
+                storage_e_profile_option, storage_p_profile_option = frequency.reapportion_exceeded_capacity(storage_e_profile_ifft, 
+                                                                                                             self.storage_e_capacities_ifft[node_idx,:], 
+                                                                                                             permutation_storage_p_capacities, 
+                                                                                                             permutation_storage_d_efficiencies, 
+                                                                                                             permutation_storage_c_efficiencies, 
+                                                                                                             self.resolution)
+                
+                permutation_annual_discharge = frequency.sum_positive_values(storage_p_profile_option) * self.resolution / self.years
+                #print("Annual discharge: ", permutation_annual_discharge)
+
+                perm_cost = np.array([
+                                    annualisation_component(
+                                        power_capacity=permutation_storage_p_capacities[idx],
+                                        energy_capacity=self.storage_e_capacities[idx],
+                                        annual_generation=permutation_annual_discharge[idx],
+                                        capex_p=permutation_storage_costs[0,idx],
+                                        fom=permutation_storage_costs[2,idx],
+                                        vom=permutation_storage_costs[3,idx],
+                                        lifetime=permutation_storage_costs[4,idx],
+                                        discount_rate=permutation_storage_costs[5,idx]
+                                    ) for idx in range(0,len(permutation_storage_p_capacities))
+                                    ], dtype=np.float64).sum()
 
                 if perm_cost < nodal_costs[node_idx]:
                     nodal_costs[node_idx] = perm_cost
-                    cheapest_permutations[node_idx,:] = unit_type_permutations[perm_idx,:]
 
+                    for i in range(len(node_storage_ids)):
+                        #print(self.storage_e_profiles.shape,storage_e_profile_option.shape,self.storage_p_profiles.shape,storage_p_profile_option.shape)
+                        self.storage_e_profiles[:,storage_permutations[p,i]] = storage_e_profile_option[:,i]
+                        self.storage_p_profiles[:,storage_permutations[p,i]] = storage_p_profile_option[:,i]
+                        self.storage_e_capacities[storage_permutations[p,i]] = self.storage_e_capacities_ifft[node_idx,i]
+                        #self.storage_p_capacities[storage_permutations[p,i]] = self.CPHP ##### Rearrange back to CPHP order
+
+        print(nodal_costs)
         storage_costs = sum(nodal_costs)
-        return storage_costs, cheapest_permutations """
+        return storage_costs
 
     def _objective(self) -> List[float]:
         deficit = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
@@ -557,18 +595,19 @@ class Solution_SingleTime:
         self.TFlowsAbs = np.abs(self.TFlows)
 
         self._get_storage_capacities()
-        #storage_costs, cheapest_permutations = self._determine_cheapest_storage()
+        storage_costs = self._determine_cheapest_storage()
 
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
         cost = self._calculate_costs()
+        cost += storage_costs
 
         loss = self.TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
         
-        #print("LCOE: ", lcoe, pen_deficit)
+        print("LCOE: ", lcoe, pen_deficit)
         return lcoe, pen_deficit
 
     def evaluate(self):

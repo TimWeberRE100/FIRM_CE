@@ -39,12 +39,12 @@ def get_frequencies(intervals, resolution):
 def get_bandpass_filter(lower_cutoff, upper_cutoff, frequencies):
     bandpass_profile = np.zeros(frequencies.shape, dtype=np.float64)
 
-    """ for idx in range(len(frequencies)):
+    for idx in range(len(frequencies)):
         if frequencies[idx] > lower_cutoff and frequencies[idx] <= upper_cutoff:
             bandpass_profile[idx] = 1.0
         if frequencies[idx] > upper_cutoff:
             break
-    np.savetxt(f"results/frequency_{upper_cutoff}_{lower_cutoff}.csv", bandpass_profile, delimiter=",") """
+    """ np.savetxt(f"results/frequency_{upper_cutoff}_{lower_cutoff}.csv", bandpass_profile, delimiter=",") """
     return bandpass_profile
 
  
@@ -63,12 +63,12 @@ def get_filtered_frequency(frequency_profile, bandpass_filter_profile, save=Fals
 def get_timeseries_profile(frequency_profile):
     timeseries_profile = irfft(frequency_profile)
 
-    max_freq = 0
+    """ max_freq = 0
     for i in range(len(frequency_profile)):
         if frequency_profile[i] > 0.00001:
             max_freq = i
 
-    """ print(max_freq)
+    print(max_freq)
     np.savetxt(f"results/timeseries_filtered_{max_freq}.csv", timeseries_profile, delimiter=",") """
 
     return timeseries_profile
@@ -100,45 +100,84 @@ def generate_permutations(array_1d):
     permute(array_1d, [0], np.array([], dtype=array_1d.dtype))
     return permutations
 
-def reapportion_exceeded_capacity(nodal_e_timeseries_profiles,nodal_e_capacities, time_resolution):
+def reapportion_exceeded_capacity(nodal_e_timeseries_profiles, nodal_e_capacities, nodal_p_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
     intervals, storage_number = nodal_e_timeseries_profiles.shape
     nodal_p_timeseries_profiles = np.zeros(nodal_e_timeseries_profiles.shape, dtype=np.float64)
     nodal_capacities_mwh = 1000 * nodal_e_capacities
+    nodal_capacities_mw = 1000 * nodal_p_capacities
 
     for interval in range(intervals):
         changed = True
         while changed:
             changed = False
-            print(interval, nodal_e_timeseries_profiles[interval, :], nodal_capacities_mwh, nodal_p_timeseries_profiles[interval-1,:])
+            if interval > 0:
+                power_t_1 = (nodal_e_timeseries_profiles[interval-1, :] - nodal_e_timeseries_profiles[interval, :]) / time_resolution
+                for n in range(storage_number):
+                    power_t_1[n] = power_t_1[n] / storage_d_efficiencies[n] if power_t_1[n] > 0 else power_t_1[n] / storage_c_efficiencies[n]
+            else:
+                power_t_1 = np.zeros(storage_number, dtype=np.float64)
+
+            #print(interval, nodal_e_timeseries_profiles[interval, :], nodal_capacities_mwh, power_t_1)
             for n in range(storage_number):
-                # Check for positive overflow:
+                # Check for energy capacity positive overflow
                 if (nodal_e_timeseries_profiles[interval, n] > nodal_capacities_mwh[n] + 0.001):
-                    excess = nodal_e_timeseries_profiles[interval, n] - nodal_capacities_mwh[n]
-                    nodal_e_timeseries_profiles[interval, n] -= excess
+                    excess_e = nodal_e_timeseries_profiles[interval, n] - nodal_capacities_mwh[n]
+                    nodal_e_timeseries_profiles[interval, n] -= excess_e
+
+                    excess_p = excess_e / storage_c_efficiencies[n]
+                    power_t_1 -= excess_p
 
                     # If not at the end, add the excess to the next node;
                     # otherwise, add it to the previous node.
-                    ###### THIS SHOULD REAPPORTION BASED UPON THE CHEAPEST POWER CAPACITY ARRANGEMENT?
                     if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += excess                        
-                    elif n > 0: ####### NEED TO MAKE THIS FLIP AND MOVE ALL THE WAY BACK TO FIRST NODE
-                        nodal_e_timeseries_profiles[interval, n-1] += excess
+                        nodal_e_timeseries_profiles[interval, n+1] += excess_e
+                        if interval > 0:
+                            power_t_1[n+1] += excess_e / storage_c_efficiencies[n+1]                     
+                    elif n > 0:
+                        nodal_e_timeseries_profiles[interval, n-1] += excess_e #### NEED TO REVERSE AND HEAD ALL THE WAY BACK
+                        if interval > 0:
+                            power_t_1[n-1] += excess_e / storage_c_efficiencies[n-1]
                     changed = True
 
-                # Check for negative overflow
+                # Check for energy capacity negative overflow
                 elif (nodal_e_timeseries_profiles[interval, n] < -0.001):
-                    deficit = nodal_e_timeseries_profiles[interval, n] 
-                    nodal_e_timeseries_profiles[interval, n] -= deficit
+                    deficit_e = nodal_e_timeseries_profiles[interval, n] 
+                    nodal_e_timeseries_profiles[interval, n] -= deficit_e
+
+                    deficit_p = deficit_e / storage_d_efficiencies[n]
+                    power_t_1 -= deficit_p
                     
                     # If not at the end, add the deficit to the next node;
                     # otherwise, add it to the previous node.
                     if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += deficit
+                        nodal_e_timeseries_profiles[interval, n+1] += deficit_e
+                        if interval > 0:
+                            power_t_1[n+1] += deficit_e / storage_d_efficiencies[n+1]
                     elif n > 0:
-                        nodal_e_timeseries_profiles[interval, n-1] += deficit
+                        nodal_e_timeseries_profiles[interval, n-1] += deficit_e
+                        if interval > 0:
+                            power_t_1[n-1] += deficit_e / storage_d_efficiencies[n-1]
                     changed = True
+
+                # Check for power capacity positive overflow
+                #elif 
+
+                # Check for power capacity negative overflow
         
         if interval > 0:
-            nodal_p_timeseries_profiles[interval-1, :] = -1 * (nodal_e_timeseries_profiles[interval, :] - nodal_e_timeseries_profiles[interval-1, :]) / time_resolution
+            nodal_p_timeseries_profiles[interval-1, :] = power_t_1
 
     return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles
+
+def sum_positive_values(arr):
+    rows, cols = arr.shape
+    result = np.zeros(cols, dtype=arr.dtype)
+    
+    for j in range(cols): 
+        col_sum = 0
+        for i in range(rows):  
+            if arr[i, j] > 0:  
+                col_sum += arr[i, j]
+        result[j] = col_sum 
+
+    return result
