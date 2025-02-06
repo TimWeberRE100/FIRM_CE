@@ -74,6 +74,7 @@ def get_bandpass_filter(lower_cutoff, upper_cutoff, frequencies):
     """ np.savetxt(f"results/frequency_{upper_cutoff}_{lower_cutoff}.csv", bandpass_profile, delimiter=",") """
     return bandpass_profile
 
+@njit
 def get_magnitude_filter(lower_cutoff, upper_cutoff, normalised_magnitudes):
     filter_profile = np.zeros(normalised_magnitudes.shape, dtype=np.float64)
 

@@ -588,7 +588,7 @@ class Solution_SingleTime:
                 
                 perm_cost = np.array([
                                     annualisation_component(
-                                        power_capacity=self.storage_p_capacities[idx],
+                                        power_capacity=self.storage_p_capacities_ifft[node_idx,idx],
                                         energy_capacity=permutation_storage_e_capacities[idx],
                                         annual_generation=permutation_annual_discharge[idx],
                                         capex_p=permutation_storage_costs[0,idx],
