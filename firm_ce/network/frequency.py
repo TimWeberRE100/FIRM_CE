@@ -164,7 +164,7 @@ def generate_permutations(array_1d):
     return permutations
 
 @njit
-def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_p_capacities, nodal_e_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
+def __reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_p_capacities, nodal_e_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
     intervals, storage_number = nodal_p_timeseries_profiles.shape
     nodal_e_timeseries_profiles = np.zeros(nodal_p_timeseries_profiles.shape, dtype=np.float64)
     nodal_capacities_mwh = 1000 * nodal_e_capacities
@@ -238,7 +238,7 @@ def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_p_capacitie
                 # Check for power capacity negative overflow
                 elif (nodal_p_timeseries_profiles[interval, k] < -1 * nodal_capacities_mw[k]) or (storage_t_1[k] > nodal_capacities_mwh[k]):
                     deficit_p = min(nodal_p_timeseries_profiles[interval, k] - (-1 * nodal_capacities_mw[k]),
-                                       (nodal_capacities_mwh[n] - storage_t_1[n]) / storage_c_efficiencies[n] / time_resolution)
+                                       (nodal_capacities_mwh[k] - storage_t_1[k]) / storage_c_efficiencies[k] / time_resolution)
                     nodal_p_timeseries_profiles[interval, k] -= deficit_p
 
                     deficit_e = deficit_p * storage_c_efficiencies[k] * time_resolution
@@ -275,6 +275,124 @@ def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_p_capacitie
                 node_power_deficit[interval] = np.abs(deficit_p)
 
                 #print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+            #sleep(1)
+        
+        if interval < intervals-1:
+            nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
+
+    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, node_power_deficit
+
+@njit
+def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_e_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
+    intervals, storage_number = nodal_p_timeseries_profiles.shape
+    nodal_e_timeseries_profiles = np.zeros(nodal_p_timeseries_profiles.shape, dtype=np.float64)
+    nodal_capacities_mwh = 1000 * nodal_e_capacities
+    node_power_deficit = np.zeros(intervals, dtype=np.float64)
+    
+    nodal_e_timeseries_profiles[0,:] = 0.5 * nodal_capacities_mwh
+
+    for interval in range(intervals):
+        changed = True
+        """ if interval > 6800:
+            print(storage_d_efficiencies, storage_c_efficiencies)
+            exit() """
+        
+        while changed: ###### I THINK THE DEFICIT LETS US REMOVE CHANGED?
+            changed = False
+            if interval < intervals-1:
+                storage_t_1 = nodal_e_timeseries_profiles[interval,:]
+                energy_t_1 = -1 * nodal_p_timeseries_profiles[interval, :] * time_resolution
+                for n in range(storage_number):
+                    storage_t_1[n] += energy_t_1[n] * storage_d_efficiencies[n] if nodal_p_timeseries_profiles[interval, n] > 0 else energy_t_1[n] * storage_c_efficiencies[n]
+
+            """ print(f"Initial INTERVAL {interval}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+            for n in range(storage_number-1):
+                # Check for discharging overflow
+                if (storage_t_1[n] < 0.0):
+                    excess_e = storage_t_1[n]
+                    storage_t_1[n] -= excess_e
+
+                    excess_p = excess_e / storage_d_efficiencies[n] / time_resolution                
+                    nodal_p_timeseries_profiles[interval, n] += excess_p                    
+
+                    if interval < intervals-1:
+                        storage_t_1[n+1] += excess_p * storage_d_efficiencies[n+1] * time_resolution                       
+                    nodal_p_timeseries_profiles[interval, n+1] -= excess_p
+
+                    """ print(f"Up discharging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+                    #print("Excesses: ", excess_p, excess_e, storage_d_efficiencies[n], storage_d_efficiencies[n+1])
+                
+                # Check for charging overflow
+                elif (storage_t_1[n] > nodal_capacities_mwh[n]):
+                    deficit_e = (nodal_capacities_mwh[n] - storage_t_1[n])
+                    storage_t_1[n] += deficit_e
+
+                    deficit_p = deficit_e / storage_c_efficiencies[n] / time_resolution
+                    nodal_p_timeseries_profiles[interval, n] -= deficit_p                    
+
+                    if interval < intervals-1:
+                        storage_t_1[n+1] -= deficit_p * storage_c_efficiencies[n+1] * time_resolution
+                    nodal_p_timeseries_profiles[interval, n+1] += deficit_p 
+
+                    """ print(f"Up charging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
+                    exit() """
+
+            # Reverse direction of apportioning
+            for n in range(storage_number-1):
+                k = storage_number - n - 1
+                
+                # Check for discharging overflow
+                if (storage_t_1[k] < 0.0):
+                    excess_e = storage_t_1[k]
+                    storage_t_1[k] -= excess_e
+
+                    excess_p = excess_e / storage_d_efficiencies[k] / time_resolution
+                    nodal_p_timeseries_profiles[interval, k] += excess_p                    
+
+                    if interval < intervals-1:
+                        storage_t_1[k-1] += excess_p * storage_d_efficiencies[k-1] * time_resolution                    
+                    nodal_p_timeseries_profiles[interval, k-1] -= excess_p 
+
+                    """ print(f"Down discharging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+
+                # Check for charging overflow
+                elif (storage_t_1[k] > nodal_capacities_mwh[k]):
+                    deficit_e = (nodal_capacities_mwh[k] - storage_t_1[k])
+                    storage_t_1[k] += deficit_e
+
+                    deficit_p = deficit_e / storage_c_efficiencies[k] / time_resolution
+                    nodal_p_timeseries_profiles[interval, k] -= deficit_p                    
+
+                    if interval < intervals-1:
+                        storage_t_1[k-1] -= deficit_p * storage_c_efficiencies[k-1] * time_resolution
+                    nodal_p_timeseries_profiles[interval, k-1] += deficit_p
+
+                    """ print(f"Down charing deficits: ", deficit_p, deficit_e)
+                    print(f"Down charging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
+                    exit() """
+
+            # Determine deficits
+            if (storage_t_1[0] < 0.0):
+                excess_e = storage_t_1[0] 
+                storage_t_1[0] -= excess_e
+
+                excess_p = excess_e / storage_d_efficiencies[0] / time_resolution
+                nodal_p_timeseries_profiles[interval, 0] += excess_p                
+
+                node_power_deficit[interval] = np.abs(excess_p)
+
+                """ print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+
+            elif (storage_t_1[0] > nodal_capacities_mwh[0]):
+                deficit_e = (nodal_capacities_mwh[0] - storage_t_1[0]) 
+                storage_t_1[0] += deficit_e
+
+                deficit_p = deficit_e / storage_c_efficiencies[0] / time_resolution
+                nodal_p_timeseries_profiles[interval, 0] -= deficit_p               
+
+                node_power_deficit[interval] = np.abs(deficit_p)
+
+                """ print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
             #sleep(1)
         
         if interval < intervals-1:

@@ -36,7 +36,8 @@ class Solver:
         #storage_e_ub = [10000,10000,10000,10000,10000]
         storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages] # For nodes with storage else 0
         line_ub = [line.capacity + line.max_build for line in lines]
-        storage_e_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
+        #storage_e_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[self.scenario.max_frequency]
+        storage_e_W_cutoffs_ub = (len(self.scenario.storages)-len(self.scenario.nodes_with_storage))*[1.0]
         upper_bounds = np.array(solar_ub + wind_ub + storage_p_ub + storage_e_ub + line_ub + storage_e_W_cutoffs_ub)
 
         return lower_bounds, upper_bounds
