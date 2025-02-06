@@ -26,6 +26,6 @@ PLEXOS bugs
 
 FIRM_CE bugs
 - Add fuel costs into calculation
-- Does it really make sense to FFT both the power and energy capacities? Perhaps only FFT power capacity and then determine energy capacity?
-- Test storage unit_types to find cheapest assignment
-- JIT for the frequency functions
+- STORAGE POWER CAPACITIES AS DECISION VARIABLES. THEN CALCULATE DEFICIT IN THE APPORTION FUNCTION
+- MOVE FLEXIBLE GENERATION INTO FREQUENCY ANALYSIS, WITH CHARGING CAPACITY OF 0
+- Different scenarios may have different numbers of decision variables for initial_guess.csv

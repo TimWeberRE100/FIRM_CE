@@ -1,6 +1,7 @@
 # Make Scipy FFT compatible with Numba (no import required): https://github.com/styfenschaer/rocket-fft
 import numpy as np
 from scipy.fft import rfft, irfft
+from time import sleep
 
 from firm_ce.constants import EPSILON_FLOAT64, JIT_ENABLED
 
@@ -28,7 +29,7 @@ else:
 def get_frequency_profile(timeseries_profile):
     frequency_profile = rfft(timeseries_profile)
     """ np.savetxt("results/timeseries.csv", timeseries_profile, delimiter=",")    
-    np.savetxt("results/frequency.csv", frequency_profile, delimiter=",")     """
+    np.savetxt("results/frequency.csv", frequency_profile, delimiter=",") """    
     return frequency_profile
 
 @njit
@@ -73,9 +74,18 @@ def get_bandpass_filter(lower_cutoff, upper_cutoff, frequencies):
     """ np.savetxt(f"results/frequency_{upper_cutoff}_{lower_cutoff}.csv", bandpass_profile, delimiter=",") """
     return bandpass_profile
 
+def get_magnitude_filter(lower_cutoff, upper_cutoff, normalised_magnitudes):
+    filter_profile = np.zeros(normalised_magnitudes.shape, dtype=np.float64)
+
+    for idx in range(1,len(normalised_magnitudes)): # Skip DC offset
+        if (normalised_magnitudes[idx] > lower_cutoff - EPSILON_FLOAT64) and (normalised_magnitudes[idx] <= upper_cutoff + EPSILON_FLOAT64):
+            filter_profile[idx] = 1.0
+    """ np.savetxt(f"results/filter_{upper_cutoff}_{lower_cutoff}.csv", filter_profile, delimiter=",") """
+    return filter_profile
+
 @njit
-def get_filtered_frequency(frequency_profile, bandpass_filter_profile, save=False):
-    filtered_frequency_profile = frequency_profile * bandpass_filter_profile
+def get_filtered_frequency(frequency_profile, filter_profile, save=False):
+    filtered_frequency_profile = frequency_profile * filter_profile
 
     """ if save:
         max_freq = 0
@@ -153,106 +163,123 @@ def generate_permutations(array_1d):
     return permutations
 
 @njit
-def reapportion_exceeded_capacity(nodal_e_timeseries_profiles, nodal_e_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
-    intervals, storage_number = nodal_e_timeseries_profiles.shape
-    nodal_p_timeseries_profiles = np.zeros(nodal_e_timeseries_profiles.shape, dtype=np.float64)
+def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, nodal_p_capacities, nodal_e_capacities, storage_d_efficiencies, storage_c_efficiencies, time_resolution):
+    intervals, storage_number = nodal_p_timeseries_profiles.shape
+    nodal_e_timeseries_profiles = np.zeros(nodal_p_timeseries_profiles.shape, dtype=np.float64)
     nodal_capacities_mwh = 1000 * nodal_e_capacities
-    #nodal_capacities_mw = 1000 * nodal_p_capacities
+    nodal_capacities_mw = 1000 * nodal_p_capacities
+    node_power_deficit = np.zeros(intervals, dtype=np.float64)
+    
+    nodal_e_timeseries_profiles[0,:] = 0.5 * nodal_capacities_mwh
 
     for interval in range(intervals):
         changed = True
         
-        while changed:
+        while changed: ###### I THINK THE DEFICIT LETS US REMOVE CHANGED?
             changed = False
-            if interval > 0:
-                power_t_1 = (nodal_e_timeseries_profiles[interval-1, :] - nodal_e_timeseries_profiles[interval, :]) / time_resolution
+            if interval < intervals-1:
+                storage_t_1 = nodal_e_timeseries_profiles[interval,:]
+                energy_t_1 = -1 * nodal_p_timeseries_profiles[interval, :] * time_resolution
                 for n in range(storage_number):
-                    power_t_1[n] = power_t_1[n] / storage_d_efficiencies[n] if power_t_1[n] > 0 else power_t_1[n] / storage_c_efficiencies[n]
-            else:
-                power_t_1 = np.zeros(storage_number, dtype=np.float64)
+                    storage_t_1[n] += energy_t_1[n] * storage_d_efficiencies[n] if nodal_p_timeseries_profiles[interval, n] > 0 else energy_t_1[n] * storage_c_efficiencies[n]
 
-            #print(interval, nodal_e_timeseries_profiles[interval, :], nodal_capacities_mwh, power_t_1)
-            for n in range(storage_number):
-                # Check for energy capacity positive overflow
-                if (nodal_e_timeseries_profiles[interval, n] > nodal_capacities_mwh[n] + 0.001):
-                    excess_e = nodal_e_timeseries_profiles[interval, n] - nodal_capacities_mwh[n]
-                    nodal_e_timeseries_profiles[interval, n] -= excess_e
+            #print(f"Initial INTERVAL {interval}: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+            for n in range(storage_number-1):
+                # Check for discharging overflow
+                if (nodal_p_timeseries_profiles[interval, n] > nodal_capacities_mw[n]) or (storage_t_1[n] < 0.0):
+                    excess_p = max(nodal_p_timeseries_profiles[interval, n] - nodal_capacities_mw[n], 
+                                      -1 * storage_t_1[n] / storage_d_efficiencies[n] / time_resolution)                 
 
-                    excess_p = excess_e / storage_c_efficiencies[n]
-                    power_t_1 -= excess_p
+                    nodal_p_timeseries_profiles[interval, n] -= excess_p
 
-                    # If not at the end, add the excess to the next node;
-                    # otherwise, add it to the previous node.
-                    if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += excess_e
-                        if interval > 0:
-                            power_t_1[n+1] += excess_e / storage_c_efficiencies[n+1]                     
-                    elif n > 0:
-                        nodal_e_timeseries_profiles[interval, n-1] += excess_e #### NEED TO REVERSE AND HEAD ALL THE WAY BACK
-                        if interval > 0:
-                            power_t_1[n-1] += excess_e / storage_c_efficiencies[n-1]
-                    changed = True
+                    excess_e = excess_p * storage_d_efficiencies[n] * time_resolution
+                    storage_t_1[n] += excess_e
 
-                # Check for energy capacity negative overflow
-                elif (nodal_e_timeseries_profiles[interval, n] < -0.001):
-                    deficit_e = nodal_e_timeseries_profiles[interval, n] 
-                    nodal_e_timeseries_profiles[interval, n] -= deficit_e
+                    if interval < intervals-1:
+                        storage_t_1[n+1] -= excess_p * storage_d_efficiencies[n+1] * time_resolution                       
+                    nodal_p_timeseries_profiles[interval, n+1] += excess_p
 
-                    deficit_p = deficit_e / storage_d_efficiencies[n]
-                    power_t_1 -= deficit_p
-                    
-                    # If not at the end, add the deficit to the next node;
-                    # otherwise, add it to the previous node.
-                    if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += deficit_e
-                        if interval > 0:
-                            power_t_1[n+1] += deficit_e / storage_d_efficiencies[n+1]
-                    elif n > 0:
-                        nodal_e_timeseries_profiles[interval, n-1] += deficit_e
-                        if interval > 0:
-                            power_t_1[n-1] += deficit_e / storage_d_efficiencies[n-1]
-                    changed = True
+                    #print(f"Up discharging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+                    #print("Excesses: ", excess_p, excess_e, storage_d_efficiencies[n], storage_d_efficiencies[n+1])
+                # Check for charging overflow
+                elif (nodal_p_timeseries_profiles[interval, n] < -1 * nodal_capacities_mw[n]) or (storage_t_1[n] > nodal_capacities_mwh[n]):
+                    deficit_p = min(nodal_p_timeseries_profiles[interval, n] - (-1 * nodal_capacities_mw[n]),
+                                       (nodal_capacities_mwh[n] - storage_t_1[n]) / storage_c_efficiencies[n] / time_resolution)
+                    nodal_p_timeseries_profiles[interval, n] -= deficit_p
 
-                """ # Check for power capacity positive overflow
-                elif power_t_1[n] > nodal_capacities_mw[n]:
-                    excess_p = power_t_1[n] - nodal_capacities_mw[n]
-                    power_t_1[n] -= excess_p
+                    deficit_e = deficit_p * storage_c_efficiencies[n] * time_resolution
+                    storage_t_1[n] += deficit_e
 
-                    excess_e = excess_p * storage_c_efficiencies[n]
-                    nodal_e_timeseries_profiles[interval, n] -= excess_e
+                    if interval < intervals-1:
+                        storage_t_1[n+1] -= deficit_p * storage_c_efficiencies[n+1] * time_resolution
+                    nodal_p_timeseries_profiles[interval, n+1] += deficit_p 
 
-                    if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += excess_e
-                        if interval > 0:
-                            power_t_1[n+1] += excess_e / storage_c_efficiencies[n+1]                     
-                    elif n > 0:
-                        nodal_e_timeseries_profiles[interval, n-1] += excess_e #### NEED TO REVERSE AND HEAD ALL THE WAY BACK
-                        if interval > 0:
-                            power_t_1[n-1] += excess_e / storage_c_efficiencies[n-1]
-                    changed = True
+                    #print(f"Up charging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+
+            for n in range(storage_number-1):
+                k = storage_number - n - 1
+                
+                # Check for power capacity positive overflow
+                if (nodal_p_timeseries_profiles[interval, k] > nodal_capacities_mw[k]) or (storage_t_1[k] < 0.0):
+                    excess_p = max(nodal_p_timeseries_profiles[interval, k] - nodal_capacities_mw[k],
+                                      -1 * storage_t_1[k] / storage_d_efficiencies[k] / time_resolution)
+                    nodal_p_timeseries_profiles[interval, k] -= excess_p
+
+                    excess_e = excess_p * storage_d_efficiencies[k] * time_resolution
+                    storage_t_1[k] += excess_e
+
+                    if interval < intervals-1:
+                        storage_t_1[k-1] -= excess_p * storage_d_efficiencies[k-1] * time_resolution                        
+                    nodal_p_timeseries_profiles[interval, k-1] += excess_p 
+
+                    #print(f"Down discharging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
 
                 # Check for power capacity negative overflow
-                elif power_t_1[n] < -1 * nodal_capacities_mw[n]:
-                    deficit_p = power_t_1[n] - nodal_capacities_mw[n]
-                    power_t_1[n] -= deficit_p
+                elif (nodal_p_timeseries_profiles[interval, k] < -1 * nodal_capacities_mw[k]) or (storage_t_1[k] > nodal_capacities_mwh[k]):
+                    deficit_p = min(nodal_p_timeseries_profiles[interval, k] - (-1 * nodal_capacities_mw[k]),
+                                       (nodal_capacities_mwh[n] - storage_t_1[n]) / storage_c_efficiencies[n] / time_resolution)
+                    nodal_p_timeseries_profiles[interval, k] -= deficit_p
 
-                    deficit_e = deficit_p * storage_d_efficiencies[n]
-                    nodal_e_timeseries_profiles[interval, n] -= deficit_e
+                    deficit_e = deficit_p * storage_c_efficiencies[k] * time_resolution
+                    storage_t_1[k] += deficit_e
 
-                    if n < storage_number - 1:
-                        nodal_e_timeseries_profiles[interval, n+1] += deficit_e
-                        if interval > 0:
-                            power_t_1[n+1] += deficit_e / storage_d_efficiencies[n+1]
-                    elif n > 0:
-                        nodal_e_timeseries_profiles[interval, n-1] += deficit_e
-                        if interval > 0:
-                            power_t_1[n-1] += deficit_e / storage_d_efficiencies[n-1]
-                    changed = True """
+                    if interval < intervals-1:
+                        storage_t_1[k-1] -= deficit_p * storage_c_efficiencies[k-1] * time_resolution
+                    nodal_p_timeseries_profiles[interval, k-1] += deficit_p
+
+                    #print(f"Down charging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+
+
+            # Determine deficits
+            if (nodal_p_timeseries_profiles[interval, 0] > nodal_capacities_mw[0]) or (storage_t_1[0] < 0.0):
+                excess_p = max(nodal_p_timeseries_profiles[interval, 0] - nodal_capacities_mw[0],
+                                  -1 * storage_t_1[0] / storage_d_efficiencies[0] / time_resolution)
+                nodal_p_timeseries_profiles[interval, 0] -= excess_p
+
+                excess_e = excess_p * storage_d_efficiencies[0] * time_resolution
+                storage_t_1[0] += excess_e
+
+                node_power_deficit[interval] = np.abs(excess_p)
+
+                #print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+
+            elif (nodal_p_timeseries_profiles[interval, 0] < -1 * nodal_capacities_mw[0]) or (storage_t_1[0] > nodal_capacities_mwh[0]):
+                deficit_p = min(nodal_p_timeseries_profiles[interval, 0] - (-1 * nodal_capacities_mw[0]),
+                                   (nodal_capacities_mwh[0] - storage_t_1[0]) / storage_c_efficiencies[0] / time_resolution)
+                nodal_p_timeseries_profiles[interval, 0] -= deficit_p
+
+                deficit_e = deficit_p * storage_c_efficiencies[0] * time_resolution
+                storage_t_1[0] += deficit_e
+
+                node_power_deficit[interval] = np.abs(deficit_p)
+
+                #print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], nodal_capacities_mw, storage_t_1, nodal_capacities_mwh)
+            #sleep(1)
         
-        if interval > 0:
-            nodal_p_timeseries_profiles[interval-1, :] = power_t_1
+        if interval < intervals-1:
+            nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
 
-    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles
+    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, node_power_deficit
 
 @njit
 def sum_positive_values(arr):
