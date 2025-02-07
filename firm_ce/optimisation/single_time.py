@@ -368,14 +368,12 @@ class Solution_SingleTime:
 
         return result
 
-    def _reliability(self, flexible, start=None, end=None):
+    def _reliability(self, start=None, end=None):
         network = self.network
         
         Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload_nodal)[start:end]
-        Netload -= flexible
         shape2d = intervals, nodes = len(Netload), self.nodes
 
-        P_maximum = frequency.max_along_axis_n(Netload, 0)
         Scapacity = self.CPHS_nodal * 1000
 
         Hcapacity = self.CTrans * 1000 # GW to MW
@@ -385,14 +383,14 @@ class Solution_SingleTime:
         Discharge = np.zeros(shape2d, dtype=np.float64)
         Charge = np.zeros(shape2d, dtype=np.float64)
         Storage = np.zeros(shape2d, dtype=np.float64)
-        #Deficit = np.zeros(shape2d, dtype=np.float64)
+        Deficit = np.zeros(shape2d, dtype=np.float64)
         Transmission = np.zeros((intervals, ntrans, nodes), dtype = np.float64)
         Storaget_1 = 0.5*Scapacity
 
         for t in range(intervals):
             Netloadt = Netload[t]
 
-            Discharget = np.minimum(np.minimum(np.maximum(0, Netloadt), P_maximum), Storaget_1 / resolution)
+            Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
             Deficitt = np.maximum(Netloadt - Discharget ,0)
             
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
@@ -400,28 +398,28 @@ class Solution_SingleTime:
             if Deficitt.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
-                Surplust = -1 * np.minimum(0, Netloadt) + (np.minimum(P_maximum, Storaget_1 / resolution) - Discharget)
+                Surplust = -1 * np.minimum(0, Netloadt) + (Storaget_1 / resolution - Discharget)
 
                 Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
-                Discharget = np.minimum(np.minimum(np.maximum(0, Netloadt), P_maximum), Storaget_1 / resolution)
+                Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
                 
-            Charget = np.minimum(np.minimum(-1 * np.minimum(0, Netloadt), P_maximum), (Scapacity - Storaget_1) / efficiency / resolution)
+            Charget = np.minimum(-1 * np.minimum(0, Netloadt), (Scapacity - Storaget_1) / efficiency / resolution)
             Surplust = -1 * np.minimum(0, Netloadt + Charget)# charge itself first, then distribute
             if Surplust.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Distribute surplus energy with transmission to areas with spare charging capacity
                 Fillt = (Discharget # load not met by gen and transmission
-                        + np.minimum(P_maximum, (Scapacity - Storaget_1) / efficiency / resolution) #full charging capacity
+                        + (Scapacity - Storaget_1) / efficiency / resolution #full charging capacity
                         - Charget) #charge capacity already in use
                 Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, self.networksteps,
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
-                Charget = np.minimum(np.minimum(-1 * np.minimum(0, Netloadt), P_maximum), (Scapacity - Storaget_1) / efficiency / resolution)
-                Discharget = np.minimum(np.minimum(np.maximum(0, Netloadt), P_maximum), Storaget_1 / resolution)
+                Charget = np.minimum(-1 * np.minimum(0, Netloadt),(Scapacity - Storaget_1) / efficiency / resolution)
+                Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
 
             Storaget = Storaget_1 - Discharget * resolution + Charget * resolution * efficiency
             Storaget_1 = Storaget.copy()
@@ -433,21 +431,21 @@ class Solution_SingleTime:
         
         ImpExp = Transmission.sum(axis=1)
         
-        #Deficit = np.maximum(0, Netload - ImpExp - Discharge)
-        #Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)
+        Deficit = np.maximum(0, Netload - ImpExp - Discharge)
+        Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)
 
-        #self.Spillage_nodal = Spillage
+        self.Spillage_nodal = Spillage
         self.Charge_nodal = Charge
         self.Discharge_nodal = Discharge
         self.StoragePower_nodal = Discharge - Charge
         self.Storage_nodal = Storage
-        #self.Deficit_nodal = Deficit
+        self.Deficit_nodal = Deficit
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
 
         self.TFlows = (Transmission).sum(axis=2)
         
-        return Charge + Discharge
+        return Deficit
 
     def _calculate_costs(self):
         solution_cost = calculate_costs(self)
@@ -481,8 +479,6 @@ class Solution_SingleTime:
         
         self.GBaseload = self._apportion_nodal_array(self.CBaseload,self.GBaseload_nodal,self.baseload_nodes)
 
-        #self.Discharge = self._apportion_nodal_array(self.CPHP,self.Discharge_nodal,self.storage_nodes)
-
         return None
 
     def _calculate_annual_generation(self):
@@ -490,14 +486,12 @@ class Solution_SingleTime:
         self.GWind_annual = self.GWind.sum(axis=0) * self.resolution / self.years
         self.GFlexible_annual = self.GFlexible.sum(axis=0) * self.resolution / self.efficiency / self.years
         self.GBaseload_annual = self.GBaseload.sum(axis=0) * self.resolution / self.years
-        #self.GDischarge_annual = self.Discharge.sum(axis=0) * self.resolution / self.years
         self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
 
         return None
     
     def _get_storage_capacities(self):
         self.storage_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        #self.storage_p_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
         
         """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
         np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
@@ -507,24 +501,16 @@ class Solution_SingleTime:
         for node_idx in range(self.nodes):
             frequency_profile_p = frequency.get_frequency_profile(self.StoragePower_nodal[:,node_idx])
             normalised_magnitudes_p = frequency.get_normalised_profile(frequency_profile_p)
-            total_magnitude_p = sum(normalised_magnitudes_p)
-
-            frequencies = frequency.get_frequencies(self.intervals, self.resolution)
 
             dc_offset_p = frequency.get_dc_offset(frequency_profile_p)
             dc_offset_p_timeseries = frequency.get_timeseries_profile(dc_offset_p)
             
             for storage_i in range(self.nodal_storage_count[node_idx]):
-                #if abs(self.storage_p_W_cutoffs[node_idx, storage_i] - self.max_frequency) <= EPSILON_FLOAT64:
-                if abs(self.storage_p_W_cutoffs[node_idx, storage_i] - 1.0) <= EPSILON_FLOAT64:
+                thresh_i = self.nodal_storage_count[node_idx] - storage_i
+                if abs(self.storage_p_W_cutoffs[node_idx, thresh_i-1] - 1.0) <= EPSILON_FLOAT64:
                     break
 
-                # Energy Capacity
-                #bandpass_filter_p = frequency.get_bandpass_filter(self.storage_p_W_cutoffs[node_idx, storage_i],self.storage_p_W_cutoffs[node_idx, storage_i+1], frequencies)
-                magnitude_filter_p = frequency.get_magnitude_filter(self.storage_p_thresholds[node_idx, storage_i],self.storage_p_thresholds[node_idx, storage_i+1], normalised_magnitudes_p)
-                filtered_magnitudes_p = frequency.get_filtered_frequency(normalised_magnitudes_p, magnitude_filter_p)
-                unit_magnitude_p = sum(filtered_magnitudes_p)                
-                #self.storage_p_capacities_ifft[node_idx,storage_i] = self.CPHP_nodal[node_idx] * unit_magnitude_p / total_magnitude_p
+                magnitude_filter_p = frequency.get_magnitude_filter(self.storage_p_thresholds[node_idx, thresh_i-1],self.storage_p_thresholds[node_idx, thresh_i], normalised_magnitudes_p)
                 
                 filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, magnitude_filter_p)
                 unit_timeseries_p = frequency.get_timeseries_profile(filtered_frequency_profile_p)
@@ -534,11 +520,7 @@ class Solution_SingleTime:
             self.storage_p_profiles_ifft[:,node_idx,0] = self.storage_p_profiles_ifft[:,node_idx,0] + dc_offset_p_timeseries
 
             #np.savetxt("results/storage_p_profiles_ifft.csv", self.storage_p_profiles_ifft[:,node_idx,:], delimiter=",")
-            """ if node_idx > 0:
-                exit() """
-
-        #print("Energy capacities: ", self.storage_e_capacities_ifft)
-        #print("Power capacities: ", self.storage_p_capacities)
+            #exit()
 
         return None
     
@@ -547,6 +529,8 @@ class Solution_SingleTime:
         ############### Use IDX to find the costs in storage_costs
         nodal_costs = NP_FLOAT_MAX * np.ones(self.nodes, dtype=np.float64)
         nodal_n_permutations = np.zeros(self.nodes, dtype=np.int64)
+        deficit_intranodes = np.zeros(self.Deficit_nodal.shape, dtype=np.float64)
+        spillage_intranodes = np.zeros(self.Deficit_nodal.shape, dtype=np.float64)
 
         for node_idx in range(self.nodes): 
             #print(node_idx)
@@ -567,13 +551,12 @@ class Solution_SingleTime:
 
                 for i in range(len(node_storage_ids)):
                     #### This should be fixed to reflect self.storage_ids in case some storage are not included in a scenario
-                    #permutation_storage_p_capacities[i] = self.CPHP[storage_permutations[p,i]]
                     permutation_storage_costs[:,i] = self.storage_costs[:,storage_permutations[p,i]]
                     permutation_storage_e_capacities[i] = self.CPHS[storage_permutations[p,i]]
                     permutation_storage_d_efficiencies[i] = self.storage_d_efficiencies[storage_permutations[p,i]]
                     permutation_storage_c_efficiencies[i] = self.storage_c_efficiencies[storage_permutations[p,i]]
 
-                storage_p_profile_option, storage_e_profile_option, power_deficit = frequency.reapportion_exceeded_capacity(storage_p_profile_ifft, 
+                storage_p_profile_option, storage_e_profile_option, deficit_intranode, spillage_intranode = frequency.reapportion_exceeded_capacity(storage_p_profile_ifft, 
                                                                                                                 permutation_storage_e_capacities,
                                                                                                                 permutation_storage_d_efficiencies, 
                                                                                                                 permutation_storage_c_efficiencies, 
@@ -601,7 +584,8 @@ class Solution_SingleTime:
 
                 if perm_cost < nodal_costs[node_idx]:
                     nodal_costs[node_idx] = perm_cost
-                    self.Deficit_nodal[:,node_idx] = power_deficit
+                    deficit_intranodes[:,node_idx] = deficit_intranode
+                    spillage_intranodes[:,node_idx] = spillage_intranode
 
                     for i in range(len(node_storage_ids)):
                         #print(self.storage_e_profiles.shape,storage_e_profile_option.shape,self.storage_p_profiles.shape,storage_p_profile_option.shape)
@@ -614,24 +598,22 @@ class Solution_SingleTime:
         np.savetxt("results/StoragePower.csv", self.StoragePower_nodal, delimiter=",")
         np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles, delimiter=",")
         np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles, delimiter=",")
-        np.savetxt("results/power_deficit.csv", self.Deficit_nodal, delimiter=",")
+        np.savetxt("results/deficit_intranode.csv", deficit_intranodes, delimiter=",")
         exit() """
 
         storage_costs = sum(nodal_costs)
+        self.Deficit_nodal += deficit_intranodes
+        self.Spillage_nodal += spillage_intranodes
         
-        return storage_costs, self.Deficit_nodal
+        return storage_costs, deficit_intranodes
 
     def _objective(self) -> List[float]:
-        net_storage_power = self._reliability(flexible=np.zeros((self.intervals, self.nodes), dtype=np.float64))      
-        #self.GFlexible_nodal = deficit * self.resolution / self.years / (0.5 * (1 + self.efficiency))
-
-        #net_storage_power = self._reliability(flexible=self.GFlexible_nodal)
-        #pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000 # MWh
+        deficit_nodal = self._reliability()
         self.TFlowsAbs = np.abs(self.TFlows)
 
         self._get_storage_capacities()
-        storage_costs, deficit = self._determine_cheapest_storage()
-        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000
+        storage_costs, deficit_intranode = self._determine_cheapest_storage()
+        pen_deficit = np.maximum(0., (deficit_nodal + deficit_intranode).sum() * self.resolution - self.allowance) * 1000
 
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
@@ -643,7 +625,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss)
         
-        #print("LCOE: ", lcoe, pen_deficit)
+        """ print("LCOE: ", lcoe, pen_deficit)
+        exit() """
         return lcoe, pen_deficit
 
     def evaluate(self):

@@ -28,8 +28,5 @@ FIRM_CE bugs
 - Add fuel costs into calculation
 - MOVE FLEXIBLE GENERATION INTO FREQUENCY ANALYSIS, WITH CHARGING CAPACITY OF 0
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
-- CUTOFF FREQUENCIES MUST BE AN ORDERED LIST. HOW?
-- What about harmonics?
-- P_maximum blows up for large spillage. Perhaps only focus on deficits and not spillage for setting it?
-- Perhaps need to rebuild reliability? There may still be deficits there due to storage constraints. Maybe we just take the netload profile as the StoragePower profile, then modify it using transmission where possible, and ignore constraints until the storage functions.
-- I think I should drop the power constraints. Just take the power capacity to be the maximum value of the timeseries again. Although I might need power capacity constraints when adding flexible back in again? 
+- CUTOFF FREQUENCIES MUST BE AN ORDERED LIST. USE PENALTY FUNCTION TO QUICKLY FORCE THIS AT THE START OF OBJECTIVE FUNCTION
+- Might need power capacity constraints when adding flexible back in again? 
