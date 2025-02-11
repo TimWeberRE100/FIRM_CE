@@ -26,7 +26,9 @@ PLEXOS bugs
 
 FIRM_CE bugs
 - Add fuel costs into calculation
-- MOVE FLEXIBLE GENERATION INTO FREQUENCY ANALYSIS, WITH CHARGING CAPACITY OF 0
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
-- CUTOFF FREQUENCIES MUST BE AN ORDERED LIST. USE PENALTY FUNCTION TO QUICKLY FORCE THIS AT THE START OF OBJECTIVE FUNCTION
-- Might need power capacity constraints when adding flexible back in again? 
+- Swap back to bandpass filters. Add peak finding function. Bandpass filter applies to peaks only, NOT noise. 
+----- Add peak finding function, then remove frequencies from decision variables. Run combinations of peaks assigned to each balancing technology. Only apply constraints once to simplify the factorial problem.
+- Frequency analysis apply to entire net load, only apply storage constraints in the apportioning method? Will transmission still work in this case?
+I think it won't since transmission requires knowledge of whether storage is empty/full. Since flexible is rolled into this though, it may be necessary
+to remove the storage constraints here.

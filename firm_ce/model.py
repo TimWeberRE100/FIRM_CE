@@ -42,7 +42,8 @@ class Scenario:
 
         self.intervals = len(self.nodes[0].demand_data)
         node_names = {self.nodes[idx].name : self.nodes[idx].id for idx in self.nodes}
-        self.nodes_with_storage = set([node_names[self.storages[idx].node] for idx in self.storages])
+        self.nodes_with_balancing = set([node_names[self.storages[idx].node] for idx in self.storages] 
+                                        + [node_names[self.generators[idx].node] for idx in self.generators if self.generators[idx].unit_type == 'flexible'])
         self.max_frequency = max(get_frequencies(self.intervals, self.resolution))
 
     def __repr__(self):
@@ -111,3 +112,4 @@ class Model:
     def solve(self):
         for scenario in self.scenarios.values():
             self.results[scenario.name] = scenario.solve(self.config)
+            exit() ####### DEBUG

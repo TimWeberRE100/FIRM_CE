@@ -2,9 +2,10 @@ import numpy as np
 from typing import List
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX
+from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX, NP_FLOAT_MIN
 from firm_ce.components.costs import calculate_costs, annualisation_component
 import firm_ce.network.frequency as frequency
+import firm_ce.helpers as helpers
 
 if JIT_ENABLED:
     from numba import float64, int64, boolean, njit, prange
@@ -49,7 +50,10 @@ if JIT_ENABLED:
         ('storage_power_capacities', float64[:]),
         ('storage_energy_capacities', float64[:]),
         ('storage_unit_types', int64[:]),
-        ('nodes_with_storage', int64[:]),
+
+
+        ('flexible_ids', int64[:]),
+        ('nodes_with_balancing', int64[:]),
         ('max_frequency', float64),
         ('storage_durations', float64[:]),
         ('storage_costs', float64[:, :]),
@@ -71,17 +75,18 @@ if JIT_ENABLED:
 
         ('CPV', float64[:]),
         ('CWind', float64[:]),
+        ('CFlexible', float64[:]),
         ('CPHP', float64[:]),
         ('CPHS', float64[:]),
         ('CTrans', float64[:]),
-        ('storage_p_W_x', float64[:]),
+        ('magnitudes_x', float64[:]),
 
         ('solar_nodes', int64[:]),
         ('wind_nodes', int64[:]),
         ('flexible_nodes', int64[:]),
         ('baseload_nodes', int64[:]),
 
-        ('CPHP_nodal', float64[:]),
+        ('CFlexible_nodal', float64[:]),
         ('CPHS_nodal', float64[:]),
         ('GPV', float64[:, :]),
         ('GPV_nodal', float64[:, :]),
@@ -119,12 +124,26 @@ if JIT_ENABLED:
         ('storage_e_profiles', float64[:,:]),
         ('storage_p_capacities', float64[:]),
         ('storage_e_capacities', float64[:]),
-        ('storage_p_profiles_ifft', float64[:,:,:]),
+        ('flexible_p_profiles', float64[:,:]),
+        ('flexible_p_capacities', float64[:]),
+        ('balancing_p_profiles_ifft', float64[:,:,:]),
         ('storage_p_capacities_ifft', float64[:,:]),
-        ('storage_p_W_x_nodal', float64[:,:]),
-        ('storage_p_W_cutoffs', float64[:,:]),
-        ('storage_p_thresholds', float64[:,:]),
-        ('nodal_storage_count', int64[:]),
+        ('magnitudes_x_nodal', float64[:,:]),
+        ('magnitudes_cutoffs', float64[:,:]),
+        ('magnitudes_thresholds', float64[:,:]),
+        ('nodal_balancing_count', int64[:]),
+
+        ('nodes_with_balancing', int64[:]),
+        ('balancing_ids', int64[:]),
+        ('balancing_nodes', int64[:]),
+        ('balancing_order', int64[:]),
+        ('balancing_storage_tag', int64[:]),
+        ('balancing_d_efficiencies', float64[:]),
+        ('balancing_c_efficiencies', float64[:]),
+        ('balancing_c_constraint', float64[:]),
+        ('balancing_d_constraint', float64[:]),
+        ('balancing_e_constraints', float64[:]),
+        ('balancing_costs', float64[:,:]),
     ]
 else:
     def jitclass(spec):
@@ -169,7 +188,8 @@ class Solution_SingleTime:
                 storage_power_capacities,
                 storage_energy_capacities,
                 storage_unit_types,
-                nodes_with_storage,
+                flexible_ids,
+                nodes_with_balancing,
                 max_frequency,
                 storage_durations,
                 storage_costs,
@@ -179,10 +199,10 @@ class Solution_SingleTime:
                 TLoss,
                 pv_idx,
                 wind_idx,
-                storage_p_idx,
+                flexible_p_idx,
                 storage_e_idx,
                 lines_idx,
-                storage_p_W_idx,
+                magnitudes_idx,
                 solar_nodes,
                 wind_nodes,
                 flexible_nodes,
@@ -234,7 +254,6 @@ class Solution_SingleTime:
         self.storage_power_capacities = storage_power_capacities
         self.storage_energy_capacities = storage_energy_capacities
         self.storage_unit_types = storage_unit_types
-        self.nodes_with_storage = nodes_with_storage
         self.max_frequency = max_frequency
         self.storage_durations = storage_durations
         self.storage_costs = storage_costs
@@ -258,12 +277,50 @@ class Solution_SingleTime:
         # Decision Variables
         self.CPV = x[: pv_idx]
         self.CWind = x[pv_idx : wind_idx]
-        self.CPHP_nodal = x[wind_idx : storage_p_idx]
-        self.CPHS = x[storage_p_idx : storage_e_idx]
+        self.CFlexible = x[wind_idx : flexible_p_idx]
+        self.CPHS = x[flexible_p_idx : storage_e_idx]
         self.CTrans = x[storage_e_idx : lines_idx]
-        self.storage_p_W_x = x[lines_idx : ]
+        self.magnitudes_x = x[lines_idx : ]
 
-        #print(self.CPV,self.CWind,self.CPHP_nodal,self.CPHS_nodal,self.CTrans,self.storage_p_W_x)
+        # Flexible
+        self.flexible_ids = flexible_ids
+        self.nodes_with_balancing = nodes_with_balancing
+        self.balancing_ids = np.hstack((storage_ids, flexible_ids))
+        self.balancing_nodes = np.hstack((storage_nodes, flexible_nodes))
+        self.balancing_order = np.arange(len(self.balancing_ids), dtype=np.int64)
+        self.balancing_storage_tag = np.hstack(
+                                        (np.ones(len(storage_ids), dtype=np.int64),
+                                        np.zeros(len(flexible_ids), dtype=np.int64))
+                                    )
+        self.balancing_d_efficiencies = np.hstack(
+                                                (storage_d_efficiencies, 
+                                                np.ones(len(flexible_ids), dtype=np.float64))
+                                                )
+        self.balancing_c_efficiencies = np.hstack(
+                                                    (storage_c_efficiencies, 
+                                                    np.ones(len(flexible_ids), dtype=np.float64))
+                                                )
+        self.balancing_c_constraint = np.hstack(
+                                        (np.full(len(storage_ids), NP_FLOAT_MIN / 10000, dtype=np.float64), # Divide by 10000 to prevent overflow when converting GW to MW
+                                        np.zeros(len(flexible_ids), dtype=np.float64))
+                                      )
+        self.balancing_d_constraint = np.hstack(
+                                        (np.full(len(storage_ids), NP_FLOAT_MAX / 10000, dtype=np.float64), 
+                                        self.CFlexible)
+                                      )
+        self.balancing_e_constraints = np.hstack(
+                                        (self.CPHS, 
+                                        np.full(len(flexible_ids), NP_FLOAT_MAX / 10000, dtype=np.float64))
+                                      )
+        
+        flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
+        #print(flexible_mask, self.storage_costs.shape,self.generator_costs[:, flexible_mask].shape)
+        self.balancing_costs = np.hstack(
+                                        (self.storage_costs, 
+                                        self.generator_costs[:, flexible_mask])
+                                        )
+
+        #print(self.CPV,self.CWind,self.CFlexible,self.CPHS,self.CTrans,self.magnitudes_x)
 
         """ nodal_durations = 
         for idx in range(len(storage_durations)):
@@ -277,7 +334,7 @@ class Solution_SingleTime:
         self.baseload_nodes = baseload_nodes
         self.storage_nodes = self.storage_nodes
 
-        """ self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes) """
+        self.CFlexible_nodal = self._fill_nodal_array_1d(self.CFlexible, self.flexible_nodes)
         self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)   
         self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
@@ -297,18 +354,18 @@ class Solution_SingleTime:
         self.Import_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64) 
         self.Export_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64)   
 
-        self.nodal_storage_count = np.zeros(self.nodes, dtype=np.int64)
-        for node_idx in range(len(self.nodal_storage_count)):
-            for i in self.storage_nodes:
+        self.nodal_balancing_count = np.zeros(self.nodes, dtype=np.int64)
+        for node_idx in range(len(self.nodal_balancing_count)):
+            for i in self.balancing_nodes:
                 if i == node_idx:
-                    self.nodal_storage_count[node_idx]+=1
+                    self.nodal_balancing_count[node_idx]+=1
 
-        self.storage_p_W_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_storage_count)), dtype=np.float64)
+        self.magnitudes_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_balancing_count)), dtype=np.float64)
 
-        for node_idx in range(len(self.nodal_storage_count)):
-            for current_node_count in range(self.nodal_storage_count[node_idx]-1):
-                W_idx = sum(self.nodal_storage_count[:node_idx]) - len(self.nodal_storage_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
-                self.storage_p_W_x_nodal[node_idx, current_node_count] = self.storage_p_W_x[W_idx]
+        for node_idx in range(len(self.nodal_balancing_count)):
+            for current_node_count in range(self.nodal_balancing_count[node_idx]-1):
+                W_idx = sum(self.nodal_balancing_count[:node_idx]) - len(self.nodal_balancing_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
+                self.magnitudes_x_nodal[node_idx, current_node_count] = self.magnitudes_x[W_idx]
 
         self.GPV_annual = np.zeros(0, dtype=np.float64)
         self.GWind_annual = np.zeros(0, dtype=np.float64)
@@ -326,28 +383,30 @@ class Solution_SingleTime:
         self.line_cost_ids = line_cost_ids
 
         # Frequency attributes
-        self.storage_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_p_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        self.storage_p_W_cutoffs = np.zeros((self.nodes, self.storage_p_W_x_nodal.shape[1] + 2), dtype=np.float64) 
-        self.storage_p_thresholds = np.zeros((self.nodes, self.storage_p_W_x_nodal.shape[1] + 2), dtype=np.float64)   
+        self.balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
+        #self.storage_p_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+        #self.magnitudes_cutoffs = np.zeros((self.nodes, self.magnitudes_x_nodal.shape[1] + 2), dtype=np.float64) 
+        self.magnitudes_thresholds = np.zeros((self.nodes, self.magnitudes_x_nodal.shape[1] + 2), dtype=np.float64)   
 
         self.storage_p_profiles = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
         self.storage_e_profiles = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)                
         self.storage_e_capacities = np.zeros(len(storage_ids), dtype=np.float64)
         self.storage_p_capacities = np.zeros(len(storage_ids), dtype=np.float64)
+        self.flexible_p_profiles = np.zeros((self.intervals,len(flexible_ids)), dtype=np.float64)
+        self.flexible_p_capacities = np.zeros(len(flexible_ids), dtype=np.float64)
 
         #print(x)      
 
         for node_idx in self.storage_nodes:
-            for W_idx in range(self.storage_p_W_x_nodal.shape[1]):
-                if self.storage_p_W_x_nodal[node_idx,W_idx] > -0.5:
-                    self.storage_p_W_cutoffs[node_idx,W_idx+1] = self.storage_p_W_x_nodal[node_idx,W_idx]
-                    self.storage_p_thresholds[node_idx,W_idx+1] = self.storage_p_W_x_nodal[node_idx,W_idx]
+            for W_idx in range(self.magnitudes_x_nodal.shape[1]):
+                if self.magnitudes_x_nodal[node_idx,W_idx] > -0.5:
+                    #self.magnitudes_cutoffs[node_idx,W_idx+1] = self.magnitudes_x_nodal[node_idx,W_idx]
+                    self.magnitudes_thresholds[node_idx,W_idx+1] = self.magnitudes_x_nodal[node_idx,W_idx]
                 else:
-                    self.storage_p_W_cutoffs[node_idx,W_idx+1] = max_frequency
-                    self.storage_p_thresholds[node_idx,W_idx+1] = 1.0
-            self.storage_p_W_cutoffs[node_idx,-1] = max_frequency   
-            self.storage_p_thresholds[node_idx,-1] = 1.0
+                    #self.magnitudes_cutoffs[node_idx,W_idx+1] = max_frequency
+                    self.magnitudes_thresholds[node_idx,W_idx+1] = 1.01
+            #self.magnitudes_cutoffs[node_idx,-1] = max_frequency   
+            self.magnitudes_thresholds[node_idx,-1] = 1.01
 
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
@@ -490,8 +549,8 @@ class Solution_SingleTime:
 
         return None
     
-    def _get_storage_capacities(self):
-        self.storage_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
+    def _filter_balancing_profiles(self):
+        self.balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
         
         """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
         np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
@@ -505,28 +564,26 @@ class Solution_SingleTime:
             dc_offset_p = frequency.get_dc_offset(frequency_profile_p)
             dc_offset_p_timeseries = frequency.get_timeseries_profile(dc_offset_p)
             
-            for storage_i in range(self.nodal_storage_count[node_idx]):
-                thresh_i = self.nodal_storage_count[node_idx] - storage_i
-                if abs(self.storage_p_W_cutoffs[node_idx, thresh_i-1] - 1.0) <= EPSILON_FLOAT64:
+            for storage_i in range(self.nodal_balancing_count[node_idx]):
+                thresh_i = self.nodal_balancing_count[node_idx] - storage_i
+                if abs(self.magnitudes_thresholds[node_idx, thresh_i-1] - 1.0) <= EPSILON_FLOAT64:
                     break
 
-                magnitude_filter_p = frequency.get_magnitude_filter(self.storage_p_thresholds[node_idx, thresh_i-1],self.storage_p_thresholds[node_idx, thresh_i], normalised_magnitudes_p)
+                magnitude_filter_p = frequency.get_magnitude_filter(self.magnitudes_thresholds[node_idx, thresh_i-1],self.magnitudes_thresholds[node_idx, thresh_i], normalised_magnitudes_p)
                 
                 filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, magnitude_filter_p)
                 unit_timeseries_p = frequency.get_timeseries_profile(filtered_frequency_profile_p)
-                self.storage_p_profiles_ifft[:,node_idx,storage_i] = unit_timeseries_p
+                self.balancing_p_profiles_ifft[:,node_idx,storage_i] = unit_timeseries_p
                 
             # Apportion dc offset
-            self.storage_p_profiles_ifft[:,node_idx,0] = self.storage_p_profiles_ifft[:,node_idx,0] + dc_offset_p_timeseries
+            self.balancing_p_profiles_ifft[:,node_idx,0] = self.balancing_p_profiles_ifft[:,node_idx,0] + dc_offset_p_timeseries
 
             #np.savetxt("results/storage_p_profiles_ifft.csv", self.storage_p_profiles_ifft[:,node_idx,:], delimiter=",")
             #exit()
 
         return None
     
-    def _determine_cheapest_storage(self):
-        #################### Use storage_nodes to check if a storage is located at that node (location in array IDX)
-        ############### Use IDX to find the costs in storage_costs
+    def _determine_cheapest_balancing(self):
         nodal_costs = NP_FLOAT_MAX * np.ones(self.nodes, dtype=np.float64)
         nodal_n_permutations = np.zeros(self.nodes, dtype=np.int64)
         deficit_intranodes = np.zeros(self.Deficit_nodal.shape, dtype=np.float64)
@@ -534,52 +591,61 @@ class Solution_SingleTime:
 
         for node_idx in range(self.nodes): 
             #print(node_idx)
-            node_mask = self.storage_nodes == node_idx
-            node_storage_ids = self.storage_ids[node_mask]
+            node_mask = self.balancing_nodes == node_idx
+            node_balancing_order = self.balancing_order[node_mask]
 
-            storage_permutations = frequency.generate_permutations(node_storage_ids)
-            nodal_n_permutations[node_idx] = storage_permutations.shape[0]
-            #print("Permutations: ", storage_permutations)
+            balancing_permutations = frequency.generate_permutations(node_balancing_order)
+            nodal_n_permutations[node_idx] = balancing_permutations.shape[0]
+            #print("Permutations: ", balancing_permutations)
 
             for p in range(nodal_n_permutations[node_idx]):
-                storage_p_profile_ifft = self.storage_p_profiles_ifft[:,node_idx,:].copy()
+                balancing_p_profile_ifft = self.balancing_p_profiles_ifft[:,node_idx,0:len(node_balancing_order)].copy()
+                """ print(self.nodal_balancing_count)
+                print(node_balancing_order)
+                print(balancing_p_profile_ifft.shape) """
                 perm_cost = 0
-                permutation_storage_e_capacities = np.zeros(len(node_storage_ids), dtype=np.int64)
-                permutation_storage_costs = np.zeros((self.storage_costs.shape[0],len(node_storage_ids)), dtype=np.float64)
-                permutation_storage_d_efficiencies = np.zeros(len(node_storage_ids), dtype=np.float64)
-                permutation_storage_c_efficiencies = np.zeros(len(node_storage_ids), dtype=np.float64)
+                permutation_balancing_e_constraint = np.zeros(len(node_balancing_order), dtype=np.float64)                
+                permutation_balancing_d_efficiencies = np.zeros(len(node_balancing_order), dtype=np.float64)
+                permutation_balancing_c_efficiencies = np.zeros(len(node_balancing_order), dtype=np.float64)
+                permutation_balancing_d_constraints = np.zeros(len(node_balancing_order), dtype=np.float64)
+                permutation_balancing_c_constraints = np.zeros(len(node_balancing_order), dtype=np.float64)
+                permutation_balancing_costs = np.zeros((self.balancing_costs.shape[0],len(node_balancing_order)), dtype=np.float64)
 
-                for i in range(len(node_storage_ids)):
-                    #### This should be fixed to reflect self.storage_ids in case some storage are not included in a scenario
-                    permutation_storage_costs[:,i] = self.storage_costs[:,storage_permutations[p,i]]
-                    permutation_storage_e_capacities[i] = self.CPHS[storage_permutations[p,i]]
-                    permutation_storage_d_efficiencies[i] = self.storage_d_efficiencies[storage_permutations[p,i]]
-                    permutation_storage_c_efficiencies[i] = self.storage_c_efficiencies[storage_permutations[p,i]]
+                for i in range(len(node_balancing_order)):
+                    permutation_balancing_e_constraint[i] = self.balancing_e_constraints[balancing_permutations[p,i]]
+                    permutation_balancing_d_efficiencies[i] = self.balancing_d_efficiencies[balancing_permutations[p,i]]
+                    permutation_balancing_c_efficiencies[i] = self.balancing_c_efficiencies[balancing_permutations[p,i]]
+                    permutation_balancing_d_constraints[i] = self.balancing_d_constraint[balancing_permutations[p,i]]
+                    permutation_balancing_c_constraints[i] = self.balancing_c_constraint[balancing_permutations[p,i]]
+                    permutation_balancing_costs[:,i] = self.balancing_costs[:,balancing_permutations[p,i]]
 
-                storage_p_profile_option, storage_e_profile_option, deficit_intranode, spillage_intranode = frequency.reapportion_exceeded_capacity(storage_p_profile_ifft, 
-                                                                                                                permutation_storage_e_capacities,
-                                                                                                                permutation_storage_d_efficiencies, 
-                                                                                                                permutation_storage_c_efficiencies, 
+                balancing_p_profile_option, balancing_e_profile_option, deficit_intranode, spillage_intranode = frequency.reapportion_exceeded_capacity(balancing_p_profile_ifft, 
+                                                                                                                permutation_balancing_e_constraint,
+                                                                                                                permutation_balancing_d_efficiencies, 
+                                                                                                                permutation_balancing_c_efficiencies, 
+                                                                                                                permutation_balancing_d_constraints,
+                                                                                                                permutation_balancing_c_constraints,
                                                                                                                 self.resolution)
                 
-                permutation_annual_discharge = frequency.sum_positive_values(storage_p_profile_option) * self.resolution / self.years
-                permutation_storage_e_capacities = frequency.max_along_axis_n(storage_e_profile_option, axis_n=0) / 1000 # MW to GW
-                permutation_storage_p_capacities = frequency.max_along_axis_n(np.abs(storage_p_profile_option), axis_n=0) / 1000
+                permutation_annual_discharge = helpers.sum_positive_values(balancing_p_profile_option) * self.resolution / self.years
+                permutation_balancing_e_capacities = helpers.max_along_axis_n(balancing_e_profile_option, axis_n=0) / 1000 # MW to GW
+                permutation_balancing_p_capacities = helpers.max_along_axis_n(np.abs(balancing_p_profile_option), axis_n=0) / 1000
                 #print(permutation_storage_p_capacities)
                 
                 #print("Annual discharge: ", permutation_annual_discharge)
                 
                 perm_cost = np.array([
                                     annualisation_component(
-                                        power_capacity=permutation_storage_p_capacities[idx],
-                                        energy_capacity=permutation_storage_e_capacities[idx],
+                                        power_capacity=permutation_balancing_p_capacities[idx],
+                                        energy_capacity=permutation_balancing_e_capacities[idx],
                                         annual_generation=permutation_annual_discharge[idx],
-                                        capex_p=permutation_storage_costs[0,idx],
-                                        fom=permutation_storage_costs[2,idx],
-                                        vom=permutation_storage_costs[3,idx],
-                                        lifetime=permutation_storage_costs[4,idx],
-                                        discount_rate=permutation_storage_costs[5,idx]
-                                    ) for idx in range(0,len(permutation_storage_e_capacities))
+                                        capex_p=permutation_balancing_costs[0,idx],
+                                        capex_e=permutation_balancing_costs[1,idx],
+                                        fom=permutation_balancing_costs[2,idx],
+                                        vom=permutation_balancing_costs[3,idx],
+                                        lifetime=permutation_balancing_costs[4,idx],
+                                        discount_rate=permutation_balancing_costs[5,idx]
+                                    ) for idx in range(0,len(permutation_balancing_e_capacities))
                                     ], dtype=np.float64).sum()
 
                 if perm_cost < nodal_costs[node_idx]:
@@ -587,17 +653,24 @@ class Solution_SingleTime:
                     deficit_intranodes[:,node_idx] = deficit_intranode
                     spillage_intranodes[:,node_idx] = spillage_intranode
 
-                    for i in range(len(node_storage_ids)):
+                    for i in range(len(node_balancing_order)):
+                        flexible_order_offset = len(self.storage_ids) + 1
                         #print(self.storage_e_profiles.shape,storage_e_profile_option.shape,self.storage_p_profiles.shape,storage_p_profile_option.shape)
-                        self.storage_e_profiles[:,storage_permutations[p,i]] = storage_e_profile_option[:,i]
-                        self.storage_p_profiles[:,storage_permutations[p,i]] = storage_p_profile_option[:,i]
-                        self.storage_p_capacities[storage_permutations[p,i]] = permutation_storage_p_capacities[i]
-                        self.storage_e_capacities = self.CPHS
-        """ print(self.storage_p_capacities, self.CPHS)
-        np.savetxt("results/storage_p_profiles_ifft.csv", self.storage_p_profiles_ifft[:,0,:], delimiter=",")
+                        if balancing_permutations[p,i] < flexible_order_offset - 1:
+                            self.storage_e_profiles[:,balancing_permutations[p,i]] = balancing_e_profile_option[:,i] 
+                            self.storage_p_profiles[:,balancing_permutations[p,i]] = balancing_p_profile_option[:,i]
+                            self.storage_p_capacities[balancing_permutations[p,i]] = permutation_balancing_p_capacities[i]
+                            self.storage_e_capacities = self.CPHS
+                        else:
+                            self.flexible_p_profiles[:,balancing_permutations[p,i]-flexible_order_offset] = balancing_p_profile_option[:,i]
+                            self.flexible_p_capacities = self.CFlexible
+
+        """ print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
+        np.savetxt("results/storage_p_profiles_ifft.csv", self.balancing_p_profiles_ifft[:,0,:], delimiter=",")
         np.savetxt("results/StoragePower.csv", self.StoragePower_nodal, delimiter=",")
         np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles, delimiter=",")
         np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles, delimiter=",")
+        np.savetxt("results/flexible_p_profiles.csv", self.flexible_p_profiles, delimiter=",")
         np.savetxt("results/deficit_intranode.csv", deficit_intranodes, delimiter=",")
         exit() """
 
@@ -606,13 +679,28 @@ class Solution_SingleTime:
         self.Spillage_nodal += spillage_intranodes
         
         return storage_costs, deficit_intranodes
+    
+    def _check_cutoffs_monotonic_increasing(self):
+        pen_thresholds = 0.
+        for node_idx in range(self.nodes):
+            for threshold_idx in range(self.magnitudes_x_nodal.shape[1]):
+                if self.magnitudes_thresholds[node_idx,threshold_idx+1] < self.magnitudes_thresholds[node_idx,threshold_idx]: 
+                    pen_thresholds += 1000000.
+
+        return pen_thresholds
 
     def _objective(self) -> List[float]:
+        # Frequency cutoffs at each node must be monotonic increasing
+        pen_thresholds = self._check_cutoffs_monotonic_increasing()
+
+        if pen_thresholds > 1.:
+            return -1., pen_thresholds
+
         deficit_nodal = self._reliability()
         self.TFlowsAbs = np.abs(self.TFlows)
 
-        self._get_storage_capacities()
-        storage_costs, deficit_intranode = self._determine_cheapest_storage()
+        self._filter_balancing_profiles()
+        storage_costs, deficit_intranode = self._determine_cheapest_balancing()
         pen_deficit = np.maximum(0., (deficit_nodal + deficit_intranode).sum() * self.resolution - self.allowance) * 1000
 
         self._apportion_nodal_generation()
@@ -657,7 +745,8 @@ def parallel_wrapper(xs,
                     storage_power_capacities,
                     storage_energy_capacities,
                     storage_unit_types,
-                    nodes_with_storage,
+                    flexible_ids,
+                    nodes_with_balancing,
                     max_frequency,
                     storage_durations,
                     storage_costs,
@@ -667,10 +756,10 @@ def parallel_wrapper(xs,
                     TLoss,
                     pv_idx,
                     wind_idx,
-                    storage_p_idx,
+                    flexible_p_idx,
                     storage_e_idx,
                     lines_idx,
-                    storage_p_W_idx,
+                    magnitudes_idx,
                     solar_nodes,
                     wind_nodes,
                     flexible_nodes,
@@ -710,7 +799,8 @@ def parallel_wrapper(xs,
                                 storage_power_capacities,
                                 storage_energy_capacities,
                                 storage_unit_types,
-                                nodes_with_storage,
+                                flexible_ids,
+                                nodes_with_balancing,
                                 max_frequency,
                                 storage_durations,
                                 storage_costs,
@@ -720,10 +810,10 @@ def parallel_wrapper(xs,
                                 TLoss,
                                 pv_idx,
                                 wind_idx,
-                                storage_p_idx,
+                                flexible_p_idx,
                                 storage_e_idx,
                                 lines_idx,
-                                storage_p_W_idx,
+                                magnitudes_idx,
                                 solar_nodes,
                                 wind_nodes,
                                 flexible_nodes,
@@ -764,7 +854,8 @@ def objective_st(x,
                 storage_power_capacities,
                 storage_energy_capacities,
                 storage_unit_types,
-                nodes_with_storage,
+                flexible_ids,
+                nodes_with_balancing,
                 max_frequency,
                 storage_durations,
                 storage_costs,
@@ -774,10 +865,10 @@ def objective_st(x,
                 TLoss,
                 pv_idx,
                 wind_idx,
-                storage_p_idx,
+                flexible_p_idx,
                 storage_e_idx,
                 lines_idx,
-                storage_p_W_idx,
+                magnitudes_idx,
                 solar_nodes,
                 wind_nodes,
                 flexible_nodes,
@@ -815,7 +906,8 @@ def objective_st(x,
                                 storage_power_capacities,
                                 storage_energy_capacities,
                                 storage_unit_types,
-                                nodes_with_storage,
+                                flexible_ids,
+                                nodes_with_balancing,
                                 max_frequency,
                                 storage_durations,
                                 storage_costs,
@@ -825,10 +917,10 @@ def objective_st(x,
                                 TLoss,
                                 pv_idx,
                                 wind_idx,
-                                storage_p_idx,
+                                flexible_p_idx,
                                 storage_e_idx,
                                 lines_idx,
-                                storage_p_W_idx,
+                                magnitudes_idx,
                                 solar_nodes,
                                 wind_nodes,
                                 flexible_nodes,
