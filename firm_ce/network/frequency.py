@@ -47,7 +47,7 @@ def get_normalised_profile(timeseries_profile):
         return magnitudes
  
     normalised_frequency_profile = magnitudes / np.max(magnitudes)
-    """ np.savetxt("results/normalised_magnitudes.csv", normalised_frequency_profile, delimiter=",") """
+    np.savetxt("results/normalised_magnitudes.csv", normalised_frequency_profile, delimiter=",")
     return normalised_frequency_profile
 
 @njit
@@ -60,7 +60,9 @@ def get_dc_offset(frequency_profile):
 
 @njit
 def get_frequencies(intervals, resolution):
-    return rfftfreq(intervals, d=resolution)
+    frequencies = rfftfreq(intervals, d=resolution)
+    """ np.savetxt("results/frequencies.csv", frequencies, delimiter=",") """
+    return frequencies
 
 @njit
 def get_bandpass_filter(lower_cutoff, upper_cutoff, frequencies):
@@ -85,11 +87,8 @@ def get_magnitude_filter(lower_cutoff, upper_cutoff, normalised_magnitudes):
             normalised_magnitudes[idx] = -1.0 # Remove this point from being considered in other filters
 
             # Add harmonics to the filter
-            #INCLUDE PEAKS IN THE NEIGHBOURHOOD THAT ARE SOME FRACTION OF MAIN PEAK MAGNITUDE?
             n_harmonics = 2*n_frequencies // idx # Include first set of aliased harmonics
             for n in range(2,n_harmonics):
-                """ for z in range(-150,150): # Add local neighbourhood of peaks to the filter
-                    harmonic_idx = (z + n*idx) % n_frequencies # Take remainder to manage aliased harmonics """
                 harmonic_idx = n*idx % n_frequencies # Take remainder to manage aliased harmonics
                 test_idx = n*idx
                 if (normalised_magnitudes[(test_idx+1) % n_frequencies] > normalised_magnitudes[harmonic_idx]): 

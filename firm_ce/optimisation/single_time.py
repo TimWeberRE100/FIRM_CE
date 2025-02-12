@@ -6,6 +6,7 @@ from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX, NP_FLO
 from firm_ce.components.costs import calculate_costs, annualisation_component
 import firm_ce.network.frequency as frequency
 import firm_ce.helpers as helpers
+import firm_ce.network.cwt as cwt
 
 if JIT_ENABLED:
     from numba import float64, int64, boolean, njit, prange
@@ -79,7 +80,7 @@ if JIT_ENABLED:
         ('CPHP', float64[:]),
         ('CPHS', float64[:]),
         ('CTrans', float64[:]),
-        ('magnitudes_x', float64[:]),
+        ('balancing_W_x', float64[:]),
 
         ('solar_nodes', int64[:]),
         ('wind_nodes', int64[:]),
@@ -100,7 +101,7 @@ if JIT_ENABLED:
         ('Spillage_nodal', float64[:, :]),
         ('Charge_nodal', float64[:, :]),        
         ('Discharge_nodal', float64[:, :]),
-        ('StoragePower_nodal', float64[:, :]),
+        ('NetBalancing_nodal', float64[:, :]),
         ('Storage_nodal', float64[:, :]),
         ('Deficit_nodal', float64[:, :]),
         ('Import_nodal', float64[:, :]),
@@ -128,9 +129,9 @@ if JIT_ENABLED:
         ('flexible_p_capacities', float64[:]),
         ('balancing_p_profiles_ifft', float64[:,:,:]),
         ('storage_p_capacities_ifft', float64[:,:]),
-        ('magnitudes_x_nodal', float64[:,:]),
-        ('magnitudes_cutoffs', float64[:,:]),
-        ('magnitudes_thresholds', float64[:,:]),
+        ('balancing_W_x_nodal', float64[:,:]),
+        ('balancing_W_cutoffs', float64[:,:]),
+        ('balancing_W_thresholds', float64[:,:]),
         ('nodal_balancing_count', int64[:]),
 
         ('nodes_with_balancing', int64[:]),
@@ -202,7 +203,7 @@ class Solution_SingleTime:
                 flexible_p_idx,
                 storage_e_idx,
                 lines_idx,
-                magnitudes_idx,
+                balancing_W_idx,
                 solar_nodes,
                 wind_nodes,
                 flexible_nodes,
@@ -280,7 +281,7 @@ class Solution_SingleTime:
         self.CFlexible = x[wind_idx : flexible_p_idx]
         self.CPHS = x[flexible_p_idx : storage_e_idx]
         self.CTrans = x[storage_e_idx : lines_idx]
-        self.magnitudes_x = x[lines_idx : ]
+        self.balancing_W_x = x[lines_idx : ]
 
         # Flexible
         self.flexible_ids = flexible_ids
@@ -348,7 +349,7 @@ class Solution_SingleTime:
         self.Spillage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Charge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Discharge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
-        self.StoragePower_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
+        self.NetBalancing_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Storage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Deficit_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Import_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64) 
@@ -360,12 +361,12 @@ class Solution_SingleTime:
                 if i == node_idx:
                     self.nodal_balancing_count[node_idx]+=1
 
-        self.magnitudes_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_balancing_count)), dtype=np.float64)
+        self.balancing_W_x_nodal = -1 * np.ones((self.nodes, max(self.nodal_balancing_count)), dtype=np.float64)
 
         for node_idx in range(len(self.nodal_balancing_count)):
             for current_node_count in range(self.nodal_balancing_count[node_idx]-1):
                 W_idx = sum(self.nodal_balancing_count[:node_idx]) - len(self.nodal_balancing_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
-                self.magnitudes_x_nodal[node_idx, current_node_count] = self.magnitudes_x[W_idx]
+                self.balancing_W_x_nodal[node_idx, current_node_count] = self.balancing_W_x[W_idx]
 
         self.GPV_annual = np.zeros(0, dtype=np.float64)
         self.GWind_annual = np.zeros(0, dtype=np.float64)
@@ -384,9 +385,7 @@ class Solution_SingleTime:
 
         # Frequency attributes
         self.balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
-        #self.storage_p_capacities_ifft = np.zeros((self.nodes,max(self.nodal_storage_count)), dtype=np.float64)
-        #self.magnitudes_cutoffs = np.zeros((self.nodes, self.magnitudes_x_nodal.shape[1] + 2), dtype=np.float64) 
-        self.magnitudes_thresholds = np.zeros((self.nodes, self.magnitudes_x_nodal.shape[1] + 2), dtype=np.float64)   
+        self.balancing_W_cutoffs = np.zeros((self.nodes, self.balancing_W_x_nodal.shape[1] + 2), dtype=np.float64)   
 
         self.storage_p_profiles = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
         self.storage_e_profiles = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)                
@@ -398,15 +397,12 @@ class Solution_SingleTime:
         #print(x)      
 
         for node_idx in self.storage_nodes:
-            for W_idx in range(self.magnitudes_x_nodal.shape[1]):
-                if self.magnitudes_x_nodal[node_idx,W_idx] > -0.5:
-                    #self.magnitudes_cutoffs[node_idx,W_idx+1] = self.magnitudes_x_nodal[node_idx,W_idx]
-                    self.magnitudes_thresholds[node_idx,W_idx+1] = self.magnitudes_x_nodal[node_idx,W_idx]
+            for W_idx in range(self.balancing_W_x_nodal.shape[1]):
+                if self.balancing_W_x_nodal[node_idx,W_idx] > -0.5:
+                    self.balancing_W_cutoffs[node_idx,W_idx+1] = self.balancing_W_x_nodal[node_idx,W_idx]
                 else:
-                    #self.magnitudes_cutoffs[node_idx,W_idx+1] = max_frequency
-                    self.magnitudes_thresholds[node_idx,W_idx+1] = 1.01
-            #self.magnitudes_cutoffs[node_idx,-1] = max_frequency   
-            self.magnitudes_thresholds[node_idx,-1] = 1.01
+                    self.balancing_W_cutoffs[node_idx,W_idx+1] = max_frequency
+            self.balancing_W_cutoffs[node_idx,-1] = max_frequency   
 
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
@@ -434,11 +430,14 @@ class Solution_SingleTime:
         shape2d = intervals, nodes = len(Netload), self.nodes
 
         Scapacity = self.CPHS_nodal * 1000
+        Fcapacity = self.CFlexible_nodal * 1000
 
         Hcapacity = self.CTrans * 1000 # GW to MW
         ntrans = len(self.CTrans)
-        efficiency, resolution = self.efficiency, self.resolution 
+        #efficiency, resolution = self.efficiency, self.resolution 
+        efficiency, resolution = 1.0, self.resolution 
 
+        Balancing = np.zeros(shape2d, dtype=np.float64)
         Discharge = np.zeros(shape2d, dtype=np.float64)
         Charge = np.zeros(shape2d, dtype=np.float64)
         Storage = np.zeros(shape2d, dtype=np.float64)
@@ -449,20 +448,22 @@ class Solution_SingleTime:
         for t in range(intervals):
             Netloadt = Netload[t]
 
+            Balancingt = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution + Fcapacity)
             Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
-            Deficitt = np.maximum(Netloadt - Discharget ,0)
+            Deficitt = np.maximum(Netloadt - Balancingt ,0)
             
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
         
             if Deficitt.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
-                Surplust = -1 * np.minimum(0, Netloadt) + (Storaget_1 / resolution - Discharget)
+                Surplust = -1 * np.minimum(0, Netloadt) + (Storaget_1 / resolution  + Fcapacity - Balancingt)
 
                 Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
+                Balancingt = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution + Fcapacity)
                 Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
                 
             Charget = np.minimum(-1 * np.minimum(0, Netloadt), (Scapacity - Storaget_1) / efficiency / resolution)
@@ -470,7 +471,7 @@ class Solution_SingleTime:
             if Surplust.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Distribute surplus energy with transmission to areas with spare charging capacity
-                Fillt = (Discharget # load not met by gen and transmission
+                Fillt = (Balancingt # load not met by gen and transmission
                         + (Scapacity - Storaget_1) / efficiency / resolution #full charging capacity
                         - Charget) #charge capacity already in use
                 Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, self.networksteps,
@@ -478,11 +479,13 @@ class Solution_SingleTime:
 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
                 Charget = np.minimum(-1 * np.minimum(0, Netloadt),(Scapacity - Storaget_1) / efficiency / resolution)
+                Balancingt = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution  + Fcapacity)
                 Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
 
             Storaget = Storaget_1 - Discharget * resolution + Charget * resolution * efficiency
             Storaget_1 = Storaget.copy()
             
+            Balancing[t] = Balancingt
             Discharge[t] = Discharget
             Charge[t] = Charget
             Storage[t] = Storaget
@@ -490,21 +493,25 @@ class Solution_SingleTime:
         
         ImpExp = Transmission.sum(axis=1)
         
-        Deficit = np.maximum(0, Netload - ImpExp - Discharge)
-        Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)
+        Deficit = np.maximum(0, Netload - ImpExp - Balancing)
+        Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)        
 
         self.Spillage_nodal = Spillage
         self.Charge_nodal = Charge
         self.Discharge_nodal = Discharge
-        self.StoragePower_nodal = Discharge - Charge
+        self.NetBalancing_nodal = Balancing + Deficit - Charge #Precharged storage power
         self.Storage_nodal = Storage
         self.Deficit_nodal = Deficit
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
 
         self.TFlows = (Transmission).sum(axis=2)
+        np.savetxt("results/deficit_internode.csv", Deficit, delimiter=",")
+        np.savetxt("results/spillage_intranode.csv", self.Spillage_nodal, delimiter=",")
+        np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
+        np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",")
         
-        return Deficit
+        return np.zeros(Deficit.shape, dtype=np.float64)
 
     def _calculate_costs(self):
         solution_cost = calculate_costs(self)
@@ -555,28 +562,42 @@ class Solution_SingleTime:
         """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
         np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
         np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
-        #np.savetxt("results/StoragePower_nodal.csv", self.StoragePower_nodal, delimiter=",")
+        #np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         
         for node_idx in range(self.nodes):
-            frequency_profile_p = frequency.get_frequency_profile(self.StoragePower_nodal[:,node_idx])
+            frequency_profile_p = frequency.get_frequency_profile(self.NetBalancing_nodal[:,node_idx])
             normalised_magnitudes_p = frequency.get_normalised_profile(frequency_profile_p)
+            cwt.cwt_peak_detection(normalised_magnitudes_p, scales=None,
+                                                    snr_threshold=1.5,
+                                                    min_ridge_length=3,
+                                                    allowed_scale_range=(2, 40),
+                                                    gap_threshold=1)
+            exit()
+
+            peak_mask, noise_mask = cwt.cwt_peak_detection(normalised_magnitudes_p)
 
             dc_offset_p = frequency.get_dc_offset(frequency_profile_p)
             dc_offset_p_timeseries = frequency.get_timeseries_profile(dc_offset_p)
+
+            noise_frequency_profile = frequency.get_filtered_frequency(frequency_profile_p, noise_mask)
+            noise_timeseries = frequency.get_timeseries_profile(noise_frequency_profile)
             
-            for storage_i in range(self.nodal_balancing_count[node_idx]):
-                thresh_i = self.nodal_balancing_count[node_idx] - storage_i
-                if abs(self.magnitudes_thresholds[node_idx, thresh_i-1] - 1.0) <= EPSILON_FLOAT64:
+            for balancing_i in range(self.nodal_balancing_count[node_idx]):
+                if abs(self.balancing_W_cutoffs[node_idx, balancing_i] - self.max_frequency) <= EPSILON_FLOAT64:
                     break
 
-                magnitude_filter_p = frequency.get_magnitude_filter(self.magnitudes_thresholds[node_idx, thresh_i-1],self.magnitudes_thresholds[node_idx, thresh_i], normalised_magnitudes_p)
-                
-                filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, magnitude_filter_p)
+                #magnitude_filter_p = frequency.get_magnitude_filter(self.magnitudes_thresholds[node_idx, thresh_i-1],self.magnitudes_thresholds[node_idx, thresh_i], normalised_magnitudes_p)
+                frequencies = frequency.get_frequencies(self.intervals, self.resolution)
+                bandpass_filter = frequency.get_bandpass_filter(self.balancing_W_cutoffs[node_idx, balancing_i],self.balancing_W_cutoffs[node_idx, balancing_i+1], frequencies)
+                peak_filter = bandpass_filter * peak_mask
+                np.savetxt(f"results/peak_filter_{balancing_i}.csv", peak_filter, delimiter=",")
+
+                filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, peak_filter)
                 unit_timeseries_p = frequency.get_timeseries_profile(filtered_frequency_profile_p)
-                self.balancing_p_profiles_ifft[:,node_idx,storage_i] = unit_timeseries_p
+                self.balancing_p_profiles_ifft[:,node_idx,balancing_i] = unit_timeseries_p
                 
-            # Apportion dc offset
-            self.balancing_p_profiles_ifft[:,node_idx,0] = self.balancing_p_profiles_ifft[:,node_idx,0] + dc_offset_p_timeseries
+            # Apportion dc offset and noise to long-duration
+            self.balancing_p_profiles_ifft[:,node_idx,1] = self.balancing_p_profiles_ifft[:,node_idx,1] + dc_offset_p_timeseries + noise_timeseries
 
             #np.savetxt("results/storage_p_profiles_ifft.csv", self.storage_p_profiles_ifft[:,node_idx,:], delimiter=",")
             #exit()
@@ -599,6 +620,14 @@ class Solution_SingleTime:
             #print("Permutations: ", balancing_permutations)
 
             for p in range(nodal_n_permutations[node_idx]):
+                """ if len(node_balancing_order) == 2: ######### DEBUG
+                    balancing_permutations[p,:] = node_balancing_order
+                else:
+                    for i in range(2):
+                        balancing_permutations[p,i+1] = node_balancing_order[i]
+                    balancing_permutations[p,0] = node_balancing_order[-1]
+                ########################################### """
+
                 balancing_p_profile_ifft = self.balancing_p_profiles_ifft[:,node_idx,0:len(node_balancing_order)].copy()
                 """ print(self.nodal_balancing_count)
                 print(node_balancing_order)
@@ -665,14 +694,14 @@ class Solution_SingleTime:
                             self.flexible_p_profiles[:,balancing_permutations[p,i]-flexible_order_offset] = balancing_p_profile_option[:,i]
                             self.flexible_p_capacities = self.CFlexible
 
-        """ print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
-        np.savetxt("results/storage_p_profiles_ifft.csv", self.balancing_p_profiles_ifft[:,0,:], delimiter=",")
-        np.savetxt("results/StoragePower.csv", self.StoragePower_nodal, delimiter=",")
+        print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
+        np.savetxt("results/balancing_p_profiles_ifft.csv", self.balancing_p_profiles_ifft[:,0,:], delimiter=",")
+        np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles, delimiter=",")
         np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles, delimiter=",")
         np.savetxt("results/flexible_p_profiles.csv", self.flexible_p_profiles, delimiter=",")
         np.savetxt("results/deficit_intranode.csv", deficit_intranodes, delimiter=",")
-        exit() """
+        #exit()
 
         storage_costs = sum(nodal_costs)
         self.Deficit_nodal += deficit_intranodes
@@ -683,8 +712,8 @@ class Solution_SingleTime:
     def _check_cutoffs_monotonic_increasing(self):
         pen_thresholds = 0.
         for node_idx in range(self.nodes):
-            for threshold_idx in range(self.magnitudes_x_nodal.shape[1]):
-                if self.magnitudes_thresholds[node_idx,threshold_idx+1] < self.magnitudes_thresholds[node_idx,threshold_idx]: 
+            for threshold_idx in range(self.balancing_W_x_nodal.shape[1]):
+                if self.balancing_W_cutoffs[node_idx,threshold_idx+1] < self.balancing_W_cutoffs[node_idx,threshold_idx]: 
                     pen_thresholds += 1000000.
 
         return pen_thresholds
@@ -713,8 +742,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss)
         
-        """ print("LCOE: ", lcoe, pen_deficit)
-        exit() """
+        print("LCOE: ", lcoe, pen_deficit)
+        exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
@@ -759,7 +788,7 @@ def parallel_wrapper(xs,
                     flexible_p_idx,
                     storage_e_idx,
                     lines_idx,
-                    magnitudes_idx,
+                    balancing_W_idx,
                     solar_nodes,
                     wind_nodes,
                     flexible_nodes,
@@ -813,7 +842,7 @@ def parallel_wrapper(xs,
                                 flexible_p_idx,
                                 storage_e_idx,
                                 lines_idx,
-                                magnitudes_idx,
+                                balancing_W_idx,
                                 solar_nodes,
                                 wind_nodes,
                                 flexible_nodes,
@@ -868,7 +897,7 @@ def objective_st(x,
                 flexible_p_idx,
                 storage_e_idx,
                 lines_idx,
-                magnitudes_idx,
+                balancing_W_idx,
                 solar_nodes,
                 wind_nodes,
                 flexible_nodes,
@@ -920,7 +949,7 @@ def objective_st(x,
                                 flexible_p_idx,
                                 storage_e_idx,
                                 lines_idx,
-                                magnitudes_idx,
+                                balancing_W_idx,
                                 solar_nodes,
                                 wind_nodes,
                                 flexible_nodes,
