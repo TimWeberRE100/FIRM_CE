@@ -2,7 +2,7 @@ from scipy.fft import fft, ifft
 import numpy as np
 
 from firm_ce.constants import JIT_ENABLED
-from firm_ce.helpers import set_difference_int, isin_numba, quantile_95
+from firm_ce.helpers import set_difference_int, quantile_95
 
 if JIT_ENABLED:
     from numba import njit
@@ -33,6 +33,7 @@ def cwt_peak_detection(signal, scales=None):
         peak_mask[peak] = 1
         noise_mask[peak] = 0
     
+    np.savetxt("results/peak_mask.csv", peak_mask, delimiter=",")
     return peak_mask, noise_mask
 
 @njit
@@ -340,7 +341,7 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
 def pick_peaks(ridge_list, cwt_matrix, scales,
                snr_threshold=2, peak_scale_range=5,
                 ridge_length=32, win_size_noise=500, min_noise_level=0.001,
-                exclude_boundaries_size=75):
+                exclude_boundaries_size=0):
     num_scales = cwt_matrix.shape[0]
     num_frequencies = cwt_matrix.shape[1]
 
@@ -383,15 +384,14 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         ridge_lengths[i] = len(ridge[ridge_mask])
 
     count_valid_ridges = 0
-    last_row_index = ridge_list.shape[0] - 1
     for i in range(num_ridges):
-        if ridge_list[last_row_index, i] > 0:
+        if ridge_list[0, i] > 0:
             count_valid_ridges += 1
     freq_indices = np.empty(count_valid_ridges, dtype=np.int32)
     idx_freq = 0
     for i in range(num_ridges):
-        if ridge_list[last_row_index, i] > 0:
-            freq_indices[idx_freq] = ridge_list[last_row_index, i]
+        if ridge_list[0, i] > 0:
+            freq_indices[idx_freq] = ridge_list[0, i]
             idx_freq += 1
 
     ridge_start_levels = np.empty(num_ridges, dtype=np.int32)
@@ -565,7 +565,5 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         final_selection[i] = flag
 
     selected_peaks = freq_indices[final_selection]
-
-    np.savetxt("results/peaks.csv", selected_peaks, delimiter=",")
     
     return selected_peaks
