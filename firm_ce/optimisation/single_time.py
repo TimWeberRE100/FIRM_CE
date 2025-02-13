@@ -499,17 +499,17 @@ class Solution_SingleTime:
         self.Spillage_nodal = Spillage
         self.Charge_nodal = Charge
         self.Discharge_nodal = Discharge
-        self.NetBalancing_nodal = Balancing + Deficit - Charge #Precharged storage power
+        self.NetBalancing_nodal = Balancing + Deficit - Charge # RENAME DEFICIT TO PRE-CHARGED STORAGE POWER. MAYBE NEED TO INCLUDE SPILLAGE?
         self.Storage_nodal = Storage
         self.Deficit_nodal = Deficit
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
 
         self.TFlows = (Transmission).sum(axis=2)
-        np.savetxt("results/deficit_internode.csv", Deficit, delimiter=",")
+        """ np.savetxt("results/deficit_internode.csv", Deficit, delimiter=",")
         np.savetxt("results/spillage_intranode.csv", self.Spillage_nodal, delimiter=",")
         np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
-        np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",")
+        np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
         
         return np.zeros(Deficit.shape, dtype=np.float64)
 

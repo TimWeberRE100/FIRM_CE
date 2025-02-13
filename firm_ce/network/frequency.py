@@ -178,7 +178,7 @@ def apportion_nodal_noise(nodal_timeseries, noise_timeseries):
                 nodal_timeseries[i, b] = noise_sum
                 noise_timeseries[i] = 0
 
-    if sum(abs(noise_timeseries)) > 0:
+    if np.sum(np.abs(noise_timeseries)) > 0:
         nodal_timeseries[:,0] = nodal_timeseries[:,0] + noise_timeseries
 
     return nodal_timeseries

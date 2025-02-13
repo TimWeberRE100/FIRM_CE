@@ -93,8 +93,8 @@ def get_wavelets(signal_length, scales=None, wavelet_xlimit=8, wavelet_length=10
     len_daughter_wavelets = np.zeros(len(scales), dtype=np.int64)
 
     for i, scale in enumerate(scales):
-        scaled_wavelet_filter = np.zeros(extended_signal_base)
-        scaled_wavelet_indices = 1 + np.floor(np.arange(scale * xmax + 1) / (scale * dxval)).astype(int)
+        scaled_wavelet_filter = np.zeros(extended_signal_base, dtype=np.float64)
+        scaled_wavelet_indices = 1 + np.trunc(np.arange(scale * xmax + 1) / (scale * dxval)).astype(np.int32)
         
         if len(scaled_wavelet_indices) == 1:
             scaled_wavelet_indices = np.array([1, 1])
@@ -146,7 +146,7 @@ def get_cwt_matrix(signal, scales=None):
 
 @njit
 def find_local_maximum(arr_1d, window_size):
-    local_max = np.zeros_like(arr_1d, dtype=int)
+    local_max = np.zeros_like(arr_1d, dtype=np.int32)
     half_window = window_size // 2
     
     for i in range(half_window, len(arr_1d) - half_window):
@@ -167,15 +167,17 @@ def find_local_maximum(arr_1d, window_size):
 
 @njit
 def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5, amplitude_threshold=0):
-    local_maxima = np.zeros(cwt_matrix.shape, dtype=int)
+    rows, cols = cwt_matrix.shape
+    local_maxima = np.zeros(cwt_matrix.shape, dtype=np.int32)
     
     for i, scale in enumerate(scales):
         window_size = max(scale * 2 + 1, min_window_size)
         local_maxima[i,:] = find_local_maximum(cwt_matrix[i,:], window_size)
     
-    # Set values below threshold to zero
-    threshold_mask = cwt_matrix < amplitude_threshold
-    local_maxima[threshold_mask] = 0
+    for i in range(rows):
+        for j in range(cols):
+            if cwt_matrix[i, j] < amplitude_threshold:
+                local_maxima[i, j] = 0
     
     return local_maxima
 
@@ -187,9 +189,9 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
     current_max_freq_indices = np.where(local_maxima[num_rows - 1, :] > 0)[0]
 
     if num_rows > 1:
-        row_indices = np.arange(num_rows + step_direction, final_row_index - step_direction, step_direction)
+        row_indices = np.arange(num_rows + step_direction, final_row_index - step_direction, step_direction, dtype=np.int64)
     else:
-        row_indices = np.array([0], dtype=np.int32)
+        row_indices = np.array([0], dtype=np.int64)
 
     max_possible_ridges = current_max_freq_indices.shape[0] * row_indices.shape[0]
 
@@ -377,7 +379,7 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
     # Prepare ridges
     num_ridges = ridge_list.shape[1]
     ridge_lengths = np.empty(num_ridges, dtype=np.int32)
-    ridge_list = np.flip(ridge_list, axis=0)
+    ridge_list = ridge_list[::-1] # Flip along axis 0
 
     for i in range(num_ridges):
         ridge = ridge_list[:,i]
