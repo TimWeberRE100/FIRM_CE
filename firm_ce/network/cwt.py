@@ -15,7 +15,7 @@ else:
         return wrapper
 
 @njit
-def cwt_peak_detection(signal, scales=None):
+def cwt_peak_detection(signal, scales=np.arange(1, 64, 2)):
     '''Based on Continuos Wavelet Transform with Mexican Hat wavelet'''
     '''https://www.bioconductor.org/packages/devel/bioc/manuals/MassSpecWavelet/man/MassSpecWavelet.pdf'''
     '''https://academic.oup.com/bioinformatics/article/22/17/2059/274284'''
@@ -27,8 +27,8 @@ def cwt_peak_detection(signal, scales=None):
     ridge_list = link_ridges(local_maxima, scales)
     peaks = pick_peaks(ridge_list, cwt_matrix, scales)
     
-    peak_mask = np.zeros(signal.size, dtype=np.int64)
-    noise_mask = np.ones(signal.size, dtype=np.int64)
+    peak_mask = np.zeros(signal.size, dtype=np.int32)
+    noise_mask = np.ones(signal.size, dtype=np.int32)
     for peak in peaks:
         peak_mask[peak] = 1
         noise_mask[peak] = 0
@@ -76,10 +76,7 @@ def extend_n_base(arr_1d, base=2):
     return arr_1d
 
 @njit 
-def get_wavelets(signal_length, scales=None, wavelet_xlimit=8, wavelet_length=1024):
-    if not scales:
-        scales = np.arange(1, 64, 2)
-    
+def get_wavelets(signal_length, scales, wavelet_xlimit=8, wavelet_length=1024):    
     mother_wavelet_xval = np.linspace(-wavelet_xlimit, wavelet_xlimit, wavelet_length)
     mother_wavelet = generate_mexican_hat_wavelet(mother_wavelet_xval)
 
@@ -121,9 +118,9 @@ def circular_shift(w_coefs_i, shift_idx):
     return shifted_array
 
 @njit
-def get_cwt_matrix(signal, scales=None):
+def get_cwt_matrix(signal, scales):
     original_signal_length = len(signal)
-    daughter_wavelets, scales, len_daughter_wavelets = get_wavelets(original_signal_length)
+    daughter_wavelets, scales, len_daughter_wavelets = get_wavelets(original_signal_length, scales)
 
     signal = extend_n_base(signal)
     signal_fft = fft(signal)
@@ -320,6 +317,7 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
             ridge_list = new_ridge_list
             current_ridge_count = new_ridge_count
             removal_count = 0
+            max_possible_ridges = current_ridge_freq.shape[0]
         
         # Manually concatenate selected and unselected peaks in order to update current_max_freq_indices
         new_length = selected_valid.shape[0] + unselected_peaks.shape[0]
@@ -331,14 +329,14 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
         current_max_freq_indices = new_max_freq_indices
 
     # Remove empty rows
-    keep_flag = np.full(ridge_list.shape[1], False, dtype=np.bool_)
+    keep_flag = np.empty(ridge_list.shape[1], dtype=np.bool_)
     for ridge in range(ridge_list.shape[1]):
         if ridge_list[0,ridge] > 0:
             keep_flag[ridge] = True
+        else:
+            keep_flag[ridge] = False
 
-    ridge_list = ridge_list[:, keep_flag]
-
-    return ridge_list
+    return ridge_list[:, keep_flag]
 
 @njit
 def pick_peaks(ridge_list, cwt_matrix, scales,
@@ -379,7 +377,8 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
     # Prepare ridges
     num_ridges = ridge_list.shape[1]
     ridge_lengths = np.empty(num_ridges, dtype=np.int32)
-    ridge_list = ridge_list[::-1] # Flip along axis 0
+    ridge_list_copy = ridge_list[::-1].copy() # Flip along axis 0 - SHOULD FIX FIND_RIDGES TO AVOID NEEDING THIS STEP ALTOGETHER
+    ridge_list = ridge_list_copy 
 
     for i in range(num_ridges):
         ridge = ridge_list[:,i]
