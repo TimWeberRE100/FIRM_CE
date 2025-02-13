@@ -11,9 +11,38 @@ else:
         def wrapper(f):
             return f
         return wrapper
+    
+@njit
+def set_difference_int(array1, array2):
+    # Replaces np.setdiff1d for JIT compatibility
+    count = 0
+    for i in range(array1.shape[0]):
+        candidate = array1[i]
+        found = False
+        for j in range(array2.shape[0]):
+            if candidate == array2[j]:
+                found = True
+                break
+        if not found:
+            count += 1
+
+    result = np.empty(count, dtype=np.int32)
+    index = 0
+    for i in range(array1.shape[0]):
+        candidate = array1[i]
+        found = False
+        for j in range(array2.shape[0]):
+            if candidate == array2[j]:
+                found = True
+                break
+        if not found:
+            result[index] = candidate
+            index += 1
+    return result
 
 @njit
 def isin_numba(arr, values):
+    # Replaces np.isin for JIT compatibility
     values_set = set(values)  
     result = np.zeros(arr.shape, dtype=np.bool_)
 
@@ -22,6 +51,23 @@ def isin_numba(arr, values):
             result[i] = True
 
     return result
+
+@njit
+def quantile_95(arr):
+    # Replaces np.quantile for JIT compatibility
+    n = arr.shape[0]
+    if n == 0:
+        return 0.0
+    temp = arr.copy()
+    temp.sort()
+    
+    pos = 0.95 * (n - 1)
+    lower_idx = int(pos)
+    upper_idx = lower_idx + 1
+    if upper_idx >= n:
+        return temp[lower_idx]
+    weight = pos - lower_idx
+    return temp[lower_idx] * (1 - weight) + temp[upper_idx] * weight
 
 @njit
 def sum_positive_values(arr):

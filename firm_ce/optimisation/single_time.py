@@ -567,11 +567,7 @@ class Solution_SingleTime:
         for node_idx in range(self.nodes):
             frequency_profile_p = frequency.get_frequency_profile(self.NetBalancing_nodal[:,node_idx])
             normalised_magnitudes_p = frequency.get_normalised_profile(frequency_profile_p)
-            cwt.cwt_peak_detection(normalised_magnitudes_p, scales=None,
-                                                    snr_threshold=1.5,
-                                                    min_ridge_length=3,
-                                                    allowed_scale_range=(2, 40),
-                                                    gap_threshold=1)
+            cwt.cwt_peak_detection(normalised_magnitudes_p, scales=None)
             exit()
 
             peak_mask, noise_mask = cwt.cwt_peak_detection(normalised_magnitudes_p)
