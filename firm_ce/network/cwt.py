@@ -32,8 +32,9 @@ def cwt_peak_detection(signal, scales=None):
     for peak in peaks:
         peak_mask[peak] = 1
         noise_mask[peak] = 0
+    noise_mask[0] = 0
     
-    np.savetxt("results/peak_mask.csv", peak_mask, delimiter=",")
+    """ np.savetxt("results/peak_mask.csv", peak_mask, delimiter=",") """
     return peak_mask, noise_mask
 
 @njit

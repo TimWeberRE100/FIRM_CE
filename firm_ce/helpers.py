@@ -93,3 +93,16 @@ def max_along_axis_n(arr, axis_n):
             if arr[i, j] > max_vals[j]:
                 max_vals[j] = arr[i, j]
     return max_vals
+
+@njit
+def factorial(n):
+    result = 1
+    for i in range(2, n+1):
+        result *= i
+    return result
+
+@njit
+def swap(a, i, j):
+    temp = a[i]
+    a[i] = a[j]
+    a[j] = temp

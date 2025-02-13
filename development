@@ -28,7 +28,6 @@ FIRM_CE bugs
 - Add fuel costs into calculation
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Swap back to bandpass filters. Add peak finding function. Bandpass filter applies to peaks only, NOT noise. 
------ Add peak finding function, then remove frequencies from decision variables. Run combinations of peaks assigned to each balancing technology. Only apply constraints once to simplify the factorial problem.
 - Remove the addition of harmonics
 - Frequency analysis apply to entire net load, only apply storage constraints in the apportioning method? Will transmission still work in this case?
 I think it won't since transmission requires knowledge of whether storage is empty/full. Since flexible is rolled into this though, it may be necessary

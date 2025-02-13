@@ -562,14 +562,12 @@ class Solution_SingleTime:
         """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
         np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
         np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
-        #np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
+        """ np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",") """
         
         for node_idx in range(self.nodes):
             frequency_profile_p = frequency.get_frequency_profile(self.NetBalancing_nodal[:,node_idx])
             normalised_magnitudes_p = frequency.get_normalised_profile(frequency_profile_p)
-            cwt.cwt_peak_detection(normalised_magnitudes_p, scales=None)
-            exit()
-
+            
             peak_mask, noise_mask = cwt.cwt_peak_detection(normalised_magnitudes_p)
 
             dc_offset_p = frequency.get_dc_offset(frequency_profile_p)
@@ -586,17 +584,17 @@ class Solution_SingleTime:
                 frequencies = frequency.get_frequencies(self.intervals, self.resolution)
                 bandpass_filter = frequency.get_bandpass_filter(self.balancing_W_cutoffs[node_idx, balancing_i],self.balancing_W_cutoffs[node_idx, balancing_i+1], frequencies)
                 peak_filter = bandpass_filter * peak_mask
-                np.savetxt(f"results/peak_filter_{balancing_i}.csv", peak_filter, delimiter=",")
+                #np.savetxt(f"results/peak_filter_{balancing_i}.csv", peak_filter, delimiter=",")
 
                 filtered_frequency_profile_p = frequency.get_filtered_frequency(frequency_profile_p, peak_filter)
                 unit_timeseries_p = frequency.get_timeseries_profile(filtered_frequency_profile_p)
                 self.balancing_p_profiles_ifft[:,node_idx,balancing_i] = unit_timeseries_p
+                #np.savetxt(f"results/timeseries_{balancing_i}.csv", unit_timeseries_p, delimiter=",")
                 
             # Apportion dc offset and noise to long-duration
-            self.balancing_p_profiles_ifft[:,node_idx,1] = self.balancing_p_profiles_ifft[:,node_idx,1] + dc_offset_p_timeseries + noise_timeseries
-
-            #np.savetxt("results/storage_p_profiles_ifft.csv", self.storage_p_profiles_ifft[:,node_idx,:], delimiter=",")
-            #exit()
+            self.balancing_p_profiles_ifft[:, node_idx, :] = frequency.apportion_nodal_noise(self.balancing_p_profiles_ifft[:, node_idx, :], dc_offset_p_timeseries + noise_timeseries)
+            
+            """ np.savetxt(f"results/node_{node_idx}_timeseries.csv", self.balancing_p_profiles_ifft[:,node_idx,:], delimiter=",") """
 
         return None
     
@@ -616,18 +614,7 @@ class Solution_SingleTime:
             #print("Permutations: ", balancing_permutations)
 
             for p in range(nodal_n_permutations[node_idx]):
-                """ if len(node_balancing_order) == 2: ######### DEBUG
-                    balancing_permutations[p,:] = node_balancing_order
-                else:
-                    for i in range(2):
-                        balancing_permutations[p,i+1] = node_balancing_order[i]
-                    balancing_permutations[p,0] = node_balancing_order[-1]
-                ########################################### """
-
                 balancing_p_profile_ifft = self.balancing_p_profiles_ifft[:,node_idx,0:len(node_balancing_order)].copy()
-                """ print(self.nodal_balancing_count)
-                print(node_balancing_order)
-                print(balancing_p_profile_ifft.shape) """
                 perm_cost = 0
                 permutation_balancing_e_constraint = np.zeros(len(node_balancing_order), dtype=np.float64)                
                 permutation_balancing_d_efficiencies = np.zeros(len(node_balancing_order), dtype=np.float64)
@@ -644,7 +631,7 @@ class Solution_SingleTime:
                     permutation_balancing_c_constraints[i] = self.balancing_c_constraint[balancing_permutations[p,i]]
                     permutation_balancing_costs[:,i] = self.balancing_costs[:,balancing_permutations[p,i]]
 
-                balancing_p_profile_option, balancing_e_profile_option, deficit_intranode, spillage_intranode = frequency.reapportion_exceeded_capacity(balancing_p_profile_ifft, 
+                balancing_p_profile_option, balancing_e_profile_option, deficit_intranode, spillage_intranode = frequency.apply_balancing_constraints(balancing_p_profile_ifft, 
                                                                                                                 permutation_balancing_e_constraint,
                                                                                                                 permutation_balancing_d_efficiencies, 
                                                                                                                 permutation_balancing_c_efficiencies, 
@@ -690,13 +677,13 @@ class Solution_SingleTime:
                             self.flexible_p_profiles[:,balancing_permutations[p,i]-flexible_order_offset] = balancing_p_profile_option[:,i]
                             self.flexible_p_capacities = self.CFlexible
 
-        print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
+        """ print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
         np.savetxt("results/balancing_p_profiles_ifft.csv", self.balancing_p_profiles_ifft[:,0,:], delimiter=",")
         np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles, delimiter=",")
         np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles, delimiter=",")
         np.savetxt("results/flexible_p_profiles.csv", self.flexible_p_profiles, delimiter=",")
-        np.savetxt("results/deficit_intranode.csv", deficit_intranodes, delimiter=",")
+        np.savetxt("results/deficit_intranode.csv", deficit_intranodes, delimiter=",") """
         #exit()
 
         storage_costs = sum(nodal_costs)
@@ -738,8 +725,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss)
         
-        print("LCOE: ", lcoe, pen_deficit)
-        exit()
+        """ print("LCOE: ", lcoe, pen_deficit)
+        exit() """
         return lcoe, pen_deficit
 
     def evaluate(self):

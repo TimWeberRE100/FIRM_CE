@@ -4,6 +4,7 @@ from scipy.fft import rfft, irfft
 from time import sleep
 
 from firm_ce.constants import EPSILON_FLOAT64, JIT_ENABLED
+from firm_ce.helpers import swap, factorial, max_along_axis_n
 
 if JIT_ENABLED:
     from numba import njit
@@ -47,7 +48,7 @@ def get_normalised_profile(timeseries_profile):
         return magnitudes
  
     normalised_frequency_profile = magnitudes / np.max(magnitudes)
-    np.savetxt("results/normalised_magnitudes.csv", normalised_frequency_profile, delimiter=",")
+    """ np.savetxt("results/normalised_magnitudes.csv", normalised_frequency_profile, delimiter=",") """
     return normalised_frequency_profile
 
 @njit
@@ -129,19 +130,6 @@ def get_timeseries_profile(frequency_profile):
     return timeseries_profile
 
 @njit
-def factorial(n):
-    result = 1
-    for i in range(2, n+1):
-        result *= i
-    return result
-
-@njit
-def swap(a, i, j):
-    temp = a[i]
-    a[i] = a[j]
-    a[j] = temp
-
-@njit
 def generate_permutations_impl(a, start, permutations, index):
     n = a.shape[0]
     if start == n - 1:
@@ -169,7 +157,34 @@ def generate_permutations(array_1d):
     return permutations
 
 @njit
-def reapportion_exceeded_capacity(nodal_p_timeseries_profiles, 
+def apportion_nodal_noise(nodal_timeseries, noise_timeseries):
+    intervals, nodal_balancing = nodal_timeseries.shape
+
+    # Get initial power constraints
+    soft_power_constraints = max_along_axis_n(np.abs(nodal_timeseries), 0)
+    
+    for i in range(intervals):
+        for b in range(nodal_balancing):
+            #reverse_b = nodal_balancing - b - 1 # Apportion from highest frequency balancing technology down to lowest
+            noise_sum = noise_timeseries[i] + nodal_timeseries[i, b]
+
+            if noise_sum > soft_power_constraints[b]:            
+                nodal_timeseries[i, b] = soft_power_constraints[b]
+                noise_timeseries[i] = noise_sum - soft_power_constraints[b]
+            elif noise_sum < -1 * soft_power_constraints[b]:
+                nodal_timeseries[i, b] = -1 * soft_power_constraints[b]
+                noise_timeseries[i] = noise_sum + soft_power_constraints[b]
+            else:
+                nodal_timeseries[i, b] = noise_sum
+                noise_timeseries[i] = 0
+
+    if sum(abs(noise_timeseries)) > 0:
+        nodal_timeseries[:,0] = nodal_timeseries[:,0] + noise_timeseries
+
+    return nodal_timeseries
+
+@njit
+def apply_balancing_constraints(nodal_p_timeseries_profiles, 
                                   nodal_e_capacities, 
                                   balancing_d_efficiencies, 
                                   balancing_c_efficiencies, 
