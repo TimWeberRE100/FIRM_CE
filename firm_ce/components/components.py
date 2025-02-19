@@ -12,12 +12,11 @@ class Generator:
         self.min_build = int(generator_dict['min_build'])  # MW/year
         self.capacity = float(generator_dict['initial_capacity'])  # MW
         self.unit_type = str(generator_dict['unit_type'])
-        self.cost = UnitCost(int(generator_dict['capex']),
-                              float(generator_dict['fom']),
-                              float(generator_dict['vom']),
-                              int(generator_dict['lifetime']),
-                              float(generator_dict['discount_rate']),
-                              float(generator_dict['lcoe']))
+        self.cost = UnitCost(capex_p=int(generator_dict['capex']),
+                              fom=float(generator_dict['fom']),
+                              vom=float(generator_dict['vom']),
+                              lifetime=int(generator_dict['lifetime']),
+                              discount_rate=float(generator_dict['discount_rate']))
 
         self.data = None
         for key in datafiles:
@@ -37,7 +36,7 @@ class Storage:
         self.name = str(storage_dict['name'])
         self.node = str(storage_dict['node'])
         self.power_capacity = float(storage_dict['initial_power_capacity'])  # MW
-        self.energy_capacity = int(storage_dict['initial_energy_capacity'])  # MWh
+        self.energy_capacity = float(storage_dict['initial_energy_capacity'])  # MWh
         self.duration = int(storage_dict['duration']) if int(storage_dict['duration']) > 0 else 0
         self.charge_efficiency = float(storage_dict['charge_efficiency'])  # %
         self.discharge_efficiency = float(storage_dict['discharge_efficiency'])  # %
@@ -47,11 +46,11 @@ class Storage:
         self.min_build_e = int(storage_dict['min_build_e'])  # MWh/year
         self.unit_type = str(storage_dict['unit_type'])
 
-        self.cost = UnitCost(int(storage_dict['capex_p']),
-                              float(storage_dict['fom']),
-                              float(storage_dict['vom']),
-                              int(storage_dict['lifetime']),
-                              float(storage_dict['discount_rate']),
+        self.cost = UnitCost(capex_p=int(storage_dict['capex_p']),
+                              fom=float(storage_dict['fom']),
+                              vom=float(storage_dict['vom']),
+                              lifetime=int(storage_dict['lifetime']),
+                              discount_rate=float(storage_dict['discount_rate']),
                               capex_e=int(storage_dict['capex_e']),
                               )
 

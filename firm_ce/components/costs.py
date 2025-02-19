@@ -20,8 +20,6 @@ class UnitCost:
         self.vom = vom
         self.lifetime = lifetime
         self.discount_rate = discount_rate
-
-        self.lcoe = lcoe # Used for existing generators
         
         self.transformer_capex = transformer_capex
         self.length = length
@@ -33,7 +31,8 @@ def get_present_value(discount_rate, lifetime):
 @njit
 def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
     present_value = get_present_value(discount_rate, lifetime)
-    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else 0
+    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * vom
+    print(f"{power_capacity} || {energy_capacity} || {capex_p} || {capex_e} || {power_capacity * pow(10,6) * fom} || {(energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value} == {annualised_cost}")
     return annualised_cost
 
 @njit   
@@ -93,9 +92,9 @@ def calculate_costs(solution):
         if idx not in solution.flexible_ids
         ], dtype=np.float64).sum()
 
-    generator_existing_costs = np.array([
-        solution.generator_costs[7,idx] for idx in range(0,len(generator_capacities))
-    ], dtype=np.float64).sum()
+    """ generator_existing_costs = np.array([
+        solution.generator_costs[7,idx] * generator_annual_generations[idx] for idx in range(0,len(generator_capacities))
+    ], dtype=np.float64).sum() """
     
     transmission_costs = np.array([
         annualisation_transmission(
@@ -115,6 +114,10 @@ def calculate_costs(solution):
     #PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20) 
     #print(generator_newbuild_costs, generator_existing_costs, storage_costs, transmission_costs)
 
-    costs = generator_newbuild_costs + generator_existing_costs + transmission_costs
+    """ np.savetxt("results/generator_costs.csv", solution.generator_costs, delimiter=",")
+    np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
+    """ np.savetxt("results/storage_costs.csv", solution.storage_costs, delimiter=",")
+    np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
+    costs = generator_newbuild_costs + transmission_costs #+ generator_existing_costs
         
     return costs

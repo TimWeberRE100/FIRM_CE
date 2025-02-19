@@ -183,6 +183,42 @@ def apportion_nodal_noise(nodal_timeseries, noise_timeseries):
 
     return nodal_timeseries
 
+""" @njit
+def precharge_storage(interval, 
+                        nodal_e_capacities,
+                        nodal_p_timeseries_profiles, 
+                        nodal_e_timeseries_profiles, 
+                        balancing_d_efficiencies, 
+                        balancing_c_efficiencies, 
+                        balancing_d_constraints, 
+                        balancing_c_constraints, 
+                        time_resolution):
+    
+    precharge = True
+    pre_interval = interval - 1
+    
+    if pre_interval < 1:
+        precharge = False
+
+    while precharge:
+        # Determine which storages are empty
+
+        # Check previous interval
+
+        # Try to prefill empty storages using other storages
+
+        #
+
+        
+
+        if pre_interval < 1:
+            precharge = False
+        elif np.sum(nodal_e_timeseries_profiles[pre_interval,:]) - np.sum(nodal_e_capacities) < EPSILON_FLOAT64: 
+            ### NEED TO LIMIT TO STORAGE SYSTEMS CAPACITIES
+            precharge = False
+        else:
+            pre_interval -= 1 """
+
 @njit
 def apply_balancing_constraints(nodal_p_timeseries_profiles, 
                                   nodal_e_capacities, 
@@ -197,8 +233,8 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
     nodal_capacities_mwh = 1000 * nodal_e_capacities
     nodal_capacities_d_mw = 1000 * balancing_d_constraints
     nodal_capacities_c_mw = 1000 * balancing_c_constraints
-    intranode_deficit = np.zeros(intervals, dtype=np.float64)
-    intranode_spillage = np.zeros(intervals, dtype=np.float64)
+    nodal_deficit = np.zeros(intervals, dtype=np.float64)
+    nodal_spillage = np.zeros(intervals, dtype=np.float64)
 
     #print(nodal_capacities_mwh.shape,nodal_e_timeseries_profiles.shape)
     
@@ -299,7 +335,7 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                               (nodal_capacities_d_mw[0] - nodal_p_timeseries_profiles[interval, 0]))
             nodal_p_timeseries_profiles[interval, 0] += excess_p                
 
-            intranode_deficit[interval] = np.abs(excess_p)
+            nodal_deficit[interval] = np.abs(excess_p)
 
             """ print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
 
@@ -312,7 +348,7 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                                (nodal_p_timeseries_profiles[interval, 0] - nodal_capacities_c_mw[0]))
             nodal_p_timeseries_profiles[interval, 0] -= deficit_p               
 
-            intranode_spillage[interval] = deficit_p
+            nodal_spillage[interval] = deficit_p
 
             """ print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
         #sleep(1)
@@ -320,4 +356,18 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
         if interval < intervals-1:
             nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
 
-    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, intranode_deficit, intranode_spillage
+        """ # Precharge to try to remove deficits
+        remainder = precharge_storage(interval, 
+                                      nodal_e_capacities,
+                                      nodal_p_timeseries_profiles, 
+                                      nodal_e_timeseries_profiles, 
+                                      balancing_d_efficiencies, 
+                                      balancing_c_efficiencies, 
+                                      balancing_d_constraints, 
+                                      balancing_c_constraints, 
+                                      time_resolution)
+    
+    nodal_deficit = 
+    nodal_spillage = -1 *  """
+
+    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, nodal_deficit, nodal_spillage

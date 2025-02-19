@@ -201,6 +201,7 @@ class Solution_SingleTime:
                 pv_idx,
                 wind_idx,
                 flexible_p_idx,
+                storage_p_idx,
                 storage_e_idx,
                 lines_idx,
                 balancing_W_idx,
@@ -279,9 +280,12 @@ class Solution_SingleTime:
         self.CPV = x[: pv_idx]
         self.CWind = x[pv_idx : wind_idx]
         self.CFlexible = x[wind_idx : flexible_p_idx]
-        self.CPHS = x[flexible_p_idx : storage_e_idx]
+        self.CPHP = x[flexible_p_idx : storage_p_idx]
+        self.CPHS = x[storage_p_idx : storage_e_idx]
         self.CTrans = x[storage_e_idx : lines_idx]
         self.balancing_W_x = x[lines_idx : ]
+
+        """ print(self.CPV,self.CWind,self.CFlexible,self.CPHS,self.CTrans,self.balancing_W_x) """
 
         # Flexible
         self.flexible_ids = flexible_ids
@@ -302,16 +306,16 @@ class Solution_SingleTime:
                                                     np.ones(len(flexible_ids), dtype=np.float64))
                                                 )
         self.balancing_c_constraint = np.hstack(
-                                        (np.full(len(storage_ids), NP_FLOAT_MIN / 10000, dtype=np.float64), # Divide by 10000 to prevent overflow when converting GW to MW
+                                        (-1 * self.CPHP, 
                                         np.zeros(len(flexible_ids), dtype=np.float64))
                                       )
         self.balancing_d_constraint = np.hstack(
-                                        (np.full(len(storage_ids), NP_FLOAT_MAX / 10000, dtype=np.float64), 
+                                        (self.CPHP, 
                                         self.CFlexible)
                                       )
         self.balancing_e_constraints = np.hstack(
                                         (self.CPHS, 
-                                        np.full(len(flexible_ids), NP_FLOAT_MAX / 10000, dtype=np.float64))
+                                        np.full(len(flexible_ids), NP_FLOAT_MAX / 10000, dtype=np.float64)) # Divide by 10000 to prevent overflow when converting GWh to MWh
                                       )
         
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
@@ -320,8 +324,6 @@ class Solution_SingleTime:
                                         (self.storage_costs, 
                                         self.generator_costs[:, flexible_mask])
                                         )
-
-        #print(self.CPV,self.CWind,self.CFlexible,self.CPHS,self.CTrans,self.magnitudes_x)
 
         """ nodal_durations = 
         for idx in range(len(storage_durations)):
@@ -336,7 +338,8 @@ class Solution_SingleTime:
         self.storage_nodes = self.storage_nodes
 
         self.CFlexible_nodal = self._fill_nodal_array_1d(self.CFlexible, self.flexible_nodes)
-        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)   
+        self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
+        self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)    
         self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
         self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
@@ -441,7 +444,7 @@ class Solution_SingleTime:
         Discharge = np.zeros(shape2d, dtype=np.float64)
         Charge = np.zeros(shape2d, dtype=np.float64)
         Storage = np.zeros(shape2d, dtype=np.float64)
-        Deficit = np.zeros(shape2d, dtype=np.float64)
+        Precharging = np.zeros(shape2d, dtype=np.float64)
         Transmission = np.zeros((intervals, ntrans, nodes), dtype = np.float64)
         Storaget_1 = 0.5*Scapacity
 
@@ -450,16 +453,16 @@ class Solution_SingleTime:
 
             Balancingt = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution + Fcapacity)
             Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
-            Deficitt = np.maximum(Netloadt - Balancingt ,0)
+            Prechargingt = np.maximum(Netloadt - Balancingt ,0)
             
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
         
-            if Deficitt.sum() > 1e-6:
+            if Prechargingt.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
                 Surplust = -1 * np.minimum(0, Netloadt) + (Storaget_1 / resolution  + Fcapacity - Balancingt)
 
-                Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
+                Transmissiont = get_transmission_flows_t(Prechargingt, Surplust, Hcapacity, network, self.networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
@@ -493,25 +496,27 @@ class Solution_SingleTime:
         
         ImpExp = Transmission.sum(axis=1)
         
-        Deficit = np.maximum(0, Netload - ImpExp - Balancing)
+        Precharging = np.maximum(0, Netload - ImpExp - Balancing)
         Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)        
 
         self.Spillage_nodal = Spillage
         self.Charge_nodal = Charge
         self.Discharge_nodal = Discharge
-        self.NetBalancing_nodal = Balancing + Deficit - Charge # RENAME DEFICIT TO PRE-CHARGED STORAGE POWER. MAYBE NEED TO INCLUDE SPILLAGE?
+        self.NetBalancing_nodal = Balancing + Precharging - Charge - Spillage
         self.Storage_nodal = Storage
-        self.Deficit_nodal = Deficit
+        self.Precharging_nodal = Precharging
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
 
         self.TFlows = (Transmission).sum(axis=2)
+
+        #print(np.max(Spillage))
         """ np.savetxt("results/deficit_internode.csv", Deficit, delimiter=",")
         np.savetxt("results/spillage_intranode.csv", self.Spillage_nodal, delimiter=",")
         np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
         
-        return np.zeros(Deficit.shape, dtype=np.float64)
+        return np.zeros(Precharging.shape, dtype=np.float64)
 
     def _calculate_costs(self):
         solution_cost = calculate_costs(self)
@@ -660,7 +665,7 @@ class Solution_SingleTime:
                                     ) for idx in range(0,len(permutation_balancing_e_capacities))
                                     ], dtype=np.float64).sum()
 
-                if perm_cost < nodal_costs[node_idx]:
+                if perm_cost < nodal_costs[node_idx]: ##### NEED DEFICIT INCLUDED HERE?????
                     nodal_costs[node_idx] = perm_cost
                     deficit_intranodes[:,node_idx] = deficit_intranode
                     spillage_intranodes[:,node_idx] = spillage_intranode
@@ -677,8 +682,13 @@ class Solution_SingleTime:
                             self.flexible_p_profiles[:,balancing_permutations[p,i]-flexible_order_offset] = balancing_p_profile_option[:,i]
                             self.flexible_p_capacities = self.CFlexible
 
+                    """ print(f"Cheapest {node_idx}: {balancing_permutations[p,:]}") """
+
         """ print(self.storage_p_capacities, self.CPHS, self.flexible_p_capacities)
         np.savetxt("results/balancing_p_profiles_ifft.csv", self.balancing_p_profiles_ifft[:,0,:], delimiter=",")
+        np.savetxt("results/GPV_nodal.csv", self.GPV_nodal, delimiter=",")
+        np.savetxt("results/GWind_nodal.csv", self.GWind_nodal, delimiter=",")
+        np.savetxt("results/GBaseload_nodal.csv", self.GBaseload_nodal, delimiter=",")
         np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         np.savetxt("results/storage_e_profiles.csv", self.storage_e_profiles, delimiter=",")
         np.savetxt("results/storage_p_profiles.csv", self.storage_p_profiles, delimiter=",")
@@ -769,6 +779,7 @@ def parallel_wrapper(xs,
                     pv_idx,
                     wind_idx,
                     flexible_p_idx,
+                    storage_p_idx,
                     storage_e_idx,
                     lines_idx,
                     balancing_W_idx,
@@ -823,6 +834,7 @@ def parallel_wrapper(xs,
                                 pv_idx,
                                 wind_idx,
                                 flexible_p_idx,
+                                storage_p_idx,
                                 storage_e_idx,
                                 lines_idx,
                                 balancing_W_idx,
@@ -878,6 +890,7 @@ def objective_st(x,
                 pv_idx,
                 wind_idx,
                 flexible_p_idx,
+                storage_p_idx,
                 storage_e_idx,
                 lines_idx,
                 balancing_W_idx,
@@ -930,6 +943,7 @@ def objective_st(x,
                                 pv_idx,
                                 wind_idx,
                                 flexible_p_idx,
+                                storage_p_idx,
                                 storage_e_idx,
                                 lines_idx,
                                 balancing_W_idx,

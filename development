@@ -27,6 +27,11 @@ PLEXOS bugs
 FIRM_CE bugs
 - Add fuel costs into calculation
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
-- Frequency analysis apply to entire net load, only apply storage constraints in the apportioning method? Will transmission still work in this case?
-I think it won't since transmission requires knowledge of whether storage is empty/full. Since flexible is rolled into this though, it may be necessary
-to remove the storage constraints here.
+- Energy constraints on flexible?
+- Precharging storage when checking constraints? Charge from spillage at other nodes??
+- Balancing power sum equals zero?
+- https://doi.org/10.1016/j.epsr.2010.06.018
+- Test model that forces batteries to always be fully charged
+
+- Existing capacity: FOM and VOM and Fuel, not LCOE
+

@@ -22,18 +22,20 @@ class Solver:
         solar_lb = [generator.capacity + generator.min_build for generator in solar_generators]
         wind_lb = [generator.capacity + generator.min_build for generator in wind_generators]
         flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators]
-        storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages] # For nodes
+        storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] 
+        storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages] 
         line_lb = [line.capacity + line.min_build for line in lines]
         balancing_W_cutoffs_lb = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[-0.01]
-        lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_e_lb + line_lb + balancing_W_cutoffs_lb)
+        lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_p_lb + storage_e_lb + line_lb + balancing_W_cutoffs_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
         wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
         flexible_p_ub = [generator.capacity + generator.max_build for generator in flexible_generators] 
-        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages] # For nodes with storage else 0
+        storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages] 
+        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages]
         line_ub = [line.capacity + line.max_build for line in lines]
         balancing_W_cutoffs_ub = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[self.scenario.max_frequency]
-        upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_e_ub + line_ub + balancing_W_cutoffs_ub)
+        upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub + balancing_W_cutoffs_ub)
 
         return lower_bounds, upper_bounds
 
@@ -86,7 +88,7 @@ class Solver:
         )
 
         scenario_arrays['generator_costs'] = np.zeros(
-            (8, max(self.scenario.generators)+1), dtype=np.float64
+            (7, max(self.scenario.generators)+1), dtype=np.float64
         )
 
         scenario_arrays['TSPV'] = np.array([
@@ -158,7 +160,7 @@ class Solver:
         )
 
         scenario_arrays['storage_costs'] = np.zeros(
-            (8, max(self.scenario.storages)+1), dtype=np.float64
+            (7, max(self.scenario.storages)+1), dtype=np.float64
         )
 
         scenario_arrays['Discharge'] = np.zeros(
@@ -212,7 +214,8 @@ class Solver:
         scenario_arrays['pv_idx'] = scenario_arrays['TSPV'].shape[1]
         scenario_arrays['wind_idx'] = scenario_arrays['pv_idx'] + scenario_arrays['TSWind'].shape[1]
         scenario_arrays['flexible_p_idx'] = scenario_arrays['wind_idx'] + len(scenario_arrays['flexible_ids'])
-        scenario_arrays['storage_e_idx'] = scenario_arrays['flexible_p_idx'] + len(self.scenario.storages) 
+        scenario_arrays['storage_p_idx'] = scenario_arrays['flexible_p_idx'] + len(self.scenario.storages) 
+        scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages) 
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
         scenario_arrays['balancing_W_idx'] = scenario_arrays['lines_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_balancing']))
 
@@ -233,21 +236,22 @@ class Solver:
         
         for i, idx in enumerate(self.scenario.generators):
             g = self.scenario.generators[idx]
-            scenario_arrays['generator_costs'][0, i] = g.cost.capex_p
-            scenario_arrays['generator_costs'][2, i] = g.cost.fom
-            scenario_arrays['generator_costs'][3, i] = g.cost.vom
-            scenario_arrays['generator_costs'][4, i] = g.cost.lifetime
-            scenario_arrays['generator_costs'][5, i] = g.cost.discount_rate
-            scenario_arrays['generator_costs'][7, i] = g.cost.lcoe
+            gen_idx = g.id
+            scenario_arrays['generator_costs'][0, gen_idx] = g.cost.capex_p
+            scenario_arrays['generator_costs'][2, gen_idx] = g.cost.fom
+            scenario_arrays['generator_costs'][3, gen_idx] = g.cost.vom
+            scenario_arrays['generator_costs'][4, gen_idx] = g.cost.lifetime
+            scenario_arrays['generator_costs'][5, gen_idx] = g.cost.discount_rate
 
         for i, idx in enumerate(self.scenario.storages):
             s = self.scenario.storages[idx]
-            scenario_arrays['storage_costs'][0, i] = s.cost.capex_p
-            scenario_arrays['storage_costs'][1, i] = s.cost.capex_e
-            scenario_arrays['storage_costs'][2, i] = s.cost.fom
-            scenario_arrays['storage_costs'][3, i] = s.cost.vom
-            scenario_arrays['storage_costs'][4, i] = s.cost.lifetime
-            scenario_arrays['storage_costs'][5, i] = s.cost.discount_rate
+            storage_idx = s.id
+            scenario_arrays['storage_costs'][0, storage_idx] = s.cost.capex_p
+            scenario_arrays['storage_costs'][1, storage_idx] = s.cost.capex_e
+            scenario_arrays['storage_costs'][2, storage_idx] = s.cost.fom
+            scenario_arrays['storage_costs'][3, storage_idx] = s.cost.vom
+            scenario_arrays['storage_costs'][4, storage_idx] = s.cost.lifetime
+            scenario_arrays['storage_costs'][5, storage_idx] = s.cost.discount_rate
             
         for i, idx in enumerate(self.scenario.lines):
             l = self.scenario.lines[idx]
@@ -315,6 +319,7 @@ class Solver:
                     scenario_arrays["pv_idx"],
                     scenario_arrays["wind_idx"],
                     scenario_arrays["flexible_p_idx"],
+                    scenario_arrays['storage_p_idx'],
                     scenario_arrays["storage_e_idx"],
                     scenario_arrays["lines_idx"],
                     scenario_arrays['balancing_W_idx'],
