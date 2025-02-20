@@ -220,6 +220,29 @@ def precharge_storage(interval,
             pre_interval -= 1 """
 
 @njit
+def order_balancing(node_balancing_order, node_balancing_e_capacities, variable_costs_per_mwh):
+    n = node_balancing_order.shape[0]
+    indices = np.arange(n)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Compare energy capacity first
+            if (node_balancing_e_capacities[indices[j]] > node_balancing_e_capacities[indices[i]]) or \
+               (node_balancing_e_capacities[indices[j]] == node_balancing_e_capacities[indices[i]] and
+                variable_costs_per_mwh[indices[j]] > variable_costs_per_mwh[indices[i]]):
+                # Swap for descending order
+                temp = indices[i]
+                indices[i] = indices[j]
+                indices[j] = temp
+
+    # Create the node permutation based on the sorted indices
+    node_permutation = np.empty_like(node_balancing_order, dtype=np.int64)
+    for i in range(n):
+        node_permutation[i] = node_balancing_order[indices[i]]
+
+    return node_permutation
+
+""" @njit
 def apply_balancing_constraints(nodal_p_timeseries_profiles, 
                                   nodal_e_capacities, 
                                   balancing_d_efficiencies, 
@@ -240,18 +263,14 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
     
     nodal_e_timeseries_profiles[0,:] = 0.5 * nodal_capacities_mwh
 
-    for interval in range(intervals):
-        """ if interval > 6800:
-            print(storage_d_efficiencies, storage_c_efficiencies)
-            exit() """
-        
+    for interval in range(intervals):       
         if interval < intervals-1:
             storage_t_1 = nodal_e_timeseries_profiles[interval,:]
             energy_t_1 = -1 * nodal_p_timeseries_profiles[interval, :] * time_resolution
             for n in range(storage_number):
                 storage_t_1[n] += energy_t_1[n] * balancing_d_efficiencies[n] if nodal_p_timeseries_profiles[interval, n] > 0 else energy_t_1[n] * balancing_c_efficiencies[n]
 
-        """ print(f"Initial INTERVAL {interval}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+        print(f"Initial INTERVAL {interval}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
         for n in range(storage_number-1):
             # Check for discharging overflow
             if (storage_t_1[n] < 0.0) or (nodal_p_timeseries_profiles[interval, n] > nodal_capacities_d_mw[n]):
@@ -267,7 +286,7 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                     storage_t_1[n+1] += excess_p * balancing_d_efficiencies[n+1] * time_resolution                       
                 nodal_p_timeseries_profiles[interval, n+1] -= excess_p
 
-                """ print(f"Up discharging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+                print(f"Up discharging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
                 #print("Excesses: ", excess_p, excess_e, storage_d_efficiencies[n], storage_d_efficiencies[n+1])
                 
             # Check for charging overflow
@@ -284,8 +303,8 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                     storage_t_1[n+1] -= deficit_p * balancing_c_efficiencies[n+1] * time_resolution
                 nodal_p_timeseries_profiles[interval, n+1] += deficit_p 
 
-                """ print(f"Up charging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
-                exit() """
+                print(f"Up charging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
+                exit()
 
         # Reverse direction of apportioning
         for n in range(storage_number-1):
@@ -305,7 +324,7 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                     storage_t_1[k-1] += excess_p * balancing_d_efficiencies[k-1] * time_resolution                    
                 nodal_p_timeseries_profiles[interval, k-1] -= excess_p 
 
-                """ print(f"Down discharging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+                print(f"Down discharging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
 
             # Check for charging overflow
             elif (storage_t_1[k] > nodal_capacities_mwh[k]) or (nodal_p_timeseries_profiles[interval, k] < nodal_capacities_c_mw[k]):
@@ -321,9 +340,9 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
                     storage_t_1[k-1] -= deficit_p * balancing_c_efficiencies[k-1] * time_resolution
                 nodal_p_timeseries_profiles[interval, k-1] += deficit_p
 
-                """ print(f"Down charing deficits: ", deficit_p, deficit_e)
+                print(f"Down charing deficits: ", deficit_p, deficit_e)
                 print(f"Down charging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
-                exit() """
+                exit()
 
         # Determine deficits
         if (storage_t_1[0] < 0.0) or (nodal_p_timeseries_profiles[interval, 0] > nodal_capacities_d_mw[0]):
@@ -337,7 +356,7 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
 
             nodal_deficit[interval] = np.abs(excess_p)
 
-            """ print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+            print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
 
         elif (storage_t_1[0] > nodal_capacities_mwh[0]) or (nodal_p_timeseries_profiles[interval, 0] < nodal_capacities_c_mw[0]):
             deficit_e = min((nodal_capacities_mwh[0] - storage_t_1[0]),
@@ -350,24 +369,88 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
 
             nodal_spillage[interval] = deficit_p
 
-            """ print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+            print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
         #sleep(1)
         
         if interval < intervals-1:
             nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
 
-        """ # Precharge to try to remove deficits
-        remainder = precharge_storage(interval, 
-                                      nodal_e_capacities,
-                                      nodal_p_timeseries_profiles, 
-                                      nodal_e_timeseries_profiles, 
-                                      balancing_d_efficiencies, 
-                                      balancing_c_efficiencies, 
-                                      balancing_d_constraints, 
-                                      balancing_c_constraints, 
-                                      time_resolution)
-    
-    nodal_deficit = 
-    nodal_spillage = -1 *  """
+    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, nodal_deficit, nodal_spillage """
 
-    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, nodal_deficit, nodal_spillage
+@njit
+def apply_balancing_constraints(nodal_p_timeseries_profiles, 
+                                  balancing_d_constraints, 
+                                  balancing_c_constraints):
+    
+    intervals, storage_number = nodal_p_timeseries_profiles.shape
+    nodal_capacities_d_mw = 1000 * balancing_d_constraints
+    nodal_capacities_c_mw = 1000 * balancing_c_constraints
+    nodal_deficit = np.zeros(intervals, dtype=np.float64)
+    nodal_spillage = np.zeros(intervals, dtype=np.float64)
+
+    for interval in range(intervals):        
+        """ print(f"Initial INTERVAL {interval}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+        for n in range(storage_number-1):
+            # Check for discharging overflow
+            if (nodal_p_timeseries_profiles[interval, n] > nodal_capacities_d_mw[n]):
+                excess_p = nodal_capacities_d_mw[n] - nodal_p_timeseries_profiles[interval, n]              
+                nodal_p_timeseries_profiles[interval, n] += excess_p                    
+
+                nodal_p_timeseries_profiles[interval, n+1] -= excess_p
+
+                """ print(f"Up discharging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+                #print("Excesses: ", excess_p, excess_e, storage_d_efficiencies[n], storage_d_efficiencies[n+1])
+                
+            # Check for charging overflow
+            elif (nodal_p_timeseries_profiles[interval, n] < nodal_capacities_c_mw[n]):
+                deficit_p = nodal_p_timeseries_profiles[interval, n] - nodal_capacities_c_mw[n]
+                nodal_p_timeseries_profiles[interval, n] -= deficit_p                    
+
+                nodal_p_timeseries_profiles[interval, n+1] += deficit_p 
+
+                """ print(f"Up charging {n}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
+                exit() """
+
+        # Reverse direction of apportioning
+        for n in range(storage_number-1):
+            k = storage_number - n - 1
+                
+            # Check for discharging overflow
+            if (nodal_p_timeseries_profiles[interval, k] > nodal_capacities_d_mw[k]):
+                excess_p = nodal_capacities_d_mw[k] - nodal_p_timeseries_profiles[interval, k]
+                nodal_p_timeseries_profiles[interval, k] += excess_p                    
+
+                nodal_p_timeseries_profiles[interval, k-1] -= excess_p 
+
+                """ print(f"Down discharging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+
+            # Check for charging overflow
+            elif (nodal_p_timeseries_profiles[interval, k] < nodal_capacities_c_mw[k]):
+                deficit_p = nodal_p_timeseries_profiles[interval, k] - nodal_capacities_c_mw[k]
+                nodal_p_timeseries_profiles[interval, k] -= deficit_p                    
+
+                nodal_p_timeseries_profiles[interval, k-1] += deficit_p
+
+                """ print(f"Down charing deficits: ", deficit_p, deficit_e)
+                print(f"Down charging {k}: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh)
+                exit() """
+
+        # Determine deficits
+        if (nodal_p_timeseries_profiles[interval, 0] > nodal_capacities_d_mw[0]):
+            excess_p = nodal_capacities_d_mw[0] - nodal_p_timeseries_profiles[interval, 0]
+            nodal_p_timeseries_profiles[interval, 0] += excess_p                
+
+            nodal_deficit[interval] = np.abs(excess_p)
+
+            """ print(f"Deficit discharging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+
+        elif (nodal_p_timeseries_profiles[interval, 0] < nodal_capacities_c_mw[0]):
+            deficit_p = nodal_p_timeseries_profiles[interval, 0] - nodal_capacities_c_mw[0]
+            nodal_p_timeseries_profiles[interval, 0] -= deficit_p               
+
+            nodal_spillage[interval] = deficit_p
+
+            """ print(f"Deficit charging: ", interval, nodal_p_timeseries_profiles[interval, :], storage_t_1, nodal_capacities_mwh) """
+        #sleep(1)
+        
+    return nodal_p_timeseries_profiles, nodal_deficit, nodal_spillage
