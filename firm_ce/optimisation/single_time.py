@@ -88,6 +88,7 @@ if JIT_ENABLED:
         ('baseload_nodes', int64[:]),
 
         ('CFlexible_nodal', float64[:]),
+        ('CPHP_nodal', float64[:]),
         ('CPHS_nodal', float64[:]),
         ('GPV', float64[:, :]),
         ('GPV_nodal', float64[:, :]),
@@ -444,7 +445,7 @@ class Solution_SingleTime:
         Discharge = np.zeros(shape2d, dtype=np.float64)
         Charge = np.zeros(shape2d, dtype=np.float64)
         Storage = np.zeros(shape2d, dtype=np.float64)
-        Precharging = np.zeros(shape2d, dtype=np.float64)
+        Deficit = np.zeros(shape2d, dtype=np.float64)
         Transmission = np.zeros((intervals, ntrans, nodes), dtype = np.float64)
         Storaget_1 = 0.5*Scapacity
 
@@ -453,16 +454,16 @@ class Solution_SingleTime:
 
             Balancingt = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution + Fcapacity)
             Discharget = np.minimum(np.maximum(0, Netloadt), Storaget_1 / resolution)
-            Prechargingt = np.maximum(Netloadt - Balancingt ,0)
+            Deficitt = np.maximum(Netloadt - Balancingt ,0)
             
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
         
-            if Prechargingt.sum() > 1e-6:
+            if Deficitt.sum() > 1e-6:
                 # raise KeyboardInterrupt
                 # Fill deficits with transmission allowing drawing down from neighbours battery reserves
                 Surplust = -1 * np.minimum(0, Netloadt) + (Storaget_1 / resolution  + Fcapacity - Balancingt)
 
-                Transmissiont = get_transmission_flows_t(Prechargingt, Surplust, Hcapacity, network, self.networksteps, 
+                Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
                                     np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
                 
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
@@ -496,15 +497,15 @@ class Solution_SingleTime:
         
         ImpExp = Transmission.sum(axis=1)
         
-        Precharging = np.maximum(0, Netload - ImpExp - Balancing)
+        Deficit = np.maximum(0, Netload - ImpExp - Balancing)
         Spillage = -1 * np.minimum(0, Netload - ImpExp + Charge)        
 
         self.Spillage_nodal = Spillage
         self.Charge_nodal = Charge
         self.Discharge_nodal = Discharge
-        self.NetBalancing_nodal = Balancing + Precharging - Charge - Spillage
+        self.NetBalancing_nodal = Balancing + Deficit - Charge - Spillage ######## DEFICIT REPRESENTS PRECHARGING BY FLEXIBLE NEEDED
         self.Storage_nodal = Storage
-        self.Precharging_nodal = Precharging
+        self.Deficit_nodal = Deficit
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
 
@@ -516,7 +517,7 @@ class Solution_SingleTime:
         np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",")
         np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
         
-        return np.zeros(Precharging.shape, dtype=np.float64)
+        return np.zeros(Deficit.shape, dtype=np.float64)
 
     def _calculate_costs(self):
         solution_cost = calculate_costs(self)
@@ -701,24 +702,9 @@ class Solution_SingleTime:
         self.Spillage_nodal += spillage_intranodes
         
         return storage_costs, deficit_intranodes
-    
-    def _check_cutoffs_monotonic_increasing(self):
-        pen_thresholds = 0.
-        for node_idx in range(self.nodes):
-            for threshold_idx in range(self.balancing_W_x_nodal.shape[1]):
-                if self.balancing_W_cutoffs[node_idx,threshold_idx+1] < self.balancing_W_cutoffs[node_idx,threshold_idx]: 
-                    pen_thresholds += 1000000.
-
-        return pen_thresholds
 
     def _objective(self) -> List[float]:
-        # Frequency cutoffs at each node must be monotonic increasing
-        pen_thresholds = self._check_cutoffs_monotonic_increasing()
-
-        if pen_thresholds > 1.:
-            return -1., pen_thresholds
-
-        deficit_nodal = self._reliability()
+        deficit_nodal = self._reliability() ##### REMOVE DEFICIT_NODAL 
         self.TFlowsAbs = np.abs(self.TFlows)
 
         self._filter_balancing_profiles()

@@ -32,7 +32,7 @@ def get_present_value(discount_rate, lifetime):
 def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
     present_value = get_present_value(discount_rate, lifetime)
     annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * vom
-    print(f"{power_capacity} || {energy_capacity} || {capex_p} || {capex_e} || {power_capacity * pow(10,6) * fom} || {(energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value} == {annualised_cost}")
+    """ print(f"{power_capacity} || {energy_capacity} || {capex_p} || {capex_e} || {power_capacity * pow(10,6) * fom} || {(energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value} == {annualised_cost}") """
     return annualised_cost
 
 @njit   

@@ -34,4 +34,5 @@ FIRM_CE bugs
 - Test model that forces batteries to always be fully charged
 
 - Existing capacity: FOM and VOM and Fuel, not LCOE
+- Move transmission to after storage?? Use spillage from other nodes??
 

@@ -28,9 +28,6 @@ class ImportCSV:
     def get_storages(self) -> dict:
         return self.get_data("storages.csv")
     
-    def get_constraints(self) -> dict:
-        return self.get_data("constraints.csv")
-    
     def get_datafiles(self) -> dict:
         return self.get_data("datafiles.csv")
     
@@ -71,7 +68,6 @@ def import_csv_data() -> dict:
         'generators': csv_importer.get_generators(),
         'lines': csv_importer.get_lines(),
         'storages': csv_importer.get_storages(),
-        'constraints': csv_importer.get_constraints(),
         'datafiles': csv_importer.get_datafiles(),
         'config': csv_importer.get_config(),
     }

@@ -2,7 +2,7 @@ from typing import Dict, List
 
 from firm_ce.file_manager import import_csv_data, DataFile 
 from firm_ce.components import Generator, Storage, Line, Node
-from firm_ce.optimisation import Constraint, Solver
+from firm_ce.optimisation import Solver
 from firm_ce.network import Network
 from firm_ce.network.frequency import get_frequencies
 
@@ -14,7 +14,6 @@ class ModelData:
         self.generators = objects.get('generators')
         self.lines = objects.get('lines')
         self.storages = objects.get('storages')
-        self.constraints = objects.get('constraints')
         self.datafiles = objects.get('datafiles')
         self.config = objects.get('config')
         self.settings = objects.get('settings')
@@ -34,16 +33,15 @@ class Scenario:
         self.final_year = int(scenario_data.get('finalyear', 0))
         self.nodes = self._get_nodes(scenario_data.get('nodes', ''), datafiles)
         self.lines = self._get_lines(model_data.lines)
-        self.constraints = self._get_constraints(model_data.constraints)
         self.generators = self._get_generators(model_data.generators, datafiles)
         self.storages = self._get_storages(model_data.storages)
         self.type = scenario_data.get('type', '')
         self.network = Network(self.lines, self.nodes)
 
         self.intervals = len(self.nodes[0].demand_data)
-        node_names = {self.nodes[idx].name : self.nodes[idx].id for idx in self.nodes}
-        self.nodes_with_balancing = set([node_names[self.storages[idx].node] for idx in self.storages] 
-                                        + [node_names[self.generators[idx].node] for idx in self.generators if self.generators[idx].unit_type == 'flexible'])
+        self.node_names = {self.nodes[idx].name : self.nodes[idx].id for idx in self.nodes}
+        self.nodes_with_balancing = set([self.node_names[self.storages[idx].node] for idx in self.storages] 
+                                        + [self.node_names[self.generators[idx].node] for idx in self.generators if self.generators[idx].unit_type == 'flexible'])
         self.max_frequency = max(get_frequencies(self.intervals, self.resolution))
 
     def __repr__(self):
@@ -70,11 +68,7 @@ class Scenario:
         """Filter or prepare storage data specific to this scenario."""
         return {idx: Storage(idx, all_storages[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
     
-    def _get_constraints(self, all_constraints: Dict[str,Dict[str,str]]) -> Dict[str,Constraint]:
-        """Filter or prepare constraint data specific to this scenario."""
-        return {idx: Constraint(idx, all_constraints[idx]) for idx in all_constraints if self.name in self._parse_comma_separated(all_constraints[idx]['scenarios'])}
-
-    def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,Constraint]:
+    def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
         return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
 

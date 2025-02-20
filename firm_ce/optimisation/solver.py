@@ -1,16 +1,26 @@
 import numpy as np
-from scipy.optimize import differential_evolution
+from scipy.optimize import differential_evolution, NonlinearConstraint
 from firm_ce.optimisation.single_time import parallel_wrapper
 from firm_ce.file_manager import read_initial_guess
 import csv
+
+from firm_ce.optimisation.constraints import BalancingMonotonicityConstraint
 
 class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
         self.decision_x0 = read_initial_guess()
-        self.lower_bounds, self.upper_bounds = self._get_bounds()
+        self.lower_bounds, self.upper_bounds, self.x_W_offset, self.cutoff_W_per_node = self._get_bounds()
         self.solution = None
+
+    def _get_cutoff_W_per_node(self, flexible_generators):
+        cutoff_W_per_node = []
+        for node in sorted(self.scenario.nodes_with_balancing):
+            num_storages = len([self.scenario.storages[idx] for idx in self.scenario.storages if self.scenario.node_names[self.scenario.storages[idx].node] == node])
+            num_flexible = len([generator for generator in flexible_generators if self.scenario.node_names[generator.node] == node])
+            cutoff_W_per_node.append(num_storages + num_flexible - 1)
+        return cutoff_W_per_node
 
     def _get_bounds(self):
         solar_generators = [self.scenario.generators[idx] for idx in self.scenario.generators if self.scenario.generators[idx].unit_type == 'solar']
@@ -37,7 +47,11 @@ class Solver:
         balancing_W_cutoffs_ub = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[self.scenario.max_frequency]
         upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub + balancing_W_cutoffs_ub)
 
-        return lower_bounds, upper_bounds
+        x_W_offset = len(solar_lb) + len(wind_lb) + len(flexible_p_lb) + len(storage_p_lb) + len(storage_e_lb) + len(line_lb)
+
+        cutoff_W_per_node = self._get_cutoff_W_per_node(flexible_generators)
+
+        return lower_bounds, upper_bounds, x_W_offset, cutoff_W_per_node
 
     def _prepare_scenario_arrays(self):
         
@@ -282,10 +296,19 @@ class Solver:
         scenario_arrays = self._prepare_scenario_arrays()
         self._initialise_callback()
 
+        # Establish monotonicity of balancing frequency cutoffs at each node
+        balancing_constraint = BalancingMonotonicityConstraint(self.cutoff_W_per_node, self.x_W_offset)
+        monotonicity_constraint = NonlinearConstraint(
+            fun=balancing_constraint,
+            lb=balancing_constraint.lb,
+            ub=balancing_constraint.ub,
+        )
+
         self.result = differential_evolution(
             x0=self.decision_x0,
             func=parallel_wrapper, 
             bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
+            constraints=(monotonicity_constraint,),
             args=(scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
