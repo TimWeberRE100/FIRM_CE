@@ -183,41 +183,28 @@ def apportion_nodal_noise(nodal_timeseries, noise_timeseries):
 
     return nodal_timeseries
 
-""" @njit
-def precharge_storage(interval, 
-                        nodal_e_capacities,
-                        nodal_p_timeseries_profiles, 
-                        nodal_e_timeseries_profiles, 
-                        balancing_d_efficiencies, 
-                        balancing_c_efficiencies, 
-                        balancing_d_constraints, 
-                        balancing_c_constraints, 
-                        time_resolution):
-    
-    precharge = True
-    pre_interval = interval - 1
-    
-    if pre_interval < 1:
-        precharge = False
+@njit
+def order_balancing(node_balancing_order, node_balancing_e_capacities, variable_costs_per_mwh):
+    n = node_balancing_order.shape[0]
+    indices = np.arange(n)
 
-    while precharge:
-        # Determine which storages are empty
+    for i in range(n):
+        for j in range(i + 1, n):
+            # Compare energy capacity first
+            if (node_balancing_e_capacities[indices[j]] > node_balancing_e_capacities[indices[i]]) or \
+               (node_balancing_e_capacities[indices[j]] == node_balancing_e_capacities[indices[i]] and
+                variable_costs_per_mwh[indices[j]] > variable_costs_per_mwh[indices[i]]):
+                # Swap for descending order
+                temp = indices[i]
+                indices[i] = indices[j]
+                indices[j] = temp
 
-        # Check previous interval
+    # Create the node permutation based on the sorted indices
+    node_permutation = np.empty_like(node_balancing_order, dtype=np.int64)
+    for i in range(n):
+        node_permutation[i] = node_balancing_order[indices[i]]
 
-        # Try to prefill empty storages using other storages
-
-        #
-
-        
-
-        if pre_interval < 1:
-            precharge = False
-        elif np.sum(nodal_e_timeseries_profiles[pre_interval,:]) - np.sum(nodal_e_capacities) < EPSILON_FLOAT64: 
-            ### NEED TO LIMIT TO STORAGE SYSTEMS CAPACITIES
-            precharge = False
-        else:
-            pre_interval -= 1 """
+    return node_permutation
 
 @njit
 def apply_balancing_constraints(nodal_p_timeseries_profiles, 
@@ -355,19 +342,5 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
         
         if interval < intervals-1:
             nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
-
-        """ # Precharge to try to remove deficits
-        remainder = precharge_storage(interval, 
-                                      nodal_e_capacities,
-                                      nodal_p_timeseries_profiles, 
-                                      nodal_e_timeseries_profiles, 
-                                      balancing_d_efficiencies, 
-                                      balancing_c_efficiencies, 
-                                      balancing_d_constraints, 
-                                      balancing_c_constraints, 
-                                      time_resolution)
-    
-    nodal_deficit = 
-    nodal_spillage = -1 *  """
 
     return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, nodal_deficit, nodal_spillage

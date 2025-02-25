@@ -36,3 +36,6 @@ FIRM_CE bugs
 - Existing capacity: FOM and VOM and Fuel, not LCOE
 - Move transmission to after storage?? Use spillage from other nodes??
 
+1. Apply rough energy storage constraints in Reliability -> NetBalancing
+2. Apply frequency analysis to NetBalancing
+3. Apply constraints and transmission to ifft profiles

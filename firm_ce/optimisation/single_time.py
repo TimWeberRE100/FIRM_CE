@@ -295,8 +295,12 @@ class Solution_SingleTime:
         self.balancing_nodes = np.hstack((storage_nodes, flexible_nodes))
         self.balancing_order = np.arange(len(self.balancing_ids), dtype=np.int64)
         self.balancing_storage_tag = np.hstack(
-                                        (np.ones(len(storage_ids), dtype=np.int64),
-                                        np.zeros(len(flexible_ids), dtype=np.int64))
+                                        (np.full(len(storage_ids), True, dtype=np.bool_),
+                                        np.full(len(flexible_ids), False, dtype=np.bool_))
+                                    )
+        self.balancing_flexible_tag = np.hstack(
+                                        (np.full(len(storage_ids), False, dtype=np.bool_),
+                                        np.full(len(flexible_ids), True, dtype=np.bool_))
                                     )
         self.balancing_d_efficiencies = np.hstack(
                                                 (storage_d_efficiencies, 
@@ -564,11 +568,6 @@ class Solution_SingleTime:
     
     def _filter_balancing_profiles(self):
         self.balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
-        
-        """ np.savetxt("results/Charge_nodal.csv", self.Charge_nodal, delimiter=",")
-        np.savetxt("results/Discharge_nodal.csv", self.Discharge_nodal, delimiter=",")
-        np.savetxt("results/Storage_nodal.csv", self.Storage_nodal, delimiter=",") """
-        """ np.savetxt("results/NetBalancing_nodal.csv", self.NetBalancing_nodal, delimiter=",") """
         
         for node_idx in range(self.nodes):
             frequency_profile_p = frequency.get_frequency_profile(self.NetBalancing_nodal[:,node_idx])

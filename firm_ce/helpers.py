@@ -106,3 +106,14 @@ def swap(a, i, j):
     temp = a[i]
     a[i] = a[j]
     a[j] = temp
+
+@njit
+def sum_along_axis_n(arr, axis_n):
+    rows, cols = arr.shape
+    sum_vals = np.zeros(cols, dtype=arr.dtype)
+    for j in range(cols):
+        sum_vals[j] = arr[axis_n, j]
+        for i in range(rows):
+            if i != axis_n:
+                sum_vals[j] += arr[i, j]
+    return sum_vals
