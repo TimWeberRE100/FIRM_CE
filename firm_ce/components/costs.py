@@ -45,6 +45,9 @@ def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom
 def calculate_costs(solution): 
     generator_capacities = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
     generator_annual_generations = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
+    storage_p_capacities = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
+    storage_e_capacities = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
+    storage_annual_discharge = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
     line_capacities = np.zeros(max(solution.line_ids)+1, dtype=np.float64)
     line_annual_flows = np.zeros(max(solution.line_ids)+1, dtype=np.float64)
     #print("Annuals: ", solution.GPV_annual, solution.GWind_annual, solution.GFlexible_annual, solution.GBaseload_annual)
@@ -69,6 +72,12 @@ def calculate_costs(solution):
         generator_capacities[gen_idx] = solution.CBaseload[idx]
         generator_annual_generations[gen_idx] = solution.GBaseload_annual[idx]
 
+    for idx in range(0,len(solution.storage_cost_ids)):
+        storage_idx = solution.storage_cost_ids[idx]
+        storage_p_capacities[storage_idx] = solution.CPHP[idx]
+        storage_e_capacities[storage_idx] = solution.CPHS[idx]
+        storage_annual_discharge[storage_idx] = solution.GDischarge_annual[idx]
+
     for idx in range(0,len(solution.line_cost_ids)):
         line_idx = solution.line_cost_ids[idx]
         line_capacities[line_idx] = solution.CTrans[idx]
@@ -90,6 +99,20 @@ def calculate_costs(solution):
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
         if idx not in solution.flexible_ids
+        ], dtype=np.float64).sum()
+    
+    storage_costs = np.array([
+        annualisation_component(
+            power_capacity=storage_p_capacities[idx],
+            energy_capacity=storage_e_capacities[idx],
+            annual_generation=storage_annual_discharge[idx],
+            capex_p=solution.storage_costs[0,idx],
+            fom=solution.storage_costs[2,idx],
+            vom=solution.storage_costs[3,idx],
+            lifetime=solution.storage_costs[4,idx],
+            discount_rate=solution.storage_costs[5,idx]
+        ) for idx in range(0,len(storage_p_capacities))
+        if storage_p_capacities[idx] > 0
         ], dtype=np.float64).sum()
 
     """ generator_existing_costs = np.array([
@@ -118,6 +141,6 @@ def calculate_costs(solution):
     np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
     """ np.savetxt("results/storage_costs.csv", solution.storage_costs, delimiter=",")
     np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
-    costs = generator_newbuild_costs + transmission_costs #+ generator_existing_costs
+    costs = generator_newbuild_costs + storage_costs + transmission_costs #+ generator_existing_costs
         
     return costs

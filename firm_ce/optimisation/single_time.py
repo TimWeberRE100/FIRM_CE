@@ -139,7 +139,8 @@ if JIT_ENABLED:
         ('balancing_ids', int64[:]),
         ('balancing_nodes', int64[:]),
         ('balancing_order', int64[:]),
-        ('balancing_storage_tag', int64[:]),
+        ('balancing_storage_tag', boolean[:]),
+        ('balancing_flexible_tag', boolean[:]),
         ('balancing_d_efficiencies', float64[:]),
         ('balancing_c_efficiencies', float64[:]),
         ('balancing_c_constraint', float64[:]),
@@ -769,7 +770,7 @@ class Solution_SingleTime:
         self.TFlows = (Transmission).sum(axis=2)
         TFlowsAbs = np.abs(self.TFlows)
 
-        np.savetxt("results/Netload.csv", Netload, delimiter=",")
+        """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
         np.savetxt("results/ImpExp.csv", ImpExp, delimiter=",")
         np.savetxt("results/Deficit.csv", Deficit, delimiter=",")
         np.savetxt("results/Spillage.csv", Spillage, delimiter=",")
@@ -779,7 +780,7 @@ class Solution_SingleTime:
         np.savetxt("results/SPower.csv", SPower, delimiter=",")
         np.savetxt("results/Flexible.csv", Flexible, delimiter=",")
         np.savetxt("results/SPower_original.csv", SPower_original, delimiter=",")
-        np.savetxt("results/Flexible_original.csv", Flexible_original, delimiter=",")
+        np.savetxt("results/Flexible_original.csv", Flexible_original, delimiter=",") """
 
         return Deficit, TFlowsAbs
 
@@ -803,8 +804,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss)
         
-        print("LCOE: ", lcoe, pen_deficit)
-        exit()
+        """ print("LCOE: ", lcoe, pen_deficit)
+        exit() """
         return lcoe, pen_deficit
 
     def evaluate(self):

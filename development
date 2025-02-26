@@ -36,3 +36,4 @@ FIRM_CE bugs
 - Existing capacity: FOM and VOM and Fuel, not LCOE
 
 - Some bug whenever SPowert_update is negative driving large deficits - Storage should not be charging when there is a deficit
+- Seems to actually be from a reduction in discharge capacity due to empty storage (not all cases, see line 629)
