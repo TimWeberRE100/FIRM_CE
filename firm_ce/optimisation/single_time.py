@@ -377,11 +377,11 @@ class Solution_SingleTime:
                 W_idx = sum(self.nodal_balancing_count[:node_idx]) - len(self.nodal_balancing_count[:node_idx]) + current_node_count if node_idx > 0 else current_node_count
                 self.balancing_W_x_nodal[node_idx, current_node_count] = self.balancing_W_x[W_idx]
 
-        self.GPV_annual = np.zeros(0, dtype=np.float64)
-        self.GWind_annual = np.zeros(0, dtype=np.float64)
-        self.GFlexible_annual = np.zeros(0, dtype=np.float64)
-        self.GBaseload_annual = np.zeros(0, dtype=np.float64)
-        self.GDischarge_annual = np.zeros(0, dtype=np.float64)
+        self.GPV_annual = np.zeros(self.CPV.shape, dtype=np.float64)
+        self.GWind_annual = np.zeros(self.CWind.shape, dtype=np.float64)
+        self.GFlexible_annual = np.zeros(self.CFlexible.shape, dtype=np.float64)
+        self.GBaseload_annual = np.zeros(self.CBaseload.shape, dtype=np.float64)
+        self.GDischarge_annual = np.zeros(self.CPHP.shape, dtype=np.float64)
         self.TFlowsAbs_annual = np.zeros(0, dtype=np.float64)
 
         # Cost Values
