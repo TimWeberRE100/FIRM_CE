@@ -23,6 +23,32 @@
 
 PLEXOS bugs
 - Add transmission line costs
+- Double check fuel costs are correctly included! I think they are
+
+PLEXOS CHANGES
+- Remove maintenance (forced outage rate, outage factor, mean time to repair)
+- Remove MLF
+- Remove Aux Incr? Rating Factor? Rating? Heat Rate Base / Incr? Efficiency Incr?
+- Remove Mark-up, Max Capacity Factor, Min Capacity Factor?
+- Remove Firm Capacity?
+- Remove REZ augmentation and Group REZ augmentation?
+- Remove Liquid fuel, biomass, coal and H2?
+- Only keep OCGT Large and remove other gas?
+- Single time optimisation instead of capacity expansion
+- Separate new build solar and wind, or keep as REZ?
+- Remove Load Subtractors? What are they? Small-scale??
+- Remove Max Cycles Day, Min/Max SOC
+- Add initial SOC of 50% to all batteries
+- Convert hydro/PHES storages to batteries and remove the waterways + storages
+- Remove summer/winter ratings on transmission - Make Max/Min flow the same magnitude
+- Remove Line Min/Max Capacity Reserves?
+- Marinus Loss Coefficients?
+- Remove policy constraints?
+- Remove REZ limits? Or at least just roll them into Build limits?
+- Remove landholder payments?
+- Remove Min Capacity Reserves from Zones
+- Remove DSP Bid Price, DSP Bid Quantity, Generator Settlement Model, Load Includes Losses, Load Metering Point, Load Settlement Model, VoLL
+- Remove from lines Min Capacity Reserves, Max Capacity Reserves, Marginal Loss Factor, Marginal Loss Factor Back, Loss Allocation etc., 
 
 FIRM_CE bugs
 - Add fuel costs into calculation
@@ -32,8 +58,10 @@ FIRM_CE bugs
 - Balancing power sum equals zero?
 - https://doi.org/10.1016/j.epsr.2010.06.018
 - Test model that forces batteries to always be fully charged
+- Min load for ROR hydro?
 
 - Existing capacity: FOM and VOM and Fuel, not LCOE
 
 - Some bug whenever SPowert_update is negative driving large deficits - Storage should not be charging when there is a deficit
 - Seems to actually be from a reduction in discharge capacity due to empty storage (not all cases, see line 629)
+- flexible_p_profile is completely wrong?
