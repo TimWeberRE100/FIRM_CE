@@ -64,4 +64,9 @@ FIRM_CE bugs
 
 - Some bug whenever SPowert_update is negative driving large deficits - Storage should not be charging when there is a deficit
 - Seems to actually be from a reduction in discharge capacity due to empty storage (not all cases, see line 629)
-- flexible_p_profile is completely wrong?
+- Precharge, unless it will spill? Or precharge whenever storage is empty?
+    - When a storage is empty, mark the first interval and start counting the number of intervals it remains empty
+    - Mark which flexible are available to precharge as you go using a boolean array?
+    - Calculate precharge energy = Storage Power Capacity * Empty Intervals for each empty system
+    - Calculate precharge intervals = min(Precharge Energy / Flexible Capacity, previous intervals until full storages) starting with cheapest flexible
+    
