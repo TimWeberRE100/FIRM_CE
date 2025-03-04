@@ -23,17 +23,46 @@
 
 PLEXOS bugs
 - Add transmission line costs
+- Double check fuel costs are correctly included! I think they are
+
+PLEXOS CHANGES
+- Remove maintenance (forced outage rate, outage factor, mean time to repair)
+- Remove MLF
+- Remove Aux Incr? Rating Factor? Rating? Heat Rate Base / Incr? Efficiency Incr?
+- Remove Mark-up, Max Capacity Factor, Min Capacity Factor?
+- Remove Firm Capacity?
+- Remove REZ augmentation and Group REZ augmentation?
+- Remove Liquid fuel, biomass, coal and H2?
+- Only keep OCGT Large and remove other gas?
+- Single time optimisation instead of capacity expansion
+- Separate new build solar and wind, or keep as REZ?
+- Remove Load Subtractors? What are they? Small-scale??
+- Remove Max Cycles Day, Min/Max SOC
+- Add initial SOC of 50% to all batteries
+- Convert hydro/PHES storages to batteries and remove the waterways + storages
+- Remove summer/winter ratings on transmission - Make Max/Min flow the same magnitude
+- Remove Line Min/Max Capacity Reserves?
+- Marinus Loss Coefficients?
+- Remove policy constraints?
+- Remove REZ limits? Or at least just roll them into Build limits?
+- Remove landholder payments?
+- Remove Min Capacity Reserves from Zones
+- Remove DSP Bid Price, DSP Bid Quantity, Generator Settlement Model, Load Includes Losses, Load Metering Point, Load Settlement Model, VoLL
+- Remove from lines Min Capacity Reserves, Max Capacity Reserves, Marginal Loss Factor, Marginal Loss Factor Back, Loss Allocation etc., 
 
 FIRM_CE bugs
 - Add fuel costs into calculation
+- Properly calculate annual discharge energy for storage and flexible
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Energy constraints on flexible?
-- Precharging storage when checking constraints? Charge from spillage at other nodes??
-- Balancing power sum equals zero?
 - https://doi.org/10.1016/j.epsr.2010.06.018
-- Test model that forces batteries to always be fully charged
-
+- Test model that forces batteries to always be fully charged?
+- Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE
-- Move transmission to after storage?? Use spillage from other nodes??
 
-- STORAGE POWER IS DOUBLED?
+- Precharge, unless it will spill? Or precharge whenever storage is empty?
+    - When a storage is empty, mark the first interval and start counting the number of intervals it remains empty
+    - Mark which flexible are available to precharge as you go using a boolean array?
+    - Calculate precharge energy = Storage Power Capacity * Empty Intervals for each empty system
+    - Calculate precharge intervals = min(Precharge Energy / Flexible Capacity, previous intervals until full storages) starting with cheapest flexible
+    
