@@ -343,4 +343,4 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
         if interval < intervals-1:
             nodal_e_timeseries_profiles[interval+1, :] = storage_t_1
 
-    return nodal_p_timeseries_profiles, nodal_e_timeseries_profiles, nodal_deficit, nodal_spillage
+    return nodal_p_timeseries_profiles

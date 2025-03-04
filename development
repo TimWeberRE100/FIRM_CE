@@ -52,18 +52,14 @@ PLEXOS CHANGES
 
 FIRM_CE bugs
 - Add fuel costs into calculation
+- Properly calculate annual discharge energy for storage and flexible
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Energy constraints on flexible?
-- Precharging storage when checking constraints? Charge from spillage at other nodes??
-- Balancing power sum equals zero?
 - https://doi.org/10.1016/j.epsr.2010.06.018
-- Test model that forces batteries to always be fully charged
+- Test model that forces batteries to always be fully charged?
 - Min load for ROR hydro?
-
 - Existing capacity: FOM and VOM and Fuel, not LCOE
 
-- Some bug whenever SPowert_update is negative driving large deficits - Storage should not be charging when there is a deficit
-- Seems to actually be from a reduction in discharge capacity due to empty storage (not all cases, see line 629)
 - Precharge, unless it will spill? Or precharge whenever storage is empty?
     - When a storage is empty, mark the first interval and start counting the number of intervals it remains empty
     - Mark which flexible are available to precharge as you go using a boolean array?
