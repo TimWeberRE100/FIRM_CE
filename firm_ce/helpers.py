@@ -95,6 +95,17 @@ def max_along_axis_n(arr, axis_n):
     return max_vals
 
 @njit
+def sum_along_axis_n(arr, axis_n):
+    rows, cols = arr.shape
+    sum_vals = np.zeros(cols, dtype=arr.dtype)
+    for j in range(cols):
+        sum_vals[j] = arr[axis_n, j]
+        for i in range(rows):
+            if i != axis_n:
+                sum_vals[j] += arr[i, j]
+    return sum_vals
+
+@njit
 def factorial(n):
     result = 1
     for i in range(2, n+1):

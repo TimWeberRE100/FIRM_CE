@@ -144,10 +144,7 @@ def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, 
     if network.size == 0:
         return Importt+Exportt
 
-    for n in range(len(Fillt)):
-        if Fillt[n] <= 0:
-            continue
-
+    for n in np.where(Fillt>0)[0]:
         pdonors = network[:, n, 0, :]
         valid_mask = pdonors[0] != -1
         pdonors, pdonor_lines = pdonors[0, valid_mask], pdonors[1, valid_mask]
@@ -172,10 +169,7 @@ def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, 
     # Note: This code block works for primary transmission too, but is slower
     if Surplust.sum() > 0 and Fillt.sum() > 0:
         for leg in range(1, networksteps):
-            for n in range(len(Fillt)):
-                if Fillt[n] <= 0:
-                    continue
-
+            for n in np.where(Fillt>0)[0]:
                 donors = network[:, n, TRIANGULAR[leg]:TRIANGULAR[leg+1], :]
                 donors, donor_lines = donors[0, :, :], donors[1, :, :]
       
@@ -188,7 +182,7 @@ def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, 
                     continue
       
                 ndonors = valid_mask.sum()
-                donors = np.concatenate((n*np.ones((1, ndonors), dtype=np.int64), donors))
+                donors = np.concatenate((n*np.ones((1, ndonors), np.int64), donors))
                 
                 _import = np.zeros_like(Importt)
                 for d, dl in zip(donors[-1], donor_lines.T): #print(d,dl)
