@@ -1,5 +1,6 @@
 import numpy as np
 from typing import List
+import time
 
 from firm_ce.network import get_transmission_flows_t
 from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX, NP_FLOAT_MIN
@@ -540,22 +541,23 @@ class Solution_SingleTime:
         return balancing_p_profiles_ifft
     
     def _determine_constrained_balancing(self, balancing_p_profiles_ifft):
-        storage_p_profiles = np.zeros((self.intervals,len(self.storage_ids)), dtype=np.float64)
-        flexible_p_profiles = np.zeros((self.intervals,len(self.flexible_ids)), dtype=np.float64)      
-        
-        for node_idx in range(self.nodes): 
+        storage_p_profiles = np.zeros((self.intervals, len(self.storage_ids)), dtype=np.float64)
+        flexible_p_profiles = np.zeros((self.intervals, len(self.flexible_ids)), dtype=np.float64)
+
+        for node_idx in range(self.nodes):
             node_mask = self.balancing_nodes == node_idx
             node_balancing_order = self.balancing_order[node_mask]
 
             node_balancing_e_capacities = self.balancing_e_constraints[node_balancing_order]
-            variable_costs_per_mwh = self.balancing_costs[3,node_balancing_order] ##### ADD FUEL COSTS
+            variable_costs_per_mwh = self.balancing_costs[3, node_balancing_order]  # includes fuel costs
+            
+            balancing_p_profile_ifft = balancing_p_profiles_ifft[:, node_idx, :len(node_balancing_order)].copy()
 
-            balancing_p_profile_ifft = balancing_p_profiles_ifft[:,node_idx,0:len(node_balancing_order)].copy()            
-
-            # Order storage based on energy capacity, flexible based on cost
-            node_balancing_permutation = frequency.order_balancing(node_balancing_order, 
-                                                                   node_balancing_e_capacities,
-                                                                   variable_costs_per_mwh)
+            node_balancing_permutation = frequency.order_balancing(
+                node_balancing_order, 
+                node_balancing_e_capacities,
+                variable_costs_per_mwh
+            )
 
             permutation_balancing_d_constraints = self.balancing_d_constraint[node_balancing_permutation]
             permutation_balancing_c_constraints = self.balancing_c_constraint[node_balancing_permutation]
@@ -563,26 +565,26 @@ class Solution_SingleTime:
             permutation_balancing_d_efficiencies = self.balancing_d_efficiencies[node_balancing_permutation]
             permutation_balancing_c_efficiencies = self.balancing_c_efficiencies[node_balancing_permutation]
 
-            balancing_p_profile_option= frequency.apply_balancing_constraints(balancing_p_profile_ifft, 
-                                                                                permutation_balancing_e_constraint,
-                                                                                permutation_balancing_d_efficiencies, 
-                                                                                permutation_balancing_c_efficiencies, 
-                                                                                permutation_balancing_d_constraints,
-                                                                                permutation_balancing_c_constraints,
-                                                                                self.resolution)
+            balancing_p_profile_option = frequency.apply_balancing_constraints(
+                balancing_p_profile_ifft, 
+                permutation_balancing_e_constraint,
+                permutation_balancing_d_efficiencies, 
+                permutation_balancing_c_efficiencies, 
+                permutation_balancing_d_constraints,
+                permutation_balancing_c_constraints,
+                self.resolution
+            )
             flexible_order_offset = len(self.storage_ids) 
-            for i in range(len(node_balancing_order)):                
+            for i in range(len(node_balancing_order)):
                 if node_balancing_permutation[i] < flexible_order_offset - 1:
-                    storage_p_profiles[:,node_balancing_permutation[i]] = balancing_p_profile_option[:,i]
+                    storage_p_profiles[:, node_balancing_permutation[i]] = balancing_p_profile_option[:, i]
                 else:
-                    flexible_p_profiles[:,node_balancing_permutation[i]-flexible_order_offset] = balancing_p_profile_option[:,i]
+                    flexible_p_profiles[:, node_balancing_permutation[i] - flexible_order_offset] = balancing_p_profile_option[:, i]
 
         return storage_p_profiles, flexible_p_profiles
     
     def _transmission_balancing(self, Netload, storage_p_profiles, flexible_p_profiles):
         network = self.network
-
-        #flexible_p_profiles = 500 * np.ones(flexible_p_profiles.shape, dtype=np.float64) ######### DEBUG precharging
 
         NetStoragePower_nodal = self._fill_nodal_array_2d(storage_p_profiles, self.storage_nodes)
         Flexible_nodal = self._fill_nodal_array_2d(flexible_p_profiles, self.flexible_nodes)
@@ -602,124 +604,148 @@ class Solution_SingleTime:
         Hcapacity = self.CTrans * 1000 # GW to MW
         ntrans = len(self.CTrans)
 
-        Flexible = np.zeros(flexible_p_profiles.shape, dtype=np.float64)
-        SPower = np.zeros(storage_p_profiles.shape, dtype=np.float64)
-        Storage = np.zeros(storage_p_profiles.shape, dtype=np.float64)
-        Deficit = np.zeros(shape2d, dtype=np.float64) 
+        Flexible = np.zeros_like(flexible_p_profiles, dtype=np.float64)
+        SPower = np.zeros_like(storage_p_profiles, dtype=np.float64)
+        Storage = np.zeros_like(storage_p_profiles, dtype=np.float64)       
         Transmission = np.zeros((intervals, ntrans, nodes), dtype = np.float64)
+
         Storaget_1 = 0.5*Scapacity
 
         for t in range(intervals):
-            Storaget_p_lb = Storaget_1 / self.resolution / self.storage_d_efficiencies
-            Storaget_p_ub = -1 * (Scapacity - Storaget_1) / self.resolution / self.storage_c_efficiencies
+            Storaget_p_lb = Storaget_1 / (self.resolution * self.storage_d_efficiencies)
+            Storaget_p_ub = - (Scapacity - Storaget_1) / (self.resolution * self.storage_c_efficiencies)
             Discharget_max = np.minimum(Pcapacity, Storaget_p_lb)
             Discharget_max_nodal = self._fill_nodal_array_1d(Discharget_max, self.storage_nodes)
-            Charget_max = np.minimum(Pcapacity, -1 * Storaget_p_ub)
+            Charget_max = np.minimum(Pcapacity, -Storaget_p_ub)
             Charget_max_nodal = self._fill_nodal_array_1d(Charget_max, self.storage_nodes)
 
-            SPowert_original = NetStoragePower_nodal[t,:]
-            Flexiblet_original = Flexible_nodal[t,:]
-
-            SPowert = storage_p_profiles[t,:].copy()
-            Flexiblet = flexible_p_profiles[t,:].copy()
+            SPowert = storage_p_profiles[t, :].copy()
+            Flexiblet = flexible_p_profiles[t, :].copy()
             SPowert_nodal = self._fill_nodal_array_1d(SPowert, self.storage_nodes)
             Flexiblet_nodal = self._fill_nodal_array_1d(Flexiblet, self.flexible_nodes)
 
-            SPowert_update = np.maximum(np.minimum(storage_p_profiles[t,:], Storaget_p_lb), Storaget_p_ub) - SPowert
-            Flexiblet_update = np.maximum(flexible_p_profiles[t,:],0) - Flexiblet
+            SPowert_update = np.maximum(np.minimum(storage_p_profiles[t, :], Storaget_p_lb), Storaget_p_ub) - SPowert
+            Flexiblet_update = np.maximum(flexible_p_profiles[t, :], 0) - Flexiblet
             SPowert_update_nodal = self._fill_nodal_array_1d(SPowert_update, self.storage_nodes)
             Flexiblet_update_nodal = self._fill_nodal_array_1d(Flexiblet_update, self.flexible_nodes)
 
-            Netloadt = Netload[t]
+            Netloadt = Netload[t].copy()
+
             Deficitt = np.maximum(Netloadt - SPowert_update_nodal - Flexiblet_update_nodal, 0)
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
             
             if Deficitt.sum() > 1e-6:
                 # Fill deficits with transmission allowing drawing down from neighbours storage reserves                
-                Surplust = -1 * np.minimum(0, Netloadt) + (Discharget_max_nodal - SPowert_nodal + SPowert_update_nodal) + (Fcapacity_nodal - Flexiblet_nodal + Flexiblet_update_nodal)
+                Surplust = (
+                    -np.minimum(0, Netloadt)
+                    + (Discharget_max_nodal - SPowert_nodal + SPowert_update_nodal)
+                    + (Fcapacity_nodal - Flexiblet_nodal + Flexiblet_update_nodal)
+                )
 
-                Transmissiont = get_transmission_flows_t(Deficitt, Surplust, Hcapacity, network, self.networksteps, 
-                                    np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
-                
-                Netloadt = Netload[t] - Transmissiont.sum(axis=0)
-                SPowert_update_nodal = np.maximum(np.minimum(Netloadt, Discharget_max_nodal - SPowert_original), -1 * Charget_max_nodal - SPowert_original)
-                Flexiblet_update_nodal = np.minimum(np.maximum(Netloadt - SPowert_update_nodal, 0), Fcapacity_nodal - Flexiblet_original)
+                Transmissiont = get_transmission_flows_t(
+                    Deficitt, Surplust, Hcapacity, network, self.networksteps,
+                    np.maximum(0, Transmissiont), np.minimum(0, Transmissiont)
+                )
 
-            SPowert_nodal = SPowert_nodal + SPowert_update_nodal
-            Surplust = -1 * np.minimum(0, Netloadt - np.minimum(SPowert_update_nodal,0))
+                Netloadt -= Transmissiont.sum(axis=0)
+
+                SPowert_update_nodal = np.maximum(
+                    np.minimum(Netloadt, Discharget_max_nodal - SPowert_nodal),
+                    -Charget_max_nodal - SPowert_nodal
+                )
+
+                Flexiblet_update_nodal = np.minimum(
+                    np.maximum(Netloadt - SPowert_update_nodal, 0),
+                    Fcapacity_nodal - Flexiblet_nodal
+                )
+
+            SPowert_nodal += SPowert_update_nodal
+            Surplust = -np.minimum(0, Netloadt - np.minimum(SPowert_update_nodal, 0))
 
             if Surplust.sum() > 1e-6:
-                Fillt = (SPowert_update_nodal # current changes to SPowert for transmission
-                     + (Charget_max_nodal + SPowert_nodal)) # remaining charge capacity
-                
-                Transmissiont = get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, self.networksteps,
-                                    np.maximum(0, Transmissiont), np.minimum(0, Transmissiont))
-                
+                Fillt = SPowert_update_nodal + (Charget_max_nodal + SPowert_nodal)
+
+                Transmissiont = get_transmission_flows_t(
+                    Fillt, Surplust, Hcapacity, network, self.networksteps,
+                    np.maximum(0, Transmissiont), np.minimum(0, Transmissiont)
+                )
+
                 Netloadt = Netload[t] - Transmissiont.sum(axis=0)
-                SPowert_update_nodal = np.maximum(np.minimum(Netloadt, Discharget_max_nodal - SPowert_nodal), -1 * Charget_max_nodal - SPowert_nodal)
-                Flexiblet_update_nodal = np.minimum(np.maximum(Netloadt - SPowert_update_nodal, 0), Fcapacity_nodal - Flexiblet_nodal)         
+
+                SPowert_update_nodal = np.maximum(
+                    np.minimum(Netloadt, Discharget_max_nodal - SPowert_nodal),
+                    -Charget_max_nodal - SPowert_nodal
+                )
+
+                Flexiblet_update_nodal = np.minimum(
+                    np.maximum(Netloadt - SPowert_update_nodal, 0),
+                    Fcapacity_nodal - Flexiblet_nodal
+                )    
             
             # Apportion to individual storages/flexible 
-            if (np.abs(SPowert_update_nodal) + np.abs(Flexiblet_update_nodal)).sum() > 1e-6:
-                for node in range(self.nodes):
-                    storage_mask = self.storage_nodes == node
-
+            trans_sum = Transmissiont.sum(axis=0)
+            for node in range(self.nodes):
+                # Apportion storage
+                storage_mask = self.storage_nodes == node
+                if np.any(storage_mask):
                     Storaget_1_node = Storaget_1[storage_mask]
-                    storage_order_node = storage_order[storage_mask]
-                    sorted_storage_indices = np.argsort(Storaget_1_node) # Apportion changes to storage based on current SOC
+                    storage_order_node = storage_order[storage_mask]                    
+                    sorted_indices = np.argsort(Storaget_1_node)
+                    
+                    L = sorted_indices.shape[0]
+                    order_indices = np.empty(2 * L, dtype=sorted_indices.dtype)
+                    for i in range(L):
+                        order_indices[i] = L - sorted_indices[i] - 1
+                    for i in range(L):
+                        order_indices[L + i] = sorted_indices[i]
 
-                    # Remove intra-node charging if there are deficits at that node
-                    if Netload[t,node] - Transmissiont.sum(axis=0)[node] - SPowert_update_nodal[node] - Flexiblet_update_nodal[node] > 0:
-                        SPowert_new = np.maximum(SPowert[storage_mask],0)
-                        change = SPowert_new.sum() - SPowert[storage_mask].sum() 
-                        Flexiblet_update_nodal[node] = max(0,Flexiblet_update_nodal[node]-change)
-                        SPowert[storage_mask] = SPowert_new
+                    # If there is a deficit at this node, remove intra‐node charging.
+                    if Netload[t, node] - trans_sum[node] - SPowert_update_nodal[node] - Flexiblet_update_nodal[node] > 0:
+                        spower_node = SPowert[storage_mask]
+                        spower_new = np.maximum(spower_node, 0)
+                        change = spower_new.sum() - spower_node.sum()
+                        Flexiblet_update_nodal[node] = max(0, Flexiblet_update_nodal[node] - change)
+                        SPowert[storage_mask] = spower_new
 
-                    for i in range(len(sorted_storage_indices)):
-                        reverse_i = len(sorted_storage_indices) - sorted_storage_indices[i] - 1
-                        storage_order_i = storage_order_node[reverse_i]
-
-                        SPowert_new = max(min(min(SPowert[storage_order_i] + SPowert_update_nodal[node], Storaget_p_lb[storage_order_i]), Pcapacity[storage_order_i]), 
-                                                       max(Storaget_p_ub[storage_order_i], -1 * Pcapacity[storage_order_i]))
+                    for idx in order_indices:
+                        storage_order_i = storage_order_node[idx]
+                        current = SPowert[storage_order_i]
                         
-                        SPowert_update_nodal[node] -= (SPowert_new - SPowert[storage_order_i])
-                        SPowert[storage_order_i] = SPowert_new
-
-                    for i in range(len(sorted_storage_indices)):
-                        storage_order_i = storage_order_node[i]
-
-                        SPowert_new = max(min(min(SPowert[storage_order_i] + SPowert_update_nodal[node], Storaget_p_lb[storage_order_i]), Pcapacity[storage_order_i]), 
-                                                       max(Storaget_p_ub[storage_order_i], -1 * Pcapacity[storage_order_i]))
+                        lower_bound = max(Storaget_p_ub[storage_order_i], -Pcapacity[storage_order_i])
+                        upper_bound = min(Storaget_p_lb[storage_order_i], Pcapacity[storage_order_i])
+                        new_value = helpers.scalar_clamp(current + SPowert_update_nodal[node], lower_bound, upper_bound)
                         
-                        SPowert_update_nodal[node] -= (SPowert_new - SPowert[storage_order_i])
-                        SPowert[storage_order_i] = SPowert_new
+                        SPowert_update_nodal[node] -= (new_value - current)
+                        SPowert[storage_order_i] = new_value
 
-                    flexible_mask = self.flexible_nodes == node
-
-                    flexible_variable_costs_node = F_variable_costs[flexible_mask]     
+                # Apportion flexible
+                flexible_mask = self.flexible_nodes == node
+                if np.any(flexible_mask):
+                    flexible_variable_costs_node = F_variable_costs[flexible_mask]
                     flexible_order_node = flexible_order[flexible_mask]
-                    sorted_flexible_indices = np.argsort(flexible_variable_costs_node) # Apportion changes to flexible based on cost
+                    sorted_indices = np.argsort(flexible_variable_costs_node)
 
-                    for i in range(len(sorted_flexible_indices)):
-                        reverse_i = len(sorted_flexible_indices) - sorted_flexible_indices[i] - 1
-                        flexible_order_i = flexible_order_node[reverse_i] - len(storage_order) # Adjust for storage orders
+                    L = sorted_indices.shape[0]
+                    order_indices = np.empty(2 * L, dtype=sorted_indices.dtype)
+                    for i in range(L):
+                        order_indices[i] = L - sorted_indices[i] - 1
+                    for i in range(L):
+                        order_indices[L + i] = sorted_indices[i]
+                    
+                    for idx in order_indices:                        
+                        flexible_order_i = flexible_order_node[idx] - len(storage_order)
+                        current = Flexiblet[flexible_order_i]
+                        new_value = helpers.scalar_clamp(current + Flexiblet_update_nodal[node], 0, Fcapacity[flexible_order_i])
+                        Flexiblet_update_nodal[node] -= (new_value - current)
+                        Flexiblet[flexible_order_i] = new_value
 
-                        Flexiblet_new = max(min(Fcapacity[flexible_order_i], Flexiblet[flexible_order_i] + Flexiblet_update_nodal[node]),0)
-                        Flexiblet_update_nodal[node] -= (Flexiblet_new - Flexiblet[flexible_order_i])
-                        Flexiblet[flexible_order_i] = Flexiblet_new
-
-                    for i in range(len(sorted_flexible_indices)):
-                        flexible_order_i = flexible_order_node[i] - len(storage_order) # Adjust for storage orders
-
-                        Flexiblet_new = max(min(Fcapacity[flexible_order_i], Flexiblet[flexible_order_i] + Flexiblet_update_nodal[node]),0)
-                        Flexiblet_update_nodal[node] -= (Flexiblet_new - Flexiblet[flexible_order_i])
-                        Flexiblet[flexible_order_i] = Flexiblet_new
-
-            Storaget = Storaget_1 - np.maximum(SPowert,0) * self.storage_d_efficiencies * self.resolution - np.minimum(SPowert,0) * self.storage_c_efficiencies * self.resolution
+            Storaget = Storaget_1 - np.maximum(SPowert, 0) * self.storage_d_efficiencies * self.resolution \
+                   - np.minimum(SPowert, 0) * self.storage_c_efficiencies * self.resolution
+            
             Storaget_1 = Storaget.copy()
-   
+
             Flexible[t] = Flexiblet
-            SPower[t] = SPowert   
+            SPower[t] = SPowert 
             Transmission[t] = Transmissiont
             Storage[t] = Storaget
         
@@ -753,26 +779,38 @@ class Solution_SingleTime:
         return Deficit, TFlowsAbs
 
     def _objective(self) -> List[float]:
+        start_objective = time.time()
         Netload, NetBalancing_nodal = self._reliability()
-        self.TFlowsAbs = np.abs(self.TFlows)
+        reliability_time = time.time()
+        print(f"Reliability time: {reliability_time - start_objective:.4f} seconds")
 
         balancing_p_profiles_ifft = self._filter_balancing_profiles(NetBalancing_nodal)
+        frequency_time = time.time()
+        print(f"Frequency time: {frequency_time - reliability_time:.4f} seconds")
         storage_p_profiles, flexible_p_profiles = self._determine_constrained_balancing(balancing_p_profiles_ifft)
+        constraints_time = time.time()
+        print(f"Constraints time: {constraints_time - frequency_time:.4f} seconds")
 
         deficit, TFlowsAbs = self._transmission_balancing(Netload, storage_p_profiles, flexible_p_profiles)
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000
+        transmission_time = time.time()
+        print(f"Transmission time: {transmission_time - constraints_time:.4f} seconds")
 
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
         cost = self._calculate_costs()
+        costs_time = time.time()
+        print(f"Costs time: {costs_time - transmission_time:.4f} seconds")
 
         loss = TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
         lcoe = cost / np.abs(self.energy - loss)
-        
-        """ print("LCOE: ", lcoe, pen_deficit)
-        exit() """
+        end_objective = time.time()
+        print(f"Objective solve time: {end_objective - start_objective:.4f} seconds")
+        print("LCOE: ", lcoe, pen_deficit)
+
+        raise KeyboardInterrupt
         return lcoe, pen_deficit
 
     def evaluate(self):
@@ -780,7 +818,7 @@ class Solution_SingleTime:
         self.evaluated=True 
         return self
 
-@njit(parallel=True)
+@njit(parallel=False)
 def parallel_wrapper(xs,
                     MLoad,
                     TSPV,

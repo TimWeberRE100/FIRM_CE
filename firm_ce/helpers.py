@@ -128,3 +128,7 @@ def sum_along_axis_n(arr, axis_n):
             if i != axis_n:
                 sum_vals[j] += arr[i, j]
     return sum_vals
+
+@njit
+def scalar_clamp(value, lower_bound, upper_bound):
+    return max(min(value, upper_bound), lower_bound)

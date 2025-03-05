@@ -32,7 +32,7 @@ def get_present_value(discount_rate, lifetime):
 def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
     present_value = get_present_value(discount_rate, lifetime)
     annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * vom
-    """ print(f"{power_capacity} || {energy_capacity} || {capex_p} || {capex_e} || {power_capacity * pow(10,6) * fom} || {(energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value} == {annualised_cost}") """
+    
     return annualised_cost
 
 @njit   
@@ -50,7 +50,6 @@ def calculate_costs(solution):
     storage_annual_discharge = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
     line_capacities = np.zeros(max(solution.line_ids)+1, dtype=np.float64)
     line_annual_flows = np.zeros(max(solution.line_ids)+1, dtype=np.float64)
-    #print("Annuals: ", solution.GPV_annual, solution.GWind_annual, solution.GFlexible_annual, solution.GBaseload_annual)
 
     for idx in range(0,len(solution.pv_cost_ids)):
         gen_idx = solution.pv_cost_ids[idx]
@@ -83,11 +82,7 @@ def calculate_costs(solution):
         line_capacities[line_idx] = solution.CTrans[idx]
         line_annual_flows[line_idx] = solution.TFlowsAbs_annual[idx]
 
-    #print(len(solution.CWind), len(solution.CPV), len(solution.CPeak), len(solution.CBaseload), len(solution.CPHP), len(solution.CTrans))
-    #print(generator_capacities)
-    #print(generator_annual_generations)
-
-    generator_newbuild_costs = np.array([
+    generator_costs = np.array([
         annualisation_component(
             power_capacity=generator_capacities[idx],
             annual_generation=generator_annual_generations[idx],
@@ -114,10 +109,6 @@ def calculate_costs(solution):
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
         ], dtype=np.float64).sum()
-
-    """ generator_existing_costs = np.array([
-        solution.generator_costs[7,idx] * generator_annual_generations[idx] for idx in range(0,len(generator_capacities))
-    ], dtype=np.float64).sum() """
     
     transmission_costs = np.array([
         annualisation_transmission(
@@ -134,13 +125,6 @@ def calculate_costs(solution):
         if line_capacities[idx] > 0
         ], dtype=np.float64).sum()
 
-    #PV_Wind_transmission_cost = annulization_transmission(S.UnitCosts[8],S.UnitCosts[34],S.UnitCosts[9],S.UnitCosts[10],S.UnitCosts[11],S.UnitCosts[-1],sum(S.CPV),0,20) 
-    #print(generator_newbuild_costs, generator_existing_costs, storage_costs, transmission_costs)
-
-    """ np.savetxt("results/generator_costs.csv", solution.generator_costs, delimiter=",")
-    np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
-    """ np.savetxt("results/storage_costs.csv", solution.storage_costs, delimiter=",")
-    np.savetxt("results/generator_cost_capacities.csv", generator_capacities, delimiter=",") """
-    costs = generator_newbuild_costs + storage_costs + transmission_costs #+ generator_existing_costs
+    costs = generator_costs + storage_costs + transmission_costs
         
     return costs
