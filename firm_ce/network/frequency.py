@@ -141,9 +141,9 @@ def apply_balancing_constraints(nodal_p_timeseries_profiles,
     intervals, storage_number = nodal_p_timeseries_profiles.shape
 
     nodal_e_timeseries_profiles = np.zeros((intervals, storage_number), dtype=np.float64)
-    nodal_capacities_mwh = 1000.0 * nodal_e_capacities
-    nodal_capacities_d_mw = 1000.0 * balancing_d_constraints
-    nodal_capacities_c_mw = 1000.0 * balancing_c_constraints
+    nodal_capacities_mwh = nodal_e_capacities
+    nodal_capacities_d_mw = balancing_d_constraints
+    nodal_capacities_c_mw = balancing_c_constraints
 
     nodal_deficit = np.zeros(intervals, dtype=np.float64)
     nodal_spillage = np.zeros(intervals, dtype=np.float64)

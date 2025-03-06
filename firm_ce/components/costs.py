@@ -31,7 +31,7 @@ def get_present_value(discount_rate, lifetime):
 @njit
 def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
     present_value = get_present_value(discount_rate, lifetime)
-    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * vom
+    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom
     
     return annualised_cost
 
@@ -39,7 +39,7 @@ def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom
 def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom, vom, lifetime, discount_rate, transformer_capex, length):
     present_value = get_present_value(discount_rate, lifetime)
 
-    return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * vom
+    return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * pow(10,3) * vom
 
 @njit
 def calculate_costs(solution): 

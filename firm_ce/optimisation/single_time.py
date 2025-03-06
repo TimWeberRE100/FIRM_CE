@@ -3,8 +3,8 @@ from typing import List
 import time
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX, NP_FLOAT_MIN
-from firm_ce.components.costs import calculate_costs, annualisation_component
+from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX
+from firm_ce.components.costs import calculate_costs
 import firm_ce.network.frequency as frequency
 import firm_ce.helpers as helpers
 import firm_ce.network.cwt as cwt
@@ -29,45 +29,33 @@ if JIT_ENABLED:
         ('energy', float64),
         ('allowance', float64),
 
-        ('solar_code', int64),
-        ('wind_code', int64),
-        ('flexible_code', int64),
-        ('baseload_code', int64),
-
+        # Generators
         ('generator_ids', int64[:]),
-        ('generator_nodes', int64[:]),
-        ('generator_capacities', float64[:]),
-        ('generator_unit_types', int64[:]),
         ('generator_costs', float64[:, :]),
 
-        ('TSPV', float64[:, :]),
-        ('TSWind', float64[:, :]),
         ('CPeak', float64[:]),
         ('CBaseload', float64[:]),
         ('GBaseload', float64[:, :]),
         ('GFlexible', float64[:, :]),
 
+        # Storages
         ('storage_ids', int64[:]),
         ('storage_nodes', int64[:]),
-        ('storage_power_capacities', float64[:]),
-        ('storage_energy_capacities', float64[:]),
-        ('storage_unit_types', int64[:]),
 
-
+        # Balancing
         ('flexible_ids', int64[:]),
-        ('nodes_with_balancing', int64[:]),
+        ('nodes_with_balancing', int64[:]), 
         ('max_frequency', float64),
         ('storage_durations', float64[:]),
-        ('storage_costs', float64[:, :]),
-        ('Discharge', float64[:, :]),
-        ('Charge', float64[:, :]),
+        ('storage_costs', float64[:, :]),        
         ('storage_d_efficiencies', float64[:]),
         ('storage_c_efficiencies', float64[:]),
+        ('Storage', float64[:, :]),
 
+        # Lines
         ('line_ids', int64[:]),
         ('line_lengths', float64[:]),
         ('line_costs', float64[:, :]),
-        
         ('network', int64[:, :, :, :]),
         ('networksteps', int64),
 
@@ -75,6 +63,7 @@ if JIT_ENABLED:
         ('TFlows', float64[:, :]),
         ('TFlowsAbs', float64[:, :]),
 
+        # Decision Variables
         ('CPV', float64[:]),
         ('CWind', float64[:]),
         ('CFlexible', float64[:]),
@@ -83,8 +72,7 @@ if JIT_ENABLED:
         ('CTrans', float64[:]),
         ('balancing_W_x', float64[:]),
 
-        ('solar_nodes', int64[:]),
-        ('wind_nodes', int64[:]),
+        # Nodal assignments
         ('flexible_nodes', int64[:]),
         ('baseload_nodes', int64[:]),
 
@@ -95,14 +83,10 @@ if JIT_ENABLED:
         ('GPV_nodal', float64[:, :]),
         ('GWind', float64[:, :]),
         ('GWind_nodal', float64[:, :]),
-
         ('CPeak_nodal', float64[:]),
         ('CBaseload_nodal', float64[:]),
         ('GBaseload_nodal', float64[:, :]),
-        ('GFlexible_nodal', float64[:, :]),
         ('Spillage_nodal', float64[:, :]),
-        ('Charge_nodal', float64[:, :]),        
-        ('Discharge_nodal', float64[:, :]),
         ('NetBalancing_nodal', float64[:, :]),
         ('Storage_nodal', float64[:, :]),
         ('Deficit_nodal', float64[:, :]),
@@ -123,20 +107,10 @@ if JIT_ENABLED:
         ('storage_cost_ids', int64[:]),
         ('line_cost_ids', int64[:]),
 
-        ('storage_p_profiles', float64[:,:]),
-        ('storage_e_profiles', float64[:,:]),
-        ('storage_p_capacities', float64[:]),
-        ('storage_e_capacities', float64[:]),
-        ('flexible_p_profiles', float64[:,:]),
-        ('flexible_p_capacities', float64[:]),
-        ('balancing_p_profiles_ifft', float64[:,:,:]),
-        ('storage_p_capacities_ifft', float64[:,:]),
-        ('balancing_W_x_nodal', float64[:,:]),
-        ('balancing_W_cutoffs', float64[:,:]),
-        ('balancing_W_thresholds', float64[:,:]),
+        ('balancing_W_x_nodal', float64[:, :]),
+        ('balancing_W_cutoffs', float64[:, :]),
         ('nodal_balancing_count', int64[:]),
 
-        ('nodes_with_balancing', int64[:]),
         ('balancing_ids', int64[:]),
         ('balancing_nodes', int64[:]),
         ('balancing_order', int64[:]),
@@ -147,7 +121,7 @@ if JIT_ENABLED:
         ('balancing_c_constraint', float64[:]),
         ('balancing_d_constraint', float64[:]),
         ('balancing_e_constraints', float64[:]),
-        ('balancing_costs', float64[:,:]),
+        ('balancing_costs', float64[:, :]),
     ]
 else:
     def jitclass(spec):
@@ -183,15 +157,9 @@ class Solution_SingleTime:
                 resolution,
                 allowance,
                 generator_ids,
-                generator_nodes,
-                generator_capacities,
                 generator_costs,
-                generator_unit_types,
                 storage_ids,
                 storage_nodes,
-                storage_power_capacities,
-                storage_energy_capacities,
-                storage_unit_types,
                 flexible_ids,
                 nodes_with_balancing,
                 max_frequency,
@@ -229,7 +197,7 @@ class Solution_SingleTime:
         self.lcoe = 0.0
         self.penalties = 0.0
 
-        self.MLoad = MLoad
+        self.MLoad = MLoad / 1000 # MW to GW
         self.intervals = intervals
         self.nodes = nodes
         self.lines = lines
@@ -241,13 +209,8 @@ class Solution_SingleTime:
 
         # Generators
         self.generator_ids = generator_ids
-        self.generator_nodes = generator_nodes
-        self.generator_capacities = generator_capacities
         self.generator_costs = generator_costs
-        self.generator_unit_types = generator_unit_types
 
-        self.TSPV = TSPV 
-        self.TSWind = TSWind 
         self.CPeak = CPeak
         self.CBaseload = CBaseload
         self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
@@ -256,17 +219,13 @@ class Solution_SingleTime:
         # Storages
         self.storage_ids = storage_ids
         self.storage_nodes = storage_nodes
-        self.storage_power_capacities = storage_power_capacities
-        self.storage_energy_capacities = storage_energy_capacities
-        self.storage_unit_types = storage_unit_types
         self.max_frequency = max_frequency
         self.storage_durations = storage_durations
         self.storage_costs = storage_costs
         self.storage_d_efficiencies = storage_d_efficiencies
         self.storage_c_efficiencies = storage_c_efficiencies
 
-        self.Discharge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
-        self.Charge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
+        self.Storage = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
 
         # Lines
         self.line_ids = line_ids
@@ -337,8 +296,6 @@ class Solution_SingleTime:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx] """
 
         # Nodal Values
-        self.solar_nodes = solar_nodes
-        self.wind_nodes = wind_nodes
         self.flexible_nodes = flexible_nodes 
         self.baseload_nodes = baseload_nodes
         self.storage_nodes = self.storage_nodes
@@ -346,20 +303,17 @@ class Solution_SingleTime:
         self.CFlexible_nodal = self._fill_nodal_array_1d(self.CFlexible, self.flexible_nodes)
         self.CPHP_nodal = self._fill_nodal_array_1d(self.CPHP, self.storage_nodes)
         self.CPHS_nodal = self._fill_nodal_array_1d(self.CPHS, self.storage_nodes)    
-        self.GPV = self.CPV[np.newaxis, :] * TSPV  * 1000
-        self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, self.solar_nodes)
-        self.GWind = self.CWind[np.newaxis, :] * TSWind * 1000 
-        self.GWind_nodal = self._fill_nodal_array_2d(self.GWind, self.wind_nodes)
+        self.GPV = self.CPV[np.newaxis, :] * TSPV
+        self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, solar_nodes)
+        self.GWind = self.CWind[np.newaxis, :] * TSWind
+        self.GWind_nodal = self._fill_nodal_array_2d(self.GWind, wind_nodes)
         self.CPeak_nodal = self._fill_nodal_array_1d(self.CPeak, self.flexible_nodes)
         self.CBaseload_nodal = self._fill_nodal_array_1d(self.CBaseload, self.baseload_nodes)
         self.GBaseload_nodal = self._fill_nodal_array_2d(self.GBaseload, self.baseload_nodes)
 
         self.GFlexible_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Spillage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
-        self.Charge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
-        self.Discharge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.NetBalancing_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
-        self.Storage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Deficit_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Import_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64) 
         self.Export_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64)   
@@ -393,7 +347,6 @@ class Solution_SingleTime:
         self.line_cost_ids = line_cost_ids
 
         # Frequency attributes
-        self.balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
         self.balancing_W_cutoffs = np.zeros((self.nodes, self.balancing_W_x_nodal.shape[1] + 2), dtype=np.float64)
 
         for node_idx in self.storage_nodes:
@@ -423,38 +376,23 @@ class Solution_SingleTime:
 
         return result
 
-    def _reliability(self, start=None, end=None):
-        Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload_nodal)[start:end]
+    def _reliability(self):
+        Netload = (self.MLoad - self.GPV_nodal - self.GWind_nodal - self.GBaseload_nodal)
         shape2d = intervals, nodes = Netload.shape
-
-        Scapacity = self.CPHS_nodal * 1000
-        Fcapacity = self.CFlexible_nodal * 1000 
-        Pcapacity = self.CPHP_nodal * 1000
-
-        efficiency, resolution = 1.0, self.resolution # Assume no efficiency losses for the initial rough storage
 
         Balancing = np.zeros(shape2d, dtype=np.float64)
         Discharge = np.zeros(shape2d, dtype=np.float64)
         Charge = np.zeros(shape2d, dtype=np.float64)
         Storage = np.zeros(shape2d, dtype=np.float64)
-        Storaget_1 = 0.5*Scapacity
+        Storage[-1] = 0.5 * self.CPHS_nodal
 
         for t in range(intervals):
-            Netloadt = Netload[t]
+            Balancing[t] = np.minimum(np.minimum(np.maximum(0, Netload[t]), Storage[t-1]/self.resolution + self.CFlexible_nodal), self.CPHP_nodal + self.CFlexible_nodal)
+            Discharge[t] = np.minimum(np.minimum(np.maximum(0, Netload[t]), Storage[t-1]/self.resolution), self.CPHP_nodal) 
+            Charge[t] = np.minimum(np.minimum(-1 * np.minimum(0, Netload[t]), (self.CPHS_nodal-Storage[t-1])/self.resolution), self.CPHP_nodal)
+            Storage[t] = Storage[t-1] - (Discharge[t] - Charge[t]) * self.resolution
 
-            Balancingt = np.minimum(np.minimum(np.maximum(0, Netloadt), Storaget_1/resolution + Fcapacity), Pcapacity + Fcapacity)
-            Discharget = np.minimum(np.minimum(np.maximum(0, Netloadt), Storaget_1/resolution), Pcapacity) 
-            Charget = np.minimum(np.minimum(-1 * np.minimum(0, Netloadt), (Scapacity-Storaget_1)/efficiency/resolution), Pcapacity)
-
-            Storaget = Storaget_1 - Discharget * resolution + Charget * resolution * efficiency
-            Storaget_1 = Storaget.copy()
-            
-            Balancing[t] = Balancingt
-            Discharge[t] = Discharget
-            Charge[t] = Charget
-            Storage[t] = Storaget 
-
-        NetBalancing_nodal = Balancing - Charge
+        NetBalancing_nodal = Balancing - Charge      
         
         """ np.savetxt("results/R_Netload.csv", Netload, delimiter=",")
         np.savetxt("results/R_NetBalancing_nodal.csv", NetBalancing_nodal, delimiter=",")
@@ -491,17 +429,11 @@ class Solution_SingleTime:
                     result[t, i] = nodal_generation[t, node_i]
 
         return result
-    
-    def _apportion_nodal_generation(self):
-        self.GFlexible = self._apportion_nodal_array(self.CPeak,self.GFlexible_nodal,self.flexible_nodes)
-        
-        self.GBaseload = self._apportion_nodal_array(self.CBaseload,self.GBaseload_nodal,self.baseload_nodes)
-
-        return None
 
     def _calculate_annual_generation(self):
         self.GPV_annual = self.GPV.sum(axis=0) * self.resolution / self.years
         self.GWind_annual = self.GWind.sum(axis=0) * self.resolution / self.years
+        self.GDischarge_annual = self.GDischarge.sum(axis=0) * self.resolution / self.years
         self.GFlexible_annual = self.GFlexible.sum(axis=0) * self.resolution / self.efficiency / self.years
         self.GBaseload_annual = self.GBaseload.sum(axis=0) * self.resolution / self.years
         self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
@@ -586,22 +518,24 @@ class Solution_SingleTime:
     def _transmission_balancing(self, Netload, storage_p_profiles, flexible_p_profiles):
         network = self.network
 
+        #flexible_p_profiles = 0.5*np.ones(flexible_p_profiles.shape, dtype=np.float64) ######### DEBUG
+
         NetStoragePower_nodal = self._fill_nodal_array_2d(storage_p_profiles, self.storage_nodes)
         Flexible_nodal = self._fill_nodal_array_2d(flexible_p_profiles, self.flexible_nodes)
         
         Netload = Netload - NetStoragePower_nodal - Flexible_nodal
         shape2d = intervals, nodes = Netload.shape
 
-        Scapacity = self.CPHS * 1000
-        Fcapacity = self.CFlexible * 1000 
-        Pcapacity = self.CPHP * 1000
+        Scapacity = self.CPHS 
+        Fcapacity = self.CFlexible  
+        Pcapacity = self.CPHP 
         Fcapacity_nodal = self._fill_nodal_array_1d(Fcapacity, self.flexible_nodes)
 
         storage_order = self.balancing_order[self.balancing_storage_tag]
         flexible_order = self.balancing_order[self.balancing_flexible_tag]
         F_variable_costs = self.balancing_costs[3,flexible_order] ##### ADD FUEL COSTS
 
-        Hcapacity = self.CTrans * 1000 # GW to MW
+        Hcapacity = self.CTrans 
         ntrans = len(self.CTrans)
 
         Flexible = np.zeros_like(flexible_p_profiles, dtype=np.float64)
@@ -634,7 +568,7 @@ class Solution_SingleTime:
             Deficitt = np.maximum(Netloadt - SPowert_update_nodal - Flexiblet_update_nodal, 0)
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
             
-            if Deficitt.sum() > 1e-6:
+            if Deficitt.sum() > 1e-9:
                 # Fill deficits with transmission allowing drawing down from neighbours storage reserves                
                 Surplust = (
                     -np.minimum(0, Netloadt)
@@ -662,7 +596,7 @@ class Solution_SingleTime:
             SPowert_nodal += SPowert_update_nodal
             Surplust = -np.minimum(0, Netloadt - np.minimum(SPowert_update_nodal, 0))
 
-            if Surplust.sum() > 1e-6:
+            if Surplust.sum() > 1e-9:
                 Fillt = SPowert_update_nodal + (Charget_max_nodal + SPowert_nodal)
 
                 Transmissiont = get_transmission_flows_t(
@@ -756,10 +690,12 @@ class Solution_SingleTime:
         Spillage = -1 * np.minimum(0, Netload - ImpExp - (SPower_updated_nodal - NetStoragePower_nodal))    
 
         self.Spillage_nodal = Spillage
-        self.Storage_nodal = Storage
+        self.Storage = Storage
         self.Deficit_nodal = Deficit
         self.Import_nodal = np.maximum(0, ImpExp)
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
+        self.GFlexible = Flexible
+        self.GDischarge = np.maximum(SPower,0)
 
         self.TFlows = (Transmission).sum(axis=2)
         TFlowsAbs = np.abs(self.TFlows)
@@ -792,11 +728,10 @@ class Solution_SingleTime:
         print(f"Constraints time: {constraints_time - frequency_time:.4f} seconds")
 
         deficit, TFlowsAbs = self._transmission_balancing(Netload, storage_p_profiles, flexible_p_profiles)
-        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000
+        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000
         transmission_time = time.time()
         print(f"Transmission time: {transmission_time - constraints_time:.4f} seconds")
 
-        self._apportion_nodal_generation()
         self._calculate_annual_generation()
         cost = self._calculate_costs()
         costs_time = time.time()
@@ -805,12 +740,12 @@ class Solution_SingleTime:
         loss = TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
-        lcoe = cost / np.abs(self.energy - loss)
+        lcoe = cost / np.abs(self.energy - loss) / 1000 # $/MWh
         end_objective = time.time()
         print(f"Objective solve time: {end_objective - start_objective:.4f} seconds")
         print("LCOE: ", lcoe, pen_deficit)
 
-        raise KeyboardInterrupt
+        exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
@@ -832,15 +767,9 @@ def parallel_wrapper(xs,
                     resolution,
                     allowance,
                     generator_ids,
-                    generator_nodes,
-                    generator_capacities,
                     generator_costs,
-                    generator_unit_types,
                     storage_ids,
                     storage_nodes,
-                    storage_power_capacities,
-                    storage_energy_capacities,
-                    storage_unit_types,
                     flexible_ids,
                     nodes_with_balancing,
                     max_frequency,
@@ -887,15 +816,9 @@ def parallel_wrapper(xs,
                                 resolution,
                                 allowance,
                                 generator_ids,
-                                generator_nodes,
-                                generator_capacities,
                                 generator_costs,
-                                generator_unit_types,
                                 storage_ids,
                                 storage_nodes,
-                                storage_power_capacities,
-                                storage_energy_capacities,
-                                storage_unit_types,
                                 flexible_ids,
                                 nodes_with_balancing,
                                 max_frequency,
@@ -943,15 +866,9 @@ def objective_st(x,
                 resolution,
                 allowance,
                 generator_ids,
-                generator_nodes,
-                generator_capacities,
                 generator_costs,
-                generator_unit_types,
                 storage_ids,
                 storage_nodes,
-                storage_power_capacities,
-                storage_energy_capacities,
-                storage_unit_types,
                 flexible_ids,
                 nodes_with_balancing,
                 max_frequency,
@@ -996,15 +913,9 @@ def objective_st(x,
                                 resolution,
                                 allowance,
                                 generator_ids,
-                                generator_nodes,
-                                generator_capacities,
                                 generator_costs,
-                                generator_unit_types,
                                 storage_ids,
                                 storage_nodes,
-                                storage_power_capacities,
-                                storage_energy_capacities,
-                                storage_unit_types,
                                 flexible_ids,
                                 nodes_with_balancing,
                                 max_frequency,
