@@ -283,10 +283,8 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
                 exclude_boundaries_size=0):
     num_frequencies = cwt_matrix.shape[1]
     
-    max_scale = scales[0]
-    for i in range(scales.shape[0]):
-        max_scale = max(max_scale, scales[i])
-    ridge_length = max(ridge_length, max_scale)
+    for scale in scales:
+        ridge_length = max(ridge_length, scale)
 
     # Determine which scales are valid for peak detection
     # count_valid_scales = int((scales>=peak_scale_range).sum())
@@ -302,8 +300,8 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         min_noise_level = max_coef * min_noise_level
 
     # Prepare ridges
-    num_ridges = ridge_list.shape[1]
     
+    ## If producing bad results, check this logic 
     #check if this actually sticks
     ridge_list = ridge_list[::-1]
 
@@ -316,18 +314,18 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
     freq_indices = freq_indices[order]
     ridge_list = ridge_list[:, order]
     ridge_lengths = ridge_lengths[order]
-    ridge_start_levels = np.zeros(ridge_list.shape[1], dtype=np.int32)
+    # ridge_start_levels = np.zeros(ridge_list.shape[1], dtype=np.int32)
 
     # Determine peak characteristics for each ridge
-    peak_scales = np.empty(num_ridges, dtype=scales.dtype)
-    peak_center_indices = np.empty(num_ridges, dtype=np.int32)
-    peak_values = np.empty(num_ridges, dtype=cwt_matrix.dtype)
-    for ridge in range(num_ridges):
+    # peak_scales = np.empty(num_ridges, dtype=scales.dtype)
+    peak_center_indices = np.empty(ridge_list.shape[1], dtype=np.int32)
+    peak_values = np.empty(ridge_list.shape[1], dtype=cwt_matrix.dtype)
+    for ridge in range(ridge_list.shape[1]):
         current_ridge_length = ridge_lengths[ridge]
 
         # If the ridge has no valid entries, mark with default values.
         if current_ridge_length <= 0:
-            peak_scales[ridge] = np.nan
+            # peak_scales[ridge] = np.nan
             peak_center_indices[ridge] = -1
             peak_values[ridge] = 0
             continue
@@ -336,8 +334,6 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         ## Does this need to be a copy? or would this do:    
         ridge_freq_indices = ridge_list[:current_ridge_length, ridge]
         scales_for_ridge = scales[:current_ridge_length] 
-        
-
         
         # Select positions within the peak scale range
         selected_flags = np.zeros(current_ridge_length, dtype=np.bool_)
@@ -350,17 +346,17 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         # selected_flags = np.array([(scale==valid_scales).any() for scale in scales_for_ridge])
         
         if int(selected_flags.sum()) == 0:
-            peak_scales[ridge] = scales_for_ridge[0]
+            # peak_scales[ridge] = scales_for_ridge[0]
             peak_center_indices[ridge] = ridge_freq_indices[0]
             peak_values[ridge] = 0
             continue
         
-        effective_levels = np.where(selected_flags)[0].astype(np.int32)
-        effective_scales = scales_for_ridge[selected_flags]
+        # effective_scales = scales_for_ridge[selected_flags]
         effective_freq_indices = ridge_freq_indices[selected_flags]
         
         # Extract CWT coefficients from effective ridge positions, find max coefficient
-        ridge_coeff_values = np.array([cwt_matrix[i, j] for i, j in zip(effective_levels, effective_freq_indices)], dtype=cwt_matrix.dtype)
+        ridge_coeff_values = np.array([cwt_matrix[i, j] for i, j in zip(np.where(selected_flags)[0].astype(np.int32),
+                                                                        effective_freq_indices)], dtype=cwt_matrix.dtype)
         
         max_val = ridge_coeff_values[0]
         max_idx = 0
@@ -368,7 +364,7 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
             if val > max_val:
                 max_val = val
                 max_idx = j
-        peak_scales[ridge] = effective_scales[max_idx]
+        # peak_scales[ridge] = effective_scales[max_idx]
         peak_center_indices[ridge] = effective_freq_indices[max_idx]
         peak_values[ridge] = ridge_coeff_values[max_idx]
     
