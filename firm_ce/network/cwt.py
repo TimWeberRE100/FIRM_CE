@@ -1,5 +1,6 @@
 from scipy.fft import fft, ifft
 import numpy as np
+import time
 
 from firm_ce.constants import JIT_ENABLED
 from firm_ce.helpers import set_difference_int, quantile_95
@@ -22,10 +23,17 @@ def cwt_peak_detection(signal, scales=np.arange(1, 64, 2)):
     '''https://pmc.ncbi.nlm.nih.gov/articles/PMC2631518/'''
     '''https://paos.colorado.edu/research/wavelets/bams_79_01_0061.pdf'''
 
+    t1 = time.perf_counter()
     cwt_matrix, scales = get_cwt_matrix(signal, scales)
+    t2 = time.perf_counter()
     local_maxima = get_local_maxima_per_scale(cwt_matrix, scales)
+    t3 = time.perf_counter()
     ridge_list = link_ridges(local_maxima, scales)
+    t4 = time.perf_counter()
     peaks = pick_peaks(ridge_list, cwt_matrix, scales)
+    t5 = time.perf_counter()
+
+    print("CWT Times: {:.4f} seconds, {:.4f} seconds, {:.4f} seconds, {:.4f} seconds".format(t2 - t1, t3 - t2, t4 - t3, t5 - t4))
     
     peak_mask = np.zeros(signal.size, dtype=np.int32)
     noise_mask = np.ones(signal.size, dtype=np.int32)
@@ -47,20 +55,12 @@ def next_power_of_base(n, base):
 
 @njit
 def extend_length(arr_1d, add_length):   
-    original_length = arr_1d.shape[0]
-
-    left = 0
-    right = add_length
-
-    total_rows = original_length + left + right
+    original_length = arr_1d.shape[0]    
+    total_rows = original_length + add_length
     extended_arr_1d = np.empty((total_rows), dtype=arr_1d.dtype)
 
-    for i in range(original_length):
-        extended_arr_1d[left + i] = arr_1d[i]
-    
-    if right > 0:
-        for i in range(right):
-            extended_arr_1d[left + original_length + i] = arr_1d[original_length - 1 - i]
+    extended_arr_1d[:original_length] = arr_1d    
+    extended_arr_1d[original_length:] = arr_1d[original_length - 1 : original_length - 1 - add_length : -1]
 
     return extended_arr_1d
 
@@ -70,7 +70,7 @@ def extend_n_base(arr_1d, base=2):
     extended_length = next_power_of_base(original_length, base)
     
     if original_length != extended_length:
-        arr_1d = extend_length(arr_1d, add_length=extended_length - original_length)
+        arr_1d = extend_length(arr_1d, extended_length - original_length)
     
     return arr_1d
 
@@ -142,80 +142,102 @@ def get_cwt_matrix(signal, scales):
 
 @njit
 def find_local_maximum(arr_1d, window_size):
-    local_max = np.zeros_like(arr_1d, dtype=np.int32)
+    # Uses a double-ended queue for the sliding window
+    n = len(arr_1d)
+    local_max = np.zeros(n, dtype=np.int32)
     half_window = window_size // 2
     
-    for i in range(half_window, len(arr_1d) - half_window):
-        if arr_1d[i] == np.max(arr_1d[i - half_window:i + half_window + 1]):
+    num_windows = n - window_size + 1
+    sliding_max = np.empty(num_windows, dtype=arr_1d.dtype)
+    deque_indices = np.empty(n, dtype=np.int64)
+    head = 0 
+    tail = 0  
+    
+    # Build sliding maximum array
+    for i in range(n):
+        if head < tail and deque_indices[head] <= i - window_size:
+            head += 1
+        while head < tail and arr_1d[deque_indices[tail - 1]] <= arr_1d[i]:
+            tail -= 1
+        deque_indices[tail] = i
+        tail += 1
+        if i >= window_size - 1:
+            sliding_max[i - window_size + 1] = arr_1d[deque_indices[head]]
+    
+    for i in range(half_window, n - half_window):
+        if arr_1d[i] == sliding_max[i - half_window]:
             local_max[i] = 1
-    
-    max_indices = np.where(local_max > 0)[0]
-    if len(max_indices) > 1:
-        diffs = np.diff(max_indices)
-        to_remove = np.where(diffs < window_size)[0]
-        for idx in to_remove:
-            if arr_1d[max_indices[idx]] <= arr_1d[max_indices[idx + 1]]:
-                local_max[max_indices[idx]] = 0
+
+    # If two peaks are closer than window_size apart, keep only the higher one.
+    last_peak_index = -1
+    for i in range(n):
+        if local_max[i] == 1:
+            if last_peak_index == -1:
+                last_peak_index = i
+            elif i - last_peak_index < window_size:
+                if arr_1d[i] > arr_1d[last_peak_index]:
+                    local_max[last_peak_index] = 0
+                    last_peak_index = i
+                else:
+                    local_max[i] = 0
             else:
-                local_max[max_indices[idx + 1]] = 0
-    
+                last_peak_index = i
+
     return local_max
 
 @njit
-def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5, amplitude_threshold=0):
+def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5):
     rows, cols = cwt_matrix.shape
-    local_maxima = np.zeros(cwt_matrix.shape, dtype=np.int32)
-    
-    for i, scale in enumerate(scales):
-        window_size = max(scale * 2 + 1, min_window_size)
-        local_maxima[i,:] = find_local_maximum(cwt_matrix[i,:], window_size)
+    local_maxima = np.zeros((rows, cols), dtype=np.int32)
     
     for i in range(rows):
-        for j in range(cols):
-            if cwt_matrix[i, j] < amplitude_threshold:
-                local_maxima[i, j] = 0
-    
+        window_size = max(scales[i] * 2 + 1, min_window_size)
+        local_maxima[i, :] = find_local_maximum(cwt_matrix[i, :], window_size)
+                
     return local_maxima
 
 @njit
-def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, minimum_window_size=5, gap_threshold=3):
-    num_rows = local_maxima.shape[0]
-    num_frequencies = local_maxima.shape[1]
-
-    current_max_freq_indices = np.where(local_maxima[num_rows - 1, :] > 0)[0]
+def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, minimum_window_size=5, gap_threshold=3, min_ridge_length=15):
+    num_rows, num_frequencies = local_maxima.shape
+    current_max_freq_indices = np.where(local_maxima[-1, :] > 0)[0]
 
     if num_rows > 1:
-        row_indices = np.arange(num_rows + step_direction, final_row_index - step_direction, step_direction, dtype=np.int64)
+        if step_direction < 0:
+            row_indices = np.arange(num_rows - 2, final_row_index - 1, step_direction)
+        else:
+            row_indices = np.arange(1, final_row_index + 1, step_direction)
     else:
-        row_indices = np.array([0], dtype=np.int64)
+        row_indices = np.zeros(1, dtype=np.int64)
 
-    max_possible_ridges = len(current_max_freq_indices) * len(row_indices)
-
-    current_ridge_freq = current_max_freq_indices.astype(np.int32)
-    ridge_list = np.full((len(row_indices), max_possible_ridges), -1, dtype=np.int32)
-    gap_counter = np.zeros(max_possible_ridges, dtype=np.int32)
-    ridges_to_remove = np.full(max_possible_ridges, -1, dtype=np.int32)
+    ridge_list = np.full((len(row_indices) + 1, num_frequencies), -1, dtype=np.int32)
+    gap_counter = np.zeros(num_frequencies, dtype=np.int32)
+    ridges_to_remove = np.full(num_frequencies, -1, dtype=np.int32)
+    current_ridge_freq = np.full(num_frequencies, -1, dtype=np.int32)
+    ridge_lengths = np.full(num_frequencies, -1, dtype=np.int32)
+    keep_mask = np.full(num_frequencies, False, dtype=np.bool_)
     removal_count = 0
 
-    ridge_list[0, :] = current_max_freq_indices
     current_ridge_count = len(current_max_freq_indices)
+    ridge_list[0, :current_ridge_count] = current_max_freq_indices.copy()
+    keep_mask[:current_ridge_count] = True 
+    ridge_lengths[:current_ridge_count] = 1
+    current_ridge_freq[:current_ridge_count] = current_max_freq_indices.copy()
 
-    for row_iter, row_idx in enumerate(row_indices):
+    for row_iter, row_idx in enumerate(row_indices, start=1):
         # Initialise a search window
-        current_window_size = max(int(scales[row_idx] * 2 + 1), minimum_window_size)
-        
+        current_window_size = max(int(scales[row_idx] * 2 + 1), minimum_window_size)        
         selected_peak_indices = np.full(current_ridge_count, -1, dtype=np.int32)
 
         for ridge in range(current_ridge_count):
             # Identify candidate peaks within the search window
             window_start = max(0, current_ridge_freq[ridge] - current_window_size)
-            candidate_indices = np.where(local_maxima[row_idx, window_start:min(num_frequencies, current_ridge_freq[ridge] + current_window_size)] > 0)[0]
-
+            window_end = min(num_frequencies, current_ridge_freq[ridge] + current_window_size)
+            candidate_indices = np.where(local_maxima[row_idx, window_start:window_end] > 0)[0]
             candidate_indices += window_start
 
             if len(candidate_indices) == 0:
                 # Mark ridge for removal if no candidate peaks found and gap exceeds threshold
-                if gap_counter[ridge] > gap_threshold and scales[row_idx] >= 2:
+                if gap_counter[ridge] > gap_threshold:
                     ridges_to_remove[removal_count] = ridge
                     removal_count += 1
                     continue
@@ -225,54 +247,44 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
                     gap_counter[ridge] += 1
             else:
                 # If candidate peaks found, keep ridge and reset gap counter
-                gap_counter[ridge] = 0
-                best_diff = -1
-                for i, cand in enumerate(candidate_indices):
-                    diff = abs(candidate_indices[i] - current_ridge_freq[ridge])
-                    if diff < best_diff:
-                        best_diff = diff
-                        best_candidate = candidate_indices[i]
-                candidate_indices = np.array([best_candidate], dtype=np.int32)
+                if candidate_indices.size >= 2:
+                    diffs = np.abs(candidate_indices - current_ridge_freq[ridge])
+                    best_index = np.argmin(diffs)
+                    candidate = candidate_indices[best_index]
+                else:
+                    candidate = candidate_indices[0]
+                candidate_indices = np.array([candidate], dtype=np.int32)
 
             ridge_list[row_iter, ridge] = candidate_indices[0]
             selected_peak_indices[ridge] = candidate_indices[0]
             current_ridge_freq[ridge] = candidate_indices[0]
+            ridge_lengths[ridge] += 1
 
         # Get all candidate peaks for current row
         selected_valid = np.array([spi for spi in selected_peak_indices if spi != -1], dtype=np.int32)
 
-        # Determine which peaks were not used to extend an existing ridge. Then, start new ridges
-        unselected_peaks = set_difference_int(np.where(local_maxima[row_idx, :] > 0)[0], selected_valid)
+        # Determine which peaks were not used to extend an existing ridge. 
+        # Then, start new ridges that are capable of reaching the minimum length
+        if row_idx > min_ridge_length:
+            unselected_peaks = set_difference_int(np.where(local_maxima[row_idx, :] > 0)[0], selected_valid)
+            for candidate_peak in unselected_peaks:
+                if current_ridge_count < num_frequencies:
+                    ridge_list[row_iter, current_ridge_count] = candidate_peak
+                    gap_counter[current_ridge_count] = 0
+                    keep_mask[current_ridge_count] = True
+                    current_ridge_freq[current_ridge_count] = candidate_peak
+                    current_ridge_count += 1                
 
-        for candidate_peak in unselected_peaks:
-            if current_ridge_count < max_possible_ridges:
-                current_ridge_freq[current_ridge_count] = candidate_peak
-                for r in range(len(ridge_list)):
-                    ridge_list[r, current_ridge_count] = -1
-                ridge_list[row_iter, current_ridge_count] = candidate_peak
-                gap_counter[current_ridge_count] = 0
-                current_ridge_count += 1
-
-        # Remove peaks marked for removal
-        if removal_count > 0:
-            
-            keep_mask = np.ones(current_ridge_count, dtype=np.bool_)
-            for i in range(removal_count): # I think this can be made better but not yet sure how
+        # Mark peaks for removal
+        if removal_count > 0:            
+            for i in range(removal_count): 
                 if ridges_to_remove[i] < current_ridge_count:
                     keep_mask[ridges_to_remove[i]] = False
             
-            current_ridge_freq = current_ridge_freq[keep_mask]
-            gap_counter = gap_counter[keep_mask]
-            ridge_list = ridge_list[:, keep_mask]
-            
             current_ridge_count = int(keep_mask.sum())
             removal_count = 0
-            max_possible_ridges = len(current_ridge_freq)
         
         current_max_freq_indices = np.concatenate((selected_valid, unselected_peaks))
-        
-    # Remove empty rows
-    keep_mask = np.array([r>0 for r in ridge_list[0]])
     
     return ridge_list[:, keep_mask]
 
@@ -355,8 +367,11 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         effective_freq_indices = ridge_freq_indices[selected_flags]
         
         # Extract CWT coefficients from effective ridge positions, find max coefficient
-        ridge_coeff_values = np.array([cwt_matrix[i, j] for i, j in zip(np.where(selected_flags)[0].astype(np.int32),
-                                                                        effective_freq_indices)], dtype=cwt_matrix.dtype)
+        selected_indices = np.where(selected_flags)[0].astype(np.int32)
+        ridge_coeff_values = np.empty(len(selected_indices), dtype=cwt_matrix.dtype)
+
+        for idx in range(len(selected_indices)):
+            ridge_coeff_values[idx] = cwt_matrix[selected_indices[idx], effective_freq_indices[idx]]
         
         max_val = ridge_coeff_values[0]
         max_idx = 0

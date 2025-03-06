@@ -422,9 +422,7 @@ class Solution_SingleTime:
         return result
 
     def _reliability(self):
-        Netload = (self.MLoad - self.GPV - self.GWind - self.GBaseload_nodal)
-
-        efficiency = 1.0 # Assume no efficiency losses for the initial rough storage
+        Netload = (self.MLoad - self.GPV_nodal - self.GWind_nodal - self.GBaseload_nodal)
 
         Balancing = np.zeros((self.intervals, self.nodes), dtype=np.float64)
         Discharge = np.zeros((self.intervals, self.nodes), dtype=np.float64)
@@ -435,8 +433,8 @@ class Solution_SingleTime:
         for t in range(self.intervals):
             Balancing[t] = np.minimum(np.minimum(np.maximum(0, Netload[t]), Storage[t-1]/self.resolution + self.CFlexible_nodal), self.CPHP_nodal + self.CFlexible_nodal)
             Discharge[t] = np.minimum(np.minimum(np.maximum(0, Netload[t]), Storage[t-1]/self.resolution), self.CPHP_nodal) 
-            Charge[t] = np.minimum(np.minimum(-1 * np.minimum(0, Netload[t]), (self.CPHS_nodal-Storage[t-1])/efficiency/self.resolution), self.CPHP_nodal)
-            Storage[t] = Storage[t-1] - Discharge[t] * self.resolution + Charge[t] * self.resolution * efficiency
+            Charge[t] = np.minimum(np.minimum(-1 * np.minimum(0, Netload[t]), (self.CPHS_nodal-Storage[t-1])/self.resolution), self.CPHP_nodal)
+            Storage[t] = Storage[t-1] - (Discharge[t] - Charge[t]) * self.resolution
         
         """ np.savetxt("results/R_Netload.csv", Netload, delimiter=",")
         np.savetxt("results/R_NetBalancing_nodal.csv", NetBalancing_nodal, delimiter=",")
@@ -445,27 +443,26 @@ class Solution_SingleTime:
         np.savetxt("results/R_Charge.csv", Charge, delimiter=",")
         np.savetxt("results/R_Storage.csv", Storage, delimiter=",") """
         
-        return Netload, Balancing - Charge #NetBalancing_nodal=Balancing-Charge
+        return Netload, Balancing - Charge
 
     def _calculate_costs(self):
         solution_cost = calculate_costs(self)
         return solution_cost
     
-    def _apportion_nodal_array(self, capacity_array, nodal_generation, node_array):
-        
+    def _apportion_nodal_array(self, capacity_array, nodal_generation, node_array):        
         cap_node_sum = np.zeros(self.nodes, dtype=np.float64)
         for i in range(len(node_array)):
             cap_node_sum[node_array[i]] += capacity_array[i]
         
-        result = np.zeros((len(node_array), self.intervals), dtype=np.float64)
+        result = np.zeros((self.intervals, len(node_array)), dtype=np.float64)
+        
         for i in range(len(node_array)):
             if cap_node_sum[node_array[i]] > 0.0:
-                result[i] = capacity_array[i] / cap_node_sum[node_array[i]] * nodal_generation[:, node_array[i]]
+                result[:,i] = capacity_array[i] / cap_node_sum[node_array[i]] * nodal_generation[:, node_array[i]]
             else:
-                # If the node's total capacity is zero, fall back to "no scaling"
-                result[i] = nodal_generation[:, node_array[i]]
+                result[:,i] = nodal_generation[:, node_array[i]]
 
-        return result.T
+        return result
     
     def _apportion_nodal_generation(self):
         self.GFlexible = self._apportion_nodal_array(self.CPeak,self.GFlexible_nodal,self.flexible_nodes)
@@ -489,7 +486,9 @@ class Solution_SingleTime:
         for node_idx in range(self.nodes):
             frequency_profile_p = frequency.get_frequency_profile(NetBalancing_nodal[:,node_idx])
             
-            peak_mask, noise_mask = cwt.cwt_peak_detection(frequency.get_normalised_profile(frequency_profile_p))
+            peak_mask, noise_mask = cwt.cwt_peak_detection(
+                signal=frequency.get_normalised_profile(frequency_profile_p)
+            )
 
             for balancing_i in range(self.nodal_balancing_count[node_idx]):
                 if abs(self.balancing_W_cutoffs[node_idx, balancing_i] - self.max_frequency) <= EPSILON_FLOAT64:
@@ -497,23 +496,29 @@ class Solution_SingleTime:
 
                 balancing_p_profiles_ifft[:,node_idx,balancing_i] = frequency.get_timeseries_profile(
                     frequency.get_filtered_frequency(
-                        frequency_profile_p, 
-                        peak_mask * frequency.get_bandpass_filter(
-                            self.balancing_W_cutoffs[node_idx, balancing_i], 
-                            self.balancing_W_cutoffs[node_idx, balancing_i+1], 
-                            frequency.get_frequencies(
-                                self.intervals, 
-                                self.resolution
-                                )
-                            )
+                        frequency_profile=frequency_profile_p, 
+                        filter_profile=peak_mask * frequency.get_bandpass_filter(
+                                                        lower_cutoff=self.balancing_W_cutoffs[node_idx, balancing_i], 
+                                                        upper_cutoff=self.balancing_W_cutoffs[node_idx, balancing_i+1], 
+                                                        frequencies=frequency.get_frequencies(
+                                                                        self.intervals, 
+                                                                        self.resolution
+                                                                    )
+                                                    )
                         )
                     )
                 
             # Apportion dc offset and noise to long-duration
             balancing_p_profiles_ifft[:, node_idx, :] = frequency.apportion_nodal_noise(
-                balancing_p_profiles_ifft[:, node_idx, :], 
-                frequency.get_timeseries_profile(frequency.get_dc_offset(frequency_profile_p)) + 
-                frequency.get_timeseries_profile(frequency.get_filtered_frequency(frequency_profile_p, noise_mask)))
+                nodal_timeseries=balancing_p_profiles_ifft[:, node_idx, :], 
+                noise_timeseries=(frequency.get_timeseries_profile(frequency.get_dc_offset(frequency_profile_p)) 
+                                  + frequency.get_timeseries_profile(frequency.get_filtered_frequency(
+                                                                        frequency_profile=frequency_profile_p, 
+                                                                        filter_profile=noise_mask
+                                                                    )
+                                    )
+                )
+            )
 
         return balancing_p_profiles_ifft
     
@@ -527,7 +532,7 @@ class Solution_SingleTime:
             node_balancing_permutation = frequency.order_balancing(
                 node_balancing_order, 
                 self.balancing_e_constraints[node_balancing_order],
-                self.balancing_costs[3, node_balancing_order], # includes fuel costs
+                self.balancing_costs[3, node_balancing_order], # include fuel costs
                 )
 
             balancing_p_profile_option = frequency.apply_balancing_constraints(
@@ -550,6 +555,8 @@ class Solution_SingleTime:
         return storage_p_profiles, flexible_p_profiles
     
     def _transmission_balancing(self, Netload, storage_p_profiles, flexible_p_profiles):
+        flexible_p_profiles = np.full(flexible_p_profiles.shape, 0.5, dtype=np.float64)
+
         NetStoragePower_nodal = self._fill_nodal_array_2d(storage_p_profiles, self.storage_nodes)
         Flexible_nodal = self._fill_nodal_array_2d(flexible_p_profiles, self.flexible_nodes)
         
@@ -652,7 +659,8 @@ class Solution_SingleTime:
                     # If there is a deficit at this node, remove intra‐node charging.
                     if Netload[t, node] - Transmission[t].sum(axis=0)[node] - SPowert_update_nodal[node] - Flexiblet_update_nodal[node] > 0:
                         Flexiblet_update_nodal[node] = max(0, 
-                            Flexiblet_update_nodal[node] - np.maximum(SPower[t][storage_mask], 0).sum() - SPower[t][storage_mask].sum())
+                            Flexiblet_update_nodal[node] - np.maximum(SPower[t][storage_mask], 0).sum() - SPower[t][storage_mask].sum()
+                        )
                         SPower[t][storage_mask] = np.maximum(SPower[t][storage_mask], 0)
 
                     for idx in order_indices:
@@ -715,41 +723,41 @@ class Solution_SingleTime:
         OUTPUT = np.vstack((Netload[:18000,0],ImpExp[:18000,0],SPower[:18000,0] - storage_p_profiles[:18000,0],SPower[:18000,5] - storage_p_profiles[:18000,5],Flexible[:18000,0] - flexible_p_profiles[:18000,0],Deficit[:18000,0],Spillage[:18000,0],Storage[:18000,0],Storage[:18000,5],SPower[:18000,0],SPower[:18000,5],Flexible[:18000,0]))
         np.savetxt("results/OUTPUT.csv", OUTPUT.T, delimiter=",") """
 
-        return self.Deficit_nodal, np.abs(self.TFlows) #TFlowsAbs = np.abs(self.TFlows)
+        return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        start_objective = time.time()
+        start_objective = time.perf_counter()
         Netload, NetBalancing_nodal = self._reliability()
-        reliability_time = time.time()
-        print(f"Reliability time: {reliability_time - start_objective:.4f} seconds")
+        reliability_time = time.perf_counter()
+        print("Reliability time: {:.4f} seconds".format(reliability_time - start_objective))
 
         balancing_p_profiles_ifft = self._filter_balancing_profiles(NetBalancing_nodal)
-        frequency_time = time.time()
-        print(f"Frequency time: {frequency_time - reliability_time:.4f} seconds")
+        frequency_time = time.perf_counter()
+        print("Frequency time: {:.4f} seconds".format(frequency_time - reliability_time))
+
         storage_p_profiles, flexible_p_profiles = self._determine_constrained_balancing(balancing_p_profiles_ifft)
-        constraints_time = time.time()
-        print(f"Constraints time: {constraints_time - frequency_time:.4f} seconds")
+        constraints_time = time.perf_counter()
+        print("Constraints time: {:.4f} seconds".format(constraints_time - frequency_time))
 
         deficit, TFlowsAbs = self._transmission_balancing(Netload, storage_p_profiles, flexible_p_profiles)
-        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000
-        transmission_time = time.time()
-        print(f"Transmission time: {transmission_time - constraints_time:.4f} seconds")
+        pen_deficit = np.maximum(0., deficit.sum() * self.resolution - self.allowance) * 1000000
+        transmission_time = time.perf_counter()
+        print("Transmission time: {:.4f} seconds".format(transmission_time - constraints_time))
 
         self._apportion_nodal_generation()
         self._calculate_annual_generation()
         cost = self._calculate_costs()
-        costs_time = time.time()
-        print(f"Costs time: {costs_time - transmission_time:.4f} seconds")
+        costs_time = time.perf_counter()
+        print("Costs time: {:.4f} seconds".format(costs_time - transmission_time))
 
         loss = TFlowsAbs.sum(axis=0) * self.TLoss
         loss = loss.sum() * self.resolution / self.years
 
-        lcoe = cost / np.abs(self.energy - loss)
-        end_objective = time.time()
-        print(f"Objective solve time: {end_objective - start_objective:.4f} seconds")
+        lcoe = cost / np.abs(self.energy - loss) / 1000
+        end_objective = time.perf_counter()
+        print("Objective solve time: {:.4f} seconds".format(end_objective - start_objective))
         print("LCOE: ", lcoe, pen_deficit)
-
-        raise KeyboardInterrupt
+        exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
