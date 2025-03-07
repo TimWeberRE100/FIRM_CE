@@ -1,6 +1,7 @@
 from scipy.fft import fft, ifft
 import numpy as np
 import time
+from numpy.lib.stride_tricks import sliding_window_view
 
 from firm_ce.constants import JIT_ENABLED
 from firm_ce.helpers import set_difference_int, quantile_95
@@ -143,45 +144,19 @@ def get_cwt_matrix(signal, scales):
 @njit
 def find_local_maximum(arr_1d, window_size):
     # Uses a double-ended queue for the sliding window
-    n = len(arr_1d)
-    local_max = np.zeros(n, dtype=np.int32)
-    half_window = window_size // 2
+    sliding_max = np.empty(len(arr_1d), dtype=arr_1d.dtype)
+    for i, window in enumerate(sliding_window_view(
+            np.concatenate((np.repeat(-np.inf, window_size+1), arr_1d)), 
+            window_size*2)):
+        sliding_max[i] = max(window)
     
-    num_windows = n - window_size + 1
-    sliding_max = np.empty(num_windows, dtype=arr_1d.dtype)
-    deque_indices = np.empty(n, dtype=np.int64)
-    head = 0 
-    tail = 0  
+    local_max = (sliding_max == arr_1d)
+    for i, window in enumerate(sliding_window_view(
+            np.concatenate((arr_1d, np.repeat(-np.inf, window_size+1))), 
+            window_size*2)):
+       sliding_max[i] = max(window)
     
-    # Build sliding maximum array
-    for i in range(n):
-        if head < tail and deque_indices[head] <= i - window_size:
-            head += 1
-        while head < tail and arr_1d[deque_indices[tail - 1]] <= arr_1d[i]:
-            tail -= 1
-        deque_indices[tail] = i
-        tail += 1
-        if i >= window_size - 1:
-            sliding_max[i - window_size + 1] = arr_1d[deque_indices[head]]
-    
-    for i in range(half_window, n - half_window):
-        if arr_1d[i] == sliding_max[i - half_window]:
-            local_max[i] = 1
-
-    # If two peaks are closer than window_size apart, keep only the higher one.
-    last_peak_index = -1
-    for i in range(n):
-        if local_max[i] == 1:
-            if last_peak_index == -1:
-                last_peak_index = i
-            elif i - last_peak_index < window_size:
-                if arr_1d[i] > arr_1d[last_peak_index]:
-                    local_max[last_peak_index] = 0
-                    last_peak_index = i
-                else:
-                    local_max[i] = 0
-            else:
-                last_peak_index = i
+    local_max*=(sliding_max==arr_1d)
 
     return local_max
 
@@ -192,7 +167,7 @@ def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5):
     
     for i in range(rows):
         window_size = max(scales[i] * 2 + 1, min_window_size)
-        local_maxima[i, :] = find_local_maximum(cwt_matrix[i, :], window_size)
+        local_maxima[i, :] = find_local_maximum(cwt_matrix[i, :], window_size).astype(np.int32)
                 
     return local_maxima
 
