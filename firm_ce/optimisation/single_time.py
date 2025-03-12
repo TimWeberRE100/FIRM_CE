@@ -104,7 +104,7 @@ if JIT_ENABLED:
         ('Charge_nodal', float64[:, :]),        
         ('Discharge_nodal', float64[:, :]),
         ('NetBalancing_nodal', float64[:, :]),
-        ('Storage_nodal', float64[:, :]),
+        ('Storage', float64[:, :]),
         ('Deficit_nodal', float64[:, :]),
         ('Import_nodal', float64[:, :]),
         ('Export_nodal', float64[:, :]),
@@ -265,8 +265,7 @@ class Solution_SingleTime:
         self.storage_d_efficiencies = storage_d_efficiencies
         self.storage_c_efficiencies = storage_c_efficiencies
 
-        self.Discharge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
-        self.Charge = np.zeros((intervals, len(storage_ids)), dtype=np.float64)
+        self.Storage = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
 
         # Lines
         self.line_ids = line_ids
@@ -331,6 +330,8 @@ class Solution_SingleTime:
                                         self.generator_costs[:, flexible_mask])
                                         )
 
+        
+
         """ nodal_durations = 
         for idx in range(len(storage_durations)):
             if storage_durations[idx] > 0:
@@ -359,7 +360,6 @@ class Solution_SingleTime:
         self.Charge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Discharge_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.NetBalancing_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
-        self.Storage_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Deficit_nodal = np.zeros((self.intervals,self.nodes), dtype=np.float64)
         self.Import_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64) 
         self.Export_nodal = np.zeros((self.intervals,self.lines), dtype=np.float64)   
@@ -489,11 +489,12 @@ class Solution_SingleTime:
             peak_mask, noise_mask = cwt.cwt_peak_detection(
                 signal=frequency.get_normalised_profile(frequency_profile_p)
             )
+            #np.savetxt(f"results/peak_mask_{node_idx}.csv", peak_mask, delimiter=",")
 
             for balancing_i in range(self.nodal_balancing_count[node_idx]):
                 if abs(self.balancing_W_cutoffs[node_idx, balancing_i] - self.max_frequency) <= EPSILON_FLOAT64:
                     break
-
+                
                 balancing_p_profiles_ifft[:,node_idx,balancing_i] = frequency.get_timeseries_profile(
                     frequency.get_filtered_frequency(
                         frequency_profile=frequency_profile_p, 
@@ -519,6 +520,8 @@ class Solution_SingleTime:
                                     )
                 )
             )
+
+            #np.savetxt(f"results/magnitudes_{node_idx}.csv", frequency.get_normalised_profile(frequency_profile_p), delimiter=",")
 
         return balancing_p_profiles_ifft
     
@@ -555,7 +558,7 @@ class Solution_SingleTime:
         return storage_p_profiles, flexible_p_profiles
     
     def _transmission_balancing(self, Netload, storage_p_profiles, flexible_p_profiles):
-        flexible_p_profiles = np.full(flexible_p_profiles.shape, 0.5, dtype=np.float64)
+        #flexible_p_profiles = np.full(flexible_p_profiles.shape, 0.5, dtype=np.float64) ####### DEBUG
 
         NetStoragePower_nodal = self._fill_nodal_array_2d(storage_p_profiles, self.storage_nodes)
         Flexible_nodal = self._fill_nodal_array_2d(flexible_p_profiles, self.flexible_nodes)
@@ -567,17 +570,17 @@ class Solution_SingleTime:
 
         Flexible = np.zeros_like(flexible_p_profiles, dtype=np.float64)
         SPower = np.zeros_like(storage_p_profiles, dtype=np.float64)
-        self.Storage_nodal = np.zeros_like(storage_p_profiles, dtype=np.float64)       
+        self.Storage = np.zeros_like(storage_p_profiles, dtype=np.float64)       
         Transmission = np.zeros((self.intervals, self.lines, self.nodes), dtype = np.float64)
         
-        self.Storage_nodal[-1] = 0.5*self.CPHS
+        self.Storage[-1] = 0.5*self.CPHS
         
         self.Deficit_nodal = np.zeros_like(Netload)
         self.Spillage_nodal = np.zeros_like(Netload)
         
         for t in range(self.intervals):
-            Storaget_p_lb = self.Storage_nodal[t-1] / (self.resolution * self.storage_d_efficiencies)
-            Storaget_p_ub = - (self.CPHS - self.Storage_nodal[t-1]) / (self.resolution * self.storage_c_efficiencies)
+            Storaget_p_lb = self.Storage[t-1] / (self.resolution * self.storage_d_efficiencies)
+            Storaget_p_ub = - (self.CPHS - self.Storage[t-1]) / (self.resolution * self.storage_c_efficiencies)
             Discharget_max_nodal = self._fill_nodal_array_1d(np.minimum(self.CPHP, Storaget_p_lb), self.storage_nodes)
             Charget_max_nodal = self._fill_nodal_array_1d(np.minimum(self.CPHP, -Storaget_p_ub), self.storage_nodes)
 
@@ -647,7 +650,7 @@ class Solution_SingleTime:
                 # Apportion storage
                 storage_mask = self.storage_nodes == node
                 if np.any(storage_mask):
-                    sorted_indices = np.argsort(self.Storage_nodal[t-1][storage_mask])
+                    sorted_indices = np.argsort(self.Storage[t-1][storage_mask])
                     
                     L = sorted_indices.shape[0]
                     order_indices = np.empty(2 * L, dtype=sorted_indices.dtype)
@@ -698,7 +701,7 @@ class Solution_SingleTime:
                         Flexiblet_update_nodal[node] -= (new_value - Flexible[t][flexible_order_i])
                         Flexible[t][flexible_order_i] = new_value
 
-            self.Storage_nodal[t] = (self.Storage_nodal[t-1] 
+            self.Storage[t] = (self.Storage[t-1] 
                                      - np.maximum(SPower[t], 0) * self.storage_d_efficiencies * self.resolution 
                                      - np.minimum(SPower[t], 0) * self.storage_c_efficiencies * self.resolution)
 
@@ -711,17 +714,19 @@ class Solution_SingleTime:
         self.Export_nodal = -1 * np.minimum(0, ImpExp)
         self.TFlows = Transmission.sum(axis=2)
 
-        """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
+        np.savetxt("results/Netload.csv", Netload, delimiter=",")
         np.savetxt("results/ImpExp.csv", ImpExp, delimiter=",")
-        np.savetxt("results/Deficit.csv", Deficit, delimiter=",")
-        np.savetxt("results/Spillage.csv", Spillage, delimiter=",")
-        np.savetxt("results/Storage.csv", Storage, delimiter=",")
+        np.savetxt("results/Deficit.csv", self.Deficit_nodal, delimiter=",")
+        np.savetxt("results/Spillage.csv", self.Spillage_nodal, delimiter=",")
+        np.savetxt("results/Storage.csv", self.Storage, delimiter=",")
         np.savetxt("results/SPower_update.csv", SPower - storage_p_profiles, delimiter=",")
         np.savetxt("results/Flexible_update.csv", Flexible - flexible_p_profiles, delimiter=",")
         np.savetxt("results/SPower.csv", SPower, delimiter=",")
         np.savetxt("results/Flexible.csv", Flexible, delimiter=",")
-        OUTPUT = np.vstack((Netload[:18000,0],ImpExp[:18000,0],SPower[:18000,0] - storage_p_profiles[:18000,0],SPower[:18000,5] - storage_p_profiles[:18000,5],Flexible[:18000,0] - flexible_p_profiles[:18000,0],Deficit[:18000,0],Spillage[:18000,0],Storage[:18000,0],Storage[:18000,5],SPower[:18000,0],SPower[:18000,5],Flexible[:18000,0]))
-        np.savetxt("results/OUTPUT.csv", OUTPUT.T, delimiter=",") """
+        #OUTPUT = np.vstack((Netload[:18000,0],ImpExp[:18000,0],SPower[:18000,0] - storage_p_profiles[:18000,0],SPower[:18000,5] - storage_p_profiles[:18000,5],Flexible[:18000,0] - flexible_p_profiles[:18000,0],self.Deficit_nodal[:18000,0],self.Spillage_nodal[:18000,0],self.Storage[:18000,0],self.Storage[:18000,5],SPower[:18000,0],SPower[:18000,5],Flexible[:18000,0]))
+        OUTPUT = np.concatenate((self.MLoad[:18000,:],self.GPV[:18000,:],self.GWind[:18000,:],self.GBaseload[:18000,:],Flexible[:18000,:],SPower[:18000,:],self.Deficit_nodal[:18000,:],self.Spillage_nodal[:18000,:],self.Storage[:18000,:],ImpExp[:18000,:]), axis=1)
+        
+        np.savetxt("results/OUTPUT.csv", OUTPUT, delimiter=",")
 
         return self.Deficit_nodal, np.abs(self.TFlows)
 

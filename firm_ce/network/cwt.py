@@ -28,9 +28,9 @@ def cwt_peak_detection(signal, scales=np.arange(1, 64, 2)):
     t2 = time.perf_counter()
     local_maxima = get_local_maxima_per_scale(cwt_matrix, scales)
     t3 = time.perf_counter()
-    ridge_list = link_ridges(local_maxima, scales)
+    ridge_list, ridge_lengths = link_ridges(local_maxima, scales)
     t4 = time.perf_counter()
-    peaks = pick_peaks(ridge_list, cwt_matrix, scales)
+    peaks = pick_peaks(ridge_list, cwt_matrix, scales, ridge_lengths)
     t5 = time.perf_counter()
 
     print("CWT Times: {:.4f} seconds, {:.4f} seconds, {:.4f} seconds, {:.4f} seconds".format(t2 - t1, t3 - t2, t4 - t3, t5 - t4))
@@ -144,16 +144,14 @@ def get_cwt_matrix(signal, scales):
 def find_local_maximum(arr_1d, window_size):
     # Uses a double-ended queue for the sliding window
     n = len(arr_1d)
-    local_max = np.zeros(n, dtype=np.int32)
+    local_max = np.zeros(n, dtype=np.bool_)
     half_window = window_size // 2
     
-    num_windows = n - window_size + 1
-    sliding_max = np.empty(num_windows, dtype=arr_1d.dtype)
-    deque_indices = np.empty(n, dtype=np.int64)
+    deque_indices = np.empty(n, dtype=np.int64) # Faster just to make this n elements rather than calc many modulo if it's window_size elements
     head = 0 
     tail = 0  
+    last_peak_index = -window_size
     
-    # Build sliding maximum array
     for i in range(n):
         if head < tail and deque_indices[head] <= i - window_size:
             head += 1
@@ -161,32 +159,23 @@ def find_local_maximum(arr_1d, window_size):
             tail -= 1
         deque_indices[tail] = i
         tail += 1
-        if i >= window_size - 1:
-            sliding_max[i - window_size + 1] = arr_1d[deque_indices[head]]
-    
-    for i in range(half_window, n - half_window):
-        if arr_1d[i] == sliding_max[i - half_window]:
-            local_max[i] = 1
 
-    # If two peaks are closer than window_size apart, keep only the higher one.
-    last_peak_index = -1
-    for i in range(n):
-        if local_max[i] == 1:
-            if last_peak_index == -1:
-                last_peak_index = i
-            elif i - last_peak_index < window_size:
-                if arr_1d[i] > arr_1d[last_peak_index]:
-                    local_max[last_peak_index] = 0
-                    last_peak_index = i
+        if i >= window_size - 1:
+            center = i - half_window
+            if 0 <= center < n and arr_1d[center] == arr_1d[deque_indices[head]]:
+                if center - last_peak_index >= window_size:
+                    local_max[center] = True
+                    last_peak_index = center
                 else:
-                    local_max[i] = 0
-            else:
-                last_peak_index = i
+                    if arr_1d[center] > arr_1d[last_peak_index]:
+                        local_max[last_peak_index] = False
+                        local_max[center] = True
+                        last_peak_index = center
 
     return local_max
 
 @njit
-def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5):
+def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=9):
     rows, cols = cwt_matrix.shape
     local_maxima = np.zeros((rows, cols), dtype=np.int32)
     
@@ -197,7 +186,7 @@ def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=5):
     return local_maxima
 
 @njit
-def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, minimum_window_size=5, gap_threshold=3, min_ridge_length=15):
+def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, minimum_window_size=9, gap_threshold=3, min_ridge_length=15):
     num_rows, num_frequencies = local_maxima.shape
     current_max_freq_indices = np.where(local_maxima[-1, :] > 0)[0]
 
@@ -254,7 +243,7 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
                 else:
                     candidate = candidate_indices[0]
                 candidate_indices = np.array([candidate], dtype=np.int32)
-
+    
             ridge_list[row_iter, ridge] = candidate_indices[0]
             selected_peak_indices[ridge] = candidate_indices[0]
             current_ridge_freq[ridge] = candidate_indices[0]
@@ -286,20 +275,15 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
         
         current_max_freq_indices = np.concatenate((selected_valid, unselected_peaks))
     
-    return ridge_list[:, keep_mask]
+    return ridge_list[:, keep_mask], ridge_lengths[keep_mask]
 
 @njit
-def pick_peaks(ridge_list, cwt_matrix, scales,
+def pick_peaks(ridge_list, cwt_matrix, scales, ridge_lengths,
                snr_threshold=2, peak_scale_range=5,
-                ridge_length=32, win_size_noise=500, min_noise_level=0.001,
-                exclude_boundaries_size=0):
+                win_size_noise=500, min_noise_level=0.001):
     num_frequencies = cwt_matrix.shape[1]
-    
-    for scale in scales:
-        ridge_length = max(ridge_length, scale)
 
     # Determine which scales are valid for peak detection
-    # count_valid_scales = int((scales>=peak_scale_range).sum())
     valid_scales = np.array([scale for scale in scales if scale>=peak_scale_range], dtype=np.int32)
     
     # Adjust the minimum noise level based on largest CWT coefficient
@@ -312,13 +296,8 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
         min_noise_level = max_coef * min_noise_level
 
     # Prepare ridges
-    
-    ## If producing bad results, check this logic 
-    #check if this actually sticks
     ridge_list = ridge_list[::-1]
-
-    ridge_lengths = np.array([(ridge>0).sum() for ridge in ridge_list.T], dtype=np.int32)
-    # count_valid_ridges = int(sum([ridge[0]>0 for ridge in ridge_list.T]))
+    ridge_lengths = ridge_lengths[::-1]
     freq_indices = np.array([ridge[0] for ridge in ridge_list.T if ridge[0]>0], dtype=np.int32)
 
     # Reorder ridges based on frequency index
@@ -326,24 +305,21 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
     freq_indices = freq_indices[order]
     ridge_list = ridge_list[:, order]
     ridge_lengths = ridge_lengths[order]
-    # ridge_start_levels = np.zeros(ridge_list.shape[1], dtype=np.int32)
 
     # Determine peak characteristics for each ridge
-    # peak_scales = np.empty(num_ridges, dtype=scales.dtype)
     peak_center_indices = np.empty(ridge_list.shape[1], dtype=np.int32)
     peak_values = np.empty(ridge_list.shape[1], dtype=cwt_matrix.dtype)
     for ridge in range(ridge_list.shape[1]):
+        ridge_freq_indices = ridge_list[:, ridge]
         current_ridge_length = ridge_lengths[ridge]
 
         # If the ridge has no valid entries, mark with default values.
         if current_ridge_length <= 0:
-            # peak_scales[ridge] = np.nan
             peak_center_indices[ridge] = -1
             peak_values[ridge] = 0
             continue
         
         # Extract the valid portion of the ridge and scales corresponding to valid ridge points
-        ## Does this need to be a copy? or would this do:    
         ridge_freq_indices = ridge_list[:current_ridge_length, ridge]
         scales_for_ridge = scales[:current_ridge_length] 
         
@@ -354,16 +330,12 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
                 if scales_for_ridge[j] == vscale:
                     selected_flags[j] = True
                     break
-        # not sure which of theseis actually faster so have left alternative above
-        # selected_flags = np.array([(scale==valid_scales).any() for scale in scales_for_ridge])
         
         if int(selected_flags.sum()) == 0:
-            # peak_scales[ridge] = scales_for_ridge[0]
             peak_center_indices[ridge] = ridge_freq_indices[0]
             peak_values[ridge] = 0
             continue
         
-        # effective_scales = scales_for_ridge[selected_flags]
         effective_freq_indices = ridge_freq_indices[selected_flags]
         
         # Extract CWT coefficients from effective ridge positions, find max coefficient
@@ -379,7 +351,6 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
             if val > max_val:
                 max_val = val
                 max_idx = j
-        # peak_scales[ridge] = effective_scales[max_idx]
         peak_center_indices[ridge] = effective_freq_indices[max_idx]
         peak_values[ridge] = ridge_coeff_values[max_idx]
     
@@ -395,19 +366,12 @@ def pick_peaks(ridge_list, cwt_matrix, scales,
             min_noise_level, 
             quantile_95(
                 np.roll(
-                    np.abs(cwt_matrix[col_index_for_noise, :]), ## This is a row not a col?
+                    np.abs(cwt_matrix[col_index_for_noise, :]),
                     max(0, pci - win_size_noise)
                     )[max(0, pci - win_size_noise):min(num_frequencies, pci + win_size_noise + 1)]
                 )
             ) for pci in peak_center_indices]) 
 
-    selected_peaks = freq_indices[
-        # select_criterion1 
-        np.array([(rl > 0 and rl - 1 < len(scales) and scales[rl-1] >= ridge_length) for rl in ridge_lengths]) * 
-        # select_criterion2
-        (peak_SNR > snr_threshold) * 
-        # select_criterion3 
-        np.array([(freq >= exclude_boundaries_size and freq < num_frequencies - exclude_boundaries_size) for freq in freq_indices])
-        ]
+    selected_peaks = freq_indices[(peak_SNR > snr_threshold)]
 
     return selected_peaks
