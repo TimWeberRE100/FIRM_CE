@@ -105,5 +105,6 @@ class Model:
 
     def solve(self):
         for scenario in self.scenarios.values():
+            
             self.results[scenario.name] = scenario.solve(self.config)
             exit() ####### DEBUG
