@@ -135,24 +135,6 @@ class Solver:
                                                 dtype=np.int64
                                             )
 
-        scenario_arrays['storage_power_capacities'] = np.array(
-            [self.scenario.storages[idx].power_capacity
-            for idx in self.scenario.storages],
-            dtype=np.float64
-        )
-
-        scenario_arrays['storage_energy_capacities'] = np.array(
-            [self.scenario.storages[idx].energy_capacity
-            for idx in self.scenario.storages],
-            dtype=np.float64
-        )
-
-        scenario_arrays['storage_unit_types'] = np.array(
-            [scenario_arrays['storage_unit_types_setting'][self.scenario.storages[idx].unit_type]
-            for idx in self.scenario.storages],
-            dtype=np.int64
-        )
-
         scenario_arrays['max_frequency'] = self.scenario.max_frequency
 
         scenario_arrays['storage_durations'] = np.array(
@@ -321,15 +303,9 @@ class Solver:
                     scenario_arrays["resolution"],
                     scenario_arrays["allowance"],
                     scenario_arrays["generator_ids"],
-                    scenario_arrays["generator_nodes"],
-                    scenario_arrays["generator_capacities"],
                     scenario_arrays["generator_costs"],
-                    scenario_arrays["generator_unit_types"],
                     scenario_arrays["storage_ids"],
                     scenario_arrays["storage_nodes"],
-                    scenario_arrays["storage_power_capacities"],
-                    scenario_arrays["storage_energy_capacities"],
-                    scenario_arrays["storage_unit_types"],
                     scenario_arrays["flexible_ids"],
                     scenario_arrays["nodes_with_balancing"],
                     scenario_arrays['max_frequency'],
