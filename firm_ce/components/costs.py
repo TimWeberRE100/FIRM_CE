@@ -13,7 +13,7 @@ else:
         return wrapper
 
 class UnitCost:
-    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0, lcoe = 0):
+    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0):
         self.capex_p = capex_p
         self.capex_e = capex_e
         self.fom = fom
@@ -29,7 +29,7 @@ def get_present_value(discount_rate, lifetime):
     return (1-(1+discount_rate)**(-1*lifetime))/discount_rate
 
 @njit
-def annualisation_component(power_capacity, annual_generation, capex_p, fom, vom, lifetime, discount_rate, energy_capacity=0,capex_e=0):
+def annualisation_component(power_capacity, energy_capacity, annual_generation, capex_p, capex_e, fom, vom, lifetime, discount_rate):
     present_value = get_present_value(discount_rate, lifetime)
     annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom
     
@@ -84,13 +84,15 @@ def calculate_costs(solution):
 
     generator_costs = np.array([
         annualisation_component(
-            power_capacity=generator_capacities[idx],
-            annual_generation=generator_annual_generations[idx],
-            capex_p=solution.generator_costs[0,idx],
-            fom=solution.generator_costs[2,idx],
-            vom=solution.generator_costs[3,idx],
-            lifetime=solution.generator_costs[4,idx],
-            discount_rate=solution.generator_costs[5,idx]
+            generator_capacities[idx],
+            0,
+            generator_annual_generations[idx],
+            solution.generator_costs[0,idx],
+            0,
+            solution.generator_costs[2,idx],
+            solution.generator_costs[3,idx],
+            solution.generator_costs[4,idx],
+            solution.generator_costs[5,idx]
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
         if idx not in solution.flexible_ids
@@ -98,29 +100,30 @@ def calculate_costs(solution):
     
     storage_costs = np.array([
         annualisation_component(
-            power_capacity=storage_p_capacities[idx],
-            energy_capacity=storage_e_capacities[idx],
-            annual_generation=storage_annual_discharge[idx],
-            capex_p=solution.storage_costs[0,idx],
-            fom=solution.storage_costs[2,idx],
-            vom=solution.storage_costs[3,idx],
-            lifetime=solution.storage_costs[4,idx],
-            discount_rate=solution.storage_costs[5,idx]
+            storage_p_capacities[idx],
+            storage_e_capacities[idx],
+            storage_annual_discharge[idx],
+            solution.storage_costs[0,idx],
+            solution.storage_costs[1,idx],
+            solution.storage_costs[2,idx],
+            solution.storage_costs[3,idx],
+            solution.storage_costs[4,idx],
+            solution.storage_costs[5,idx]
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
         ], dtype=np.float64).sum()
     
     transmission_costs = np.array([
         annualisation_transmission(
-            power_capacity=line_capacities[idx],
-            annual_energy_flows=line_annual_flows[idx],
-            capex_p=solution.line_costs[0,idx],
-            fom=solution.line_costs[2,idx],
-            vom=solution.line_costs[3,idx],
-            lifetime=solution.line_costs[4,idx],
-            discount_rate=solution.line_costs[5,idx],
-            transformer_capex=solution.line_costs[6,idx],
-            length=solution.line_lengths[idx]
+            line_capacities[idx],
+            line_annual_flows[idx],
+            solution.line_costs[0,idx],
+            solution.line_costs[2,idx],
+            solution.line_costs[3,idx],
+            solution.line_costs[4,idx],
+            solution.line_costs[5,idx],
+            solution.line_costs[6,idx],
+            solution.line_lengths[idx]
         ) for idx in range(0,len(line_capacities))
         if line_capacities[idx] > 0
         ], dtype=np.float64).sum()

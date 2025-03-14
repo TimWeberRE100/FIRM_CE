@@ -54,7 +54,7 @@ def get_dc_offset(frequency_profile):
 
 @njit
 def get_frequencies(intervals, resolution):
-    frequencies = rfftfreq(intervals, d=resolution)
+    frequencies = rfftfreq(intervals, resolution)
     return frequencies
 
 @njit

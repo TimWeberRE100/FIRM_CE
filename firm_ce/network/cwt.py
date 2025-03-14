@@ -16,24 +16,18 @@ else:
         return wrapper
 
 @njit
-def cwt_peak_detection(signal, scales=np.arange(1, 64, 2)):
+def cwt_peak_detection(signal):
     '''Based on Continuos Wavelet Transform with Mexican Hat wavelet'''
     '''https://www.bioconductor.org/packages/devel/bioc/manuals/MassSpecWavelet/man/MassSpecWavelet.pdf'''
     '''https://academic.oup.com/bioinformatics/article/22/17/2059/274284'''
     '''https://pmc.ncbi.nlm.nih.gov/articles/PMC2631518/'''
     '''https://paos.colorado.edu/research/wavelets/bams_79_01_0061.pdf'''
 
-    t1 = time.perf_counter()
+    scales=np.arange(1, 64, 2)
     cwt_matrix, scales = get_cwt_matrix(signal, scales)
-    t2 = time.perf_counter()
-    local_maxima = get_local_maxima_per_scale(cwt_matrix, scales)
-    t3 = time.perf_counter()
-    ridge_list, ridge_lengths = link_ridges(local_maxima, scales)
-    t4 = time.perf_counter()
-    peaks = pick_peaks(ridge_list, cwt_matrix, scales, ridge_lengths)
-    t5 = time.perf_counter()
-
-    print("CWT Times: {:.4f} seconds, {:.4f} seconds, {:.4f} seconds, {:.4f} seconds".format(t2 - t1, t3 - t2, t4 - t3, t5 - t4))
+    local_maxima = get_local_maxima_per_scale(cwt_matrix, scales, 9)
+    ridge_list, ridge_lengths = link_ridges(local_maxima, scales, -1, 0, 9, 3, 15)
+    peaks = pick_peaks(ridge_list, cwt_matrix, scales, ridge_lengths, 2, 5, 500, 0.001)
     
     peak_mask = np.zeros(signal.size, dtype=np.int32)
     noise_mask = np.ones(signal.size, dtype=np.int32)
@@ -65,7 +59,7 @@ def extend_length(arr_1d, add_length):
     return extended_arr_1d
 
 @njit
-def extend_n_base(arr_1d, base=2):    
+def extend_n_base(arr_1d, base):    
     original_length = arr_1d.shape[0]
     extended_length = next_power_of_base(original_length, base)
     
@@ -75,7 +69,7 @@ def extend_n_base(arr_1d, base=2):
     return arr_1d
 
 @njit 
-def get_wavelets(signal_length, scales, wavelet_xlimit=8, wavelet_length=1024):    
+def get_wavelets(signal_length, scales, wavelet_xlimit, wavelet_length):    
     mother_wavelet_xval = np.linspace(-wavelet_xlimit, wavelet_xlimit, wavelet_length)
     mother_wavelet = generate_mexican_hat_wavelet(mother_wavelet_xval)
 
@@ -119,9 +113,9 @@ def circular_shift(w_coefs_i, shift_idx):
 @njit
 def get_cwt_matrix(signal, scales):
     original_signal_length = len(signal)
-    daughter_wavelets, scales, len_daughter_wavelets = get_wavelets(original_signal_length, scales)
+    daughter_wavelets, scales, len_daughter_wavelets = get_wavelets(original_signal_length, scales, 8, 1024)
 
-    signal = extend_n_base(signal)
+    signal = extend_n_base(signal, 2)
     signal_fft = fft(signal)
     extended_signal_length = len(signal)
     cwt_matrix = np.zeros((len(scales), original_signal_length), dtype=np.float64)
@@ -175,7 +169,7 @@ def find_local_maximum(arr_1d, window_size):
     return local_max
 
 @njit
-def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=9):
+def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size):
     rows, cols = cwt_matrix.shape
     local_maxima = np.zeros((rows, cols), dtype=np.int32)
     
@@ -186,7 +180,7 @@ def get_local_maxima_per_scale(cwt_matrix, scales, min_window_size=9):
     return local_maxima
 
 @njit
-def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, minimum_window_size=9, gap_threshold=3, min_ridge_length=15):
+def link_ridges(local_maxima, scales, step_direction, final_row_index, minimum_window_size, gap_threshold, min_ridge_length):
     num_rows, num_frequencies = local_maxima.shape
     current_max_freq_indices = np.where(local_maxima[-1, :] > 0)[0]
 
@@ -212,7 +206,9 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
     ridge_lengths[:current_ridge_count] = 1
     current_ridge_freq[:current_ridge_count] = current_max_freq_indices.copy()
 
-    for row_iter, row_idx in enumerate(row_indices, start=1):
+    for row_iter, row_idx in enumerate(row_indices):
+        row_iter_i = row_iter + 1
+
         # Initialise a search window
         current_window_size = max(int(scales[row_idx] * 2 + 1), minimum_window_size)        
         selected_peak_indices = np.full(current_ridge_count, -1, dtype=np.int32)
@@ -244,7 +240,7 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
                     candidate = candidate_indices[0]
                 candidate_indices = np.array([candidate], dtype=np.int32)
     
-            ridge_list[row_iter, ridge] = candidate_indices[0]
+            ridge_list[row_iter_i, ridge] = candidate_indices[0]
             selected_peak_indices[ridge] = candidate_indices[0]
             current_ridge_freq[ridge] = candidate_indices[0]
             ridge_lengths[ridge] += 1
@@ -258,7 +254,7 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
             unselected_peaks = set_difference_int(np.where(local_maxima[row_idx, :] > 0)[0], selected_valid)
             for candidate_peak in unselected_peaks:
                 if current_ridge_count < num_frequencies:
-                    ridge_list[row_iter, current_ridge_count] = candidate_peak
+                    ridge_list[row_iter_i, current_ridge_count] = candidate_peak
                     gap_counter[current_ridge_count] = 0
                     keep_mask[current_ridge_count] = True
                     current_ridge_freq[current_ridge_count] = candidate_peak
@@ -279,8 +275,8 @@ def link_ridges(local_maxima, scales, step_direction=-1, final_row_index=0, mini
 
 @njit
 def pick_peaks(ridge_list, cwt_matrix, scales, ridge_lengths,
-               snr_threshold=2, peak_scale_range=5,
-                win_size_noise=500, min_noise_level=0.001):
+               snr_threshold, peak_scale_range,
+                win_size_noise, min_noise_level):
     num_frequencies = cwt_matrix.shape[1]
 
     # Determine which scales are valid for peak detection
