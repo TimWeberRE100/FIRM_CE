@@ -416,12 +416,12 @@ class Solution_SingleTime:
 
             Storage[t] = Storage[t-1] - (Discharge[t] - Charge[t]) * self.resolution
         
-        np.savetxt("results/R_Netload.csv", Netload, delimiter=",")
+        """ np.savetxt("results/R_Netload.csv", Netload, delimiter=",")
         np.savetxt("results/R_NetBalancing_nodal.csv", Balancing - Charge, delimiter=",")
         np.savetxt("results/R_Balancing.csv", Balancing, delimiter=",")
         np.savetxt("results/R_Discharge.csv", Discharge, delimiter=",")
         np.savetxt("results/R_Charge.csv", Charge, delimiter=",")
-        np.savetxt("results/R_Storage.csv", Storage, delimiter=",")
+        np.savetxt("results/R_Storage.csv", Storage, delimiter=",") """
         
         return Netload, Balancing - Charge
 
@@ -529,12 +529,12 @@ class Solution_SingleTime:
                 else:
                     flexible_p_profiles[:, node_balancing_permutation[i] - flexible_order_offset] = balancing_p_profile_option[:, i]
         
-        np.savetxt(f"results/storage_p_profiles.csv", storage_p_profiles, delimiter=",")
+        #np.savetxt(f"results/storage_p_profiles.csv", storage_p_profiles, delimiter=",")
         return storage_p_profiles, flexible_p_profiles
     
     def _transmission_balancing(self, Netload, storage_p_profiles, flexible_p_profiles):
-        flexible_p_profiles = np.full(flexible_p_profiles.shape, 0.5, dtype=np.float64) ####### DEBUG
-        TEST_T = 9235 ####### DEBUG
+        #flexible_p_profiles = np.full(flexible_p_profiles.shape, 0.5, dtype=np.float64) ####### DEBUG
+        #TEST_T = 9235 ####### DEBUG
 
         network = self.network
 
@@ -586,12 +586,12 @@ class Solution_SingleTime:
             Deficitt = np.maximum(Netloadt - SPowert_update_nodal - Flexiblet_update_nodal, 0)
             Transmissiont=np.zeros((ntrans, nodes), dtype=np.float64)
 
-            if t == TEST_T:
+            """ if t == TEST_T:
                 print('---------1---------')
                 print(Netloadt)
                 print(SPowert_update_nodal)
                 print(Flexiblet_update_nodal)
-                print(Deficitt)
+                print(Deficitt) """
             
             if Deficitt.sum() > 1e-6:
                 # Fill deficits with transmission allowing drawing down from neighbours storage reserves                
@@ -618,22 +618,21 @@ class Solution_SingleTime:
                     Fcapacity_nodal - Flexiblet_nodal
                 )
 
-                if t == TEST_T:
+                """ if t == TEST_T:
                     print('---------2---------')
                     print(Netloadt)
                     print(SPowert_update_nodal)
                     print(Flexiblet_update_nodal)
                     print('---------2.5---------')
                     print(SPowert_nodal)
-                    print(Flexiblet_nodal)
+                    print(Flexiblet_nodal) """
 
-            #SPowert_nodal += SPowert_update_nodal
             Surplust = -1 * np.minimum(0, Netloadt - np.minimum(SPowert_update_nodal, 0))
 
-            if t == TEST_T:
+            """ if t == TEST_T:
                 print('---------3---------')
                 print(SPowert_nodal)
-                print(Surplust)
+                print(Surplust) """
 
             if Surplust.sum() > 1e-6:
                 Fillt = SPowert_update_nodal + (Charget_max_nodal + SPowert_nodal + SPowert_update_nodal)
@@ -655,7 +654,7 @@ class Solution_SingleTime:
                     Fcapacity_nodal - Flexiblet_nodal
                 )   
 
-                if t == TEST_T:
+                """ if t == TEST_T:
                     print('---------4---------')
                     print(Fillt)
                     print(Netloadt)
@@ -663,7 +662,7 @@ class Solution_SingleTime:
                     print(Flexiblet_update_nodal)
                     print('---------4.5---------')
                     print(SPowert_nodal)
-                    print(Flexiblet_nodal) 
+                    print(Flexiblet_nodal)  """
             
             # Apportion to individual storages/flexible 
             trans_sum = Transmissiont.sum(axis=0)
@@ -748,7 +747,7 @@ class Solution_SingleTime:
         self.GFlexible = Flexible
         self.Storage = Storage 
 
-        np.savetxt("results/Netload.csv", Netload, delimiter=",")
+        """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
         np.savetxt("results/ImpExp.csv", ImpExp, delimiter=",")
         np.savetxt("results/Deficit.csv", self.Deficit_nodal, delimiter=",")
         np.savetxt("results/Spillage.csv", self.Spillage_nodal, delimiter=",")
@@ -762,7 +761,7 @@ class Solution_SingleTime:
         OUTPUT2 = np.concatenate((Netload[:18000,:],ImpExp[:18000,:],(Flexible - flexible_p_profiles)[:18000,:],(SPower - storage_p_profiles)[:18000,:],self.Deficit_nodal[:18000,:],self.Spillage_nodal[:18000,:],Flexible[:18000,:],SPower[:18000,:],self.Storage[:18000,:]), axis=1)
         
         np.savetxt("results/OUTPUT.csv", 1000*OUTPUT, delimiter=",")
-        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",")
+        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",") """
 
         return self.Deficit_nodal, np.abs(self.TFlows)
 
@@ -783,7 +782,7 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss) / 1000 # $/MWh
         
-        print("LCOE: ", lcoe, pen_deficit)
+        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum())
         exit()
         return lcoe, pen_deficit
 

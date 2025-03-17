@@ -33,6 +33,7 @@ def annualisation_component(power_capacity, energy_capacity, annual_generation, 
     present_value = get_present_value(discount_rate, lifetime)
     annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom
     
+    #print(capex_p,capex_e,fom,vom,lifetime,discount_rate,annualised_cost,annual_generation,annual_generation * pow(10,3) * vom,power_capacity * pow(10,6) * fom )
     return annualised_cost
 
 @njit   
@@ -95,7 +96,6 @@ def calculate_costs(solution):
             solution.generator_costs[5,idx]
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
-        if idx not in solution.flexible_ids
         ], dtype=np.float64).sum()
     
     storage_costs = np.array([
@@ -129,5 +129,6 @@ def calculate_costs(solution):
         ], dtype=np.float64).sum()
 
     costs = generator_costs + storage_costs + transmission_costs
+    #print(costs)
         
     return costs

@@ -52,13 +52,15 @@ PLEXOS CHANGES
 
 FIRM_CE bugs
 - Add fuel costs into calculation
-- Properly calculate annual discharge energy for storage and flexible
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Energy constraints on flexible?
 - https://doi.org/10.1016/j.epsr.2010.06.018
 - Test model that forces batteries to always be fully charged?
 - Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE
+
+- If storage is empty, precharge using next highest frequency storage
+- If all storages are empty, precharge with flexible in cost order
 
 - Precharge, unless it will spill? Or precharge whenever storage is empty?
     - When a storage is empty, mark the first interval and start counting the number of intervals it remains empty
