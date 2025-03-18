@@ -33,7 +33,7 @@ class Solver:
         wind_lb = [generator.capacity + generator.min_build for generator in wind_generators]
         flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators]
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] 
-        storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages] 
+        storage_e_lb = [storage.energy_capacity + storage.min_build_e if storage.duration == 0 else 0.0 for storage in storages] 
         line_lb = [line.capacity + line.min_build for line in lines]
         balancing_W_cutoffs_lb = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[-0.01]
         lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_p_lb + storage_e_lb + line_lb + balancing_W_cutoffs_lb)
@@ -42,7 +42,7 @@ class Solver:
         wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
         flexible_p_ub = [generator.capacity + generator.max_build for generator in flexible_generators] 
         storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages] 
-        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages]
+        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration == 0 else 0.0 for storage in storages]
         line_ub = [line.capacity + line.max_build for line in lines]
         balancing_W_cutoffs_ub = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[self.scenario.max_frequency]
         upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub + balancing_W_cutoffs_ub)
