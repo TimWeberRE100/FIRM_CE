@@ -460,41 +460,9 @@ class Solution_SingleTime:
         balancing_p_profiles_ifft = np.zeros((self.intervals,self.nodes,max(self.nodal_balancing_count)), dtype=np.float64)
         
         for node_idx in range(self.nodes):
-            frequency_profile_p = frequency.get_frequency_profile(NetBalancing_nodal[:,node_idx])
-            
-            peak_mask, noise_mask = cwt.cwt_peak_detection(
-                frequency.get_normalised_profile(frequency_profile_p)
-            )
-
             for balancing_i in range(self.nodal_balancing_count[node_idx]):
-                if abs(self.balancing_W_cutoffs[node_idx, balancing_i] - self.max_frequency) <= EPSILON_FLOAT64:
-                    break
-                
-                balancing_p_profiles_ifft[:,node_idx,balancing_i] = frequency.get_timeseries_profile(
-                    frequency.get_filtered_frequency(
-                        frequency_profile_p, 
-                        peak_mask * frequency.get_bandpass_filter(
-                                                        self.balancing_W_cutoffs[node_idx, balancing_i], 
-                                                        self.balancing_W_cutoffs[node_idx, balancing_i+1], 
-                                                        frequency.get_frequencies(
-                                                                        self.intervals, 
-                                                                        self.resolution
-                                                                    )
-                                                    )
-                        )
-                    )
-                
-            # Apportion dc offset and noise to long-duration
-            balancing_p_profiles_ifft[:, node_idx, :] = frequency.apportion_nodal_noise(
-                balancing_p_profiles_ifft[:, node_idx, :], 
-                (frequency.get_timeseries_profile(frequency.get_dc_offset(frequency_profile_p)) 
-                                  + frequency.get_timeseries_profile(frequency.get_filtered_frequency(
-                                                                        frequency_profile_p, 
-                                                                        noise_mask
-                                                                    )
-                                    )
-                )
-            )
+                if balancing_i == self.nodal_balancing_count[node_idx] - 1:
+                    balancing_p_profiles_ifft[:,node_idx,balancing_i] = NetBalancing_nodal[:,node_idx]
 
         return balancing_p_profiles_ifft
     
@@ -697,7 +665,7 @@ class Solution_SingleTime:
             # Perform precharging
             if precharging_allowed and (precharge_intervals > 0) and (perform_precharge): ###### REMOVE t CONDITION
                 # precharge_intervals = self._determine_precharge_intervals() #### REMEMBER CHARGING CAPACITIES
-                self._precharge_storage(t_pre_end, t, precharge_intervals, precharge_mask, Netload)  
+                #self._precharge_storage(t_pre_end, t, precharge_intervals, precharge_mask, Netload)  
                 precharge_mask = np.full(len(self.storage_ids), False, dtype=np.bool_)           
                 precharge_intervals = 0   
             elif not precharging_allowed:
@@ -951,9 +919,9 @@ class Solution_SingleTime:
         return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        Netload, NetBalancing_nodal = self._reliability()
+        Netload, NetBalancing_nodal = self._reliability() ######## I think I can skip this entirely too? Just go straight to transmission?
 
-        balancing_p_profiles_ifft = self._filter_balancing_profiles(NetBalancing_nodal)
+        balancing_p_profiles_ifft = self._filter_balancing_profiles(NetBalancing_nodal) ##### Which means I can skip this?
         self._determine_constrained_balancing(balancing_p_profiles_ifft)
 
         start_time = time.time()
