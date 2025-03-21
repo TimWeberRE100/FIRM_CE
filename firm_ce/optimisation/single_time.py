@@ -507,7 +507,7 @@ class Solution_SingleTime:
         return
     
     def _transmission_for_period(self, start_t, end_t, Netload, precharging_allowed):
-        TEST_T = 403
+        TEST_T = 19
         storage_order = self.balancing_order[self.balancing_storage_tag]
         flexible_order = self.balancing_order[self.balancing_flexible_tag]
         F_variable_costs = self.generator_costs[3, self.flexible_mask] ##### ADD FUEL COSTS        
@@ -521,7 +521,7 @@ class Solution_SingleTime:
             # Perform precharging
             if precharging_allowed and (precharge_intervals > 0) and (perform_precharge): ###### REMOVE t CONDITION
                 # precharge_intervals = self._determine_precharge_intervals() #### REMEMBER CHARGING CAPACITIES
-                #self._precharge_storage(t_pre_end, t, precharge_intervals, precharge_mask, Netload)  
+                self._precharge_storage(t_pre_end, t, precharge_intervals, precharge_mask, Netload)  
                 precharge_mask = np.full(len(self.storage_ids), False, dtype=np.bool_)           
                 precharge_intervals = 0   
             elif not precharging_allowed:
@@ -540,7 +540,7 @@ class Solution_SingleTime:
             Netloadt = Netload[t].copy()  
 
             # Avoiding extra memory allocation. This will be overwritten after loop
-            self.Deficit_nodal[t] = np.maximum(Netloadt - self.SPower_nodal[t] - self.GFlexible_nodal[t], 0)
+            self.Deficit_nodal[t] = np.maximum(Netloadt, 0)
 
             if t == TEST_T:
                 print('---------1---------')
@@ -552,11 +552,9 @@ class Solution_SingleTime:
                 print(self.Transmission[t].sum(axis=0))
             
             if self.Deficit_nodal[t].sum() > 1e-6:
-                # Fill deficits with transmission allowing drawing down from neighbours storage reserves                
+                # Fill deficits with transmitted spillage               
                 self.Spillage_nodal[t] = (
                     -1 * np.minimum(0, Netloadt)
-                    + (Discharget_max_nodal - self.SPower_nodal[t])
-                    + (self.CFlexible_nodal - self.GFlexible_nodal[t])
                 )
 
                 self.Transmission[t] = get_transmission_flows_t(
@@ -565,6 +563,45 @@ class Solution_SingleTime:
                 )
 
                 Netloadt -= self.Transmission[t].sum(axis=0)
+
+                """ self.SPower_nodal[t] = (
+                    np.maximum(np.minimum(Netloadt, Discharget_max_nodal),0) +
+                    np.minimum(np.maximum(Netloadt, -Charget_max_nodal),0) 
+                    
+                ) 
+
+                self.GFlexible_nodal[t] = np.minimum(
+                    np.maximum(Netloadt - self.SPower_nodal[t], 0),
+                    self.CFlexible_nodal
+                )  """
+
+                if t == TEST_T:
+                    print('---------2---------')
+                    print(self.Transmission[t].sum(axis=0))
+                    print(Netloadt)
+                    print(self.SPower_nodal[t])
+                    print(self.GFlexible_nodal[t])
+                    """print(Discharget_max_nodal)
+                    print(Charget_max_nodal) """
+                    """ print('---------2.5---------')
+                    print(SPowert_nodal)
+                    print(Flexiblet_nodal) """
+
+            #self.Deficit_nodal[t] = np.maximum(Netloadt - self.SPower_nodal[t] - self.GFlexible_nodal[t], 0) 
+            self.Deficit_nodal[t] = np.maximum(Netloadt, 0)
+            if self.Deficit_nodal[t].sum() > 1e-6:
+                # Draw down from neighbours storage and flexible reserves                
+                self.Spillage_nodal[t] = (
+                    Discharget_max_nodal
+                    + self.CFlexible_nodal
+                )
+
+                self.Transmission[t] = get_transmission_flows_t(
+                    self.Deficit_nodal[t], self.Spillage_nodal[t], self.CTrans, self.network, self.networksteps,
+                    np.maximum(0, self.Transmission[t]), np.minimum(0, self.Transmission[t])
+                )
+
+                Netloadt = Netload[t] - self.Transmission[t].sum(axis=0)
 
                 self.SPower_nodal[t] = (
                     np.maximum(np.minimum(Netloadt, Discharget_max_nodal),0) +
@@ -578,16 +615,11 @@ class Solution_SingleTime:
                 ) 
 
                 if t == TEST_T:
-                    print('---------2---------')
+                    print('---------2.5---------')
                     print(self.Transmission[t].sum(axis=0))
                     print(Netloadt)
                     print(self.SPower_nodal[t])
                     print(self.GFlexible_nodal[t])
-                    """print(Discharget_max_nodal)
-                    print(Charget_max_nodal) """
-                    """ print('---------2.5---------')
-                    print(SPowert_nodal)
-                    print(Flexiblet_nodal) """
 
             self.Spillage_nodal[t] = -1 * np.minimum(0, Netloadt - np.minimum(self.SPower_nodal[t], 0))
 
