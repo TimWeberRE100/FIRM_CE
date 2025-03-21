@@ -4,7 +4,6 @@ from firm_ce.file_manager import import_csv_data, DataFile
 from firm_ce.components import Generator, Storage, Line, Node
 from firm_ce.optimisation import Solver
 from firm_ce.network import Network
-from firm_ce.network.frequency import get_frequencies
 
 class ModelData:
     def __init__(self) -> None:
@@ -42,7 +41,6 @@ class Scenario:
         self.node_names = {self.nodes[idx].name : self.nodes[idx].id for idx in self.nodes}
         self.nodes_with_balancing = set([self.node_names[self.storages[idx].node] for idx in self.storages] 
                                         + [self.node_names[self.generators[idx].node] for idx in self.generators if self.generators[idx].unit_type == 'flexible'])
-        self.max_frequency = max(get_frequencies(self.intervals, self.resolution))
 
     def __repr__(self):
         return f"<Scenario object [{self.id}]{self.name}>"
