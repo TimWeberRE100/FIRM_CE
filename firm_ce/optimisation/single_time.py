@@ -353,12 +353,14 @@ class Solution_SingleTime:
         return None
     
     def _precharge_storage(self, t_pre_end, t, precharge_intervals, precharge_mask, Netload, deficit_precharging):
-        TEST_T = 406 ####### DEBUG
+        TEST_T = 31 ####### DEBUG
         storage_cycle_orders = np.array([1,1,1,1,1,0,0,0,0,0], dtype=np.int32) ######## DEBUG
         frequency_orders = np.array([0,0,0,0]) ##### DEBUG
 
         t_pre_initial = max(t_pre_end - max(precharge_intervals),0)
         max_cycle_order = max(storage_cycle_orders)
+
+        deficit_precharging = False ########### DEBUG
 
         for t_pre in range(t_pre_initial, t_pre_end):
             self._transmission_for_period(t_pre, t_pre+1, Netload, False) # Run normal transmission for interval first
@@ -427,7 +429,6 @@ class Solution_SingleTime:
                     storage_trickling = storage_cycle_orders == i
 
                 SPowert_precharge = np.zeros(len(self.storage_ids), dtype=np.float64)
-                storage_trickling = storage_cycle_orders == i+1  
 
                 Transmissiont_pre = self.Transmission[t_pre].sum(axis=0)
 
@@ -443,13 +444,15 @@ class Solution_SingleTime:
                 Charget_max[~storage_precharging] = 0
                 Charget_max_nodal = self._fill_nodal_array_1d(Charget_max, self.storage_nodes)
                 Fillt = np.maximum(Charget_max_nodal + SPowert_charging_nodal,0)
-                Surplust = np.maximum(Discharget_max_nodal - SPowert_trickling_nodal, 0) #-1 * np.minimum(Netloadt - np.minimum(self.SPower_nodal[t_pre], 0), 0) 
+                Surplust = np.maximum(Discharget_max_nodal - SPowert_trickling_nodal, 0)  
+
+                if (Fillt.sum() < 1e-6) or (Surplust.sum() < 1e-6):
+                    continue
 
                 if t_pre == TEST_T:
                     print(f'-----{t_pre} pre1------')
                     print(SPowert_trickling)
-                    print(SPowert_charging)   
-                    print(Netloadt)             
+                    print(SPowert_charging)               
                     print(Fillt) 
                     print(Surplust) 
                     print('-------------')
@@ -506,8 +509,20 @@ class Solution_SingleTime:
         
         return None
     
+    def _determine_precharge_intervals(self, t_pre_end, precharge_mask, precharge_energy, deficit_precharging):
+        #### REMEMBER CHARGING/DISCHARGING EFFICIENCIES
+        precharge_intervals = np.array([48,4], dtype=np.int64) ########## DEBUG
+
+        #while precharge_energy > 0:
+            # For each interval, find discharging and charging maximums
+            # Determine the minimum of discharging and charging maximums
+            # Subtract minimum from precharge_energy
+        
+        return precharge_intervals
+
+    
     def _transmission_for_period(self, start_t, end_t, Netload, precharging_allowed):
-        TEST_T = 406
+        TEST_T = 31
         storage_order = self.balancing_order[self.balancing_storage_tag]
         flexible_order = self.balancing_order[self.balancing_flexible_tag]
         F_variable_costs = self.generator_costs[3, self.flexible_mask] ##### ADD FUEL COSTS        
@@ -521,8 +536,8 @@ class Solution_SingleTime:
         for t in range(start_t, end_t):
             # Perform precharging
             if precharging_allowed and (precharge_energy > 0) and (perform_precharge): 
-                # precharge_intervals = self._determine_precharge_intervals() #### REMEMBER CHARGING EFFICIENCIES
-                precharge_intervals = np.array([4,160], dtype=np.int64) ########## DEBUG
+                precharge_intervals = self._determine_precharge_intervals(t_pre_end, precharge_mask, precharge_energy, deficit_precharging) 
+                
                 self._precharge_storage(t_pre_end, t, precharge_intervals, precharge_mask, Netload, deficit_precharging)  
                 precharge_mask = np.full(len(self.storage_ids), False, dtype=np.bool_)           
                 precharge_energy = 0   
@@ -724,7 +739,10 @@ class Solution_SingleTime:
                     else:
                         deficit_precharging = False
 
-                precharge_mask = precharge_mask | (self.Storage[t] < 1e-3) | (self.CPHS - self.Storage[t] < 1e-3)
+                if deficit_precharging:
+                    precharge_mask = precharge_mask | (self.Storage[t] < 1e-3) 
+                else:
+                    precharge_mask = precharge_mask | ~(self.CPHS - self.Storage[t] < 1e-3)
                 perform_precharge = False
                 precharge_energy += self.Deficit_nodal[t].sum() + self.Spillage_nodal[t].sum()
             else:
@@ -732,7 +750,9 @@ class Solution_SingleTime:
 
     def _check_feasibility(self, Netload):
         # Check max_surplus is greater than 0 and less than 50% total energy
+        #### This may not be a good check if Flexible starting capacity is very large
         max_surplus = -1 * np.minimum(0,Netload).sum() + self.CFlexible.sum()*self.intervals - np.maximum(0,Netload).sum()
+        print(f"MAX SURPLUS: {max_surplus} {max_surplus / (self.energy*self.years)}")
         return (max_surplus > 0) and (max_surplus < self.energy*self.years*0.5)
     
     def _transmission_balancing(self):
