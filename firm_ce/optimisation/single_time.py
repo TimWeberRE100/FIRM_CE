@@ -353,7 +353,7 @@ class Solution_SingleTime:
         return None
     
     def _precharge_storage(self, t_pre_end, t, precharge_intervals, precharge_mask, Netload, deficit_precharging):
-        TEST_T = 31 ####### DEBUG
+        TEST_T = 0 ####### DEBUG
         storage_cycle_orders = np.array([1,1,1,1,1,0,0,0,0,0], dtype=np.int32) ######## DEBUG
         frequency_orders = np.array([0,0,0,0]) ##### DEBUG
 
@@ -416,7 +416,8 @@ class Solution_SingleTime:
                     self.SPower[t_pre] += SPowert_precharge
 
             # Charge storage based upon cycle frequency order            
-            for i in range(max_cycle_order):                 
+            for i in range(max_cycle_order):     
+                #print('precharge_intervals: ', precharge_intervals[i], t_pre_end - t_pre)            
                 if precharge_intervals[i] < t_pre_end - t_pre:
                     continue
 
@@ -443,8 +444,12 @@ class Solution_SingleTime:
                 Discharget_max_nodal = self._fill_nodal_array_1d(Discharget_max, self.storage_nodes)
                 Charget_max[~storage_precharging] = 0
                 Charget_max_nodal = self._fill_nodal_array_1d(Charget_max, self.storage_nodes)
-                Fillt = np.maximum(Charget_max_nodal + SPowert_charging_nodal,0)
-                Surplust = np.maximum(Discharget_max_nodal - SPowert_trickling_nodal, 0)  
+                Charget = np.maximum(Charget_max_nodal + SPowert_charging_nodal,0)
+                Discharget = np.maximum(Discharget_max_nodal - SPowert_trickling_nodal, 0)  
+                
+                Fillt = np.maximum(Charget - Discharget,0)
+                Surplust = -1 * np.minimum(Charget - Discharget,0)
+                IntranodeCharget = np.minimum(Charget, Discharget)
 
                 if (Fillt.sum() < 1e-6) or (Surplust.sum() < 1e-6):
                     continue
@@ -455,7 +460,10 @@ class Solution_SingleTime:
                     print(SPowert_charging)               
                     print(Fillt) 
                     print(Surplust) 
+                    print(IntranodeCharget)
                     print('-------------')
+                    print(Charget)
+                    print(Discharget)
                     print(self.Storage[t_pre-1])     
 
                     print(f'-----{t_pre} pre2------')
@@ -483,12 +491,12 @@ class Solution_SingleTime:
                     #### Might not able to perfectly split the surplus because of constraints
                     if trickle_node_mask.sum() > 0:
                         SPowert_precharge[trickle_node_mask] = np.minimum(
-                            np.full(trickle_node_mask.sum(), max(Netloadt[node],0) / trickle_node_mask.sum(), dtype=np.float64), 
+                            np.full(trickle_node_mask.sum(), (IntranodeCharget[node] + max(Netloadt[node],0)) / trickle_node_mask.sum(), dtype=np.float64), 
                             np.maximum(Discharget_max[trickle_node_mask] - SPowert_trickling[trickle_node_mask],0)
                             ) 
                     if precharge_node_mask.sum() > 0:
                         SPowert_precharge[precharge_node_mask] =  np.maximum(
-                            np.full(precharge_node_mask.sum(), min(Netloadt[node],0) / precharge_node_mask.sum()), 
+                            np.full(precharge_node_mask.sum(), (min(Netloadt[node],0) - IntranodeCharget[node]) / precharge_node_mask.sum()), 
                             -1*np.maximum(Charget_max[precharge_node_mask] + SPowert_charging[precharge_node_mask],0)
                             )     ### Add the discharge/charge constraint opposites to each one?               
 
@@ -522,7 +530,7 @@ class Solution_SingleTime:
 
     
     def _transmission_for_period(self, start_t, end_t, Netload, precharging_allowed):
-        TEST_T = 31
+        TEST_T = 8
         storage_order = self.balancing_order[self.balancing_storage_tag]
         flexible_order = self.balancing_order[self.balancing_flexible_tag]
         F_variable_costs = self.generator_costs[3, self.flexible_mask] ##### ADD FUEL COSTS        
@@ -745,6 +753,13 @@ class Solution_SingleTime:
                     precharge_mask = precharge_mask | ~(self.CPHS - self.Storage[t] < 1e-3)
                 perform_precharge = False
                 precharge_energy += self.Deficit_nodal[t].sum() + self.Spillage_nodal[t].sum()
+
+                if t == TEST_T:
+                    print('--------6-------')
+                    print(precharge_energy)
+                    print(precharge_mask)
+                    print(deficit_precharging)
+                    print(self.Storage[t])
             else:
                 perform_precharge = True 
 
