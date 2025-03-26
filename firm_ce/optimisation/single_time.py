@@ -353,14 +353,14 @@ class Solution_SingleTime:
         return None
     
     def _precharge_storage(self, t_pre_end, t, precharge_intervals, precharge_mask, Netload, deficit_precharging):
-        TEST_T = 0 ####### DEBUG
+        TEST_T = 65874 ####### DEBUG
         storage_cycle_orders = np.array([1,1,1,1,1,0,0,0,0,0], dtype=np.int32) ######## DEBUG
         frequency_orders = np.array([0,0,0,0]) ##### DEBUG
 
         t_pre_initial = max(t_pre_end - max(precharge_intervals),0)
         max_cycle_order = max(storage_cycle_orders)
 
-        deficit_precharging = False ########### DEBUG
+        #deficit_precharging = False ########### DEBUG
 
         for t_pre in range(t_pre_initial, t_pre_end):
             self._transmission_for_period(t_pre, t_pre+1, Netload, False) # Run normal transmission for interval first
@@ -519,7 +519,7 @@ class Solution_SingleTime:
     
     def _determine_precharge_intervals(self, t_pre_end, precharge_mask, precharge_energy, deficit_precharging):
         #### REMEMBER CHARGING/DISCHARGING EFFICIENCIES
-        precharge_intervals = np.array([48,4], dtype=np.int64) ########## DEBUG
+        precharge_intervals = np.array([4,4], dtype=np.int64) ########## DEBUG
 
         #while precharge_energy > 0:
             # For each interval, find discharging and charging maximums
@@ -530,7 +530,7 @@ class Solution_SingleTime:
 
     
     def _transmission_for_period(self, start_t, end_t, Netload, precharging_allowed):
-        TEST_T = 8
+        TEST_T = 65874
         storage_order = self.balancing_order[self.balancing_storage_tag]
         flexible_order = self.balancing_order[self.balancing_flexible_tag]
         F_variable_costs = self.generator_costs[3, self.flexible_mask] ##### ADD FUEL COSTS        
