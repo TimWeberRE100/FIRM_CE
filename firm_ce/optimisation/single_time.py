@@ -372,6 +372,8 @@ class Solution_SingleTime:
     def _determine_precharge_energies(self, t, Netload):
         trickling_reserves = self.Storage[t].copy()
         precharging_reserves = self.CPHS - self.Storage[t]
+        Storaget_1_reversed = self.Storage[t-1].copy()
+        print("INITIAL RES: ", t, trickling_reserves, precharging_reserves)
         while True:
             t -= 1
 
@@ -380,10 +382,11 @@ class Solution_SingleTime:
 
             # If you reach end of deficit block, return results
             if ((Netload[t] - self.SPower_nodal[t] - self.GFlexible_nodal[t] - self.Transmission[t].sum(axis=0) < 1e-6).all() or t < 1):
-                precharge_energy = (self.Storage[t] - Storaget_1_original)
+                precharge_energy = (Storaget_1_reversed - self.Storage[t])
                 precharge_mask = precharge_energy > 1e-6
                 precharge_energy[~precharge_mask] = 0
 
+                print("RESERVES: ", t, precharging_reserves, precharge_energy)
                 precharging_reserves = np.minimum(precharging_reserves, precharge_energy)
 
                 return trickling_reserves, precharging_reserves, precharge_energy, t+1 
@@ -393,8 +396,8 @@ class Solution_SingleTime:
                 trickling_reserves = np.minimum(trickling_reserves, self.Storage[t])
                 precharging_reserves = np.minimum(self.CPHS - self.Storage[t], precharging_reserves)
 
-                Storaget_p_lb_rev = self.Storage[t] * self.storage_c_efficiencies / self.resolution 
-                Storaget_p_ub_rev = (self.CPHS - self.Storage[t]) / self.storage_d_efficiencies / self.resolution
+                Storaget_p_lb_rev = Storaget_1_reversed * self.storage_c_efficiencies / self.resolution 
+                Storaget_p_ub_rev = (self.CPHS - Storaget_1_reversed) / self.storage_d_efficiencies / self.resolution
                 Discharget_max = np.minimum(self.CPHP, Storaget_p_ub_rev) # Reversed energy constraint in reverse time
                 Discharget_max_nodal = self._fill_nodal_array_1d(Discharget_max, self.storage_nodes)
                 Charget_max = np.minimum(self.CPHP, Storaget_p_lb_rev) # Reversed energy constraint in reverse time
@@ -494,8 +497,8 @@ class Solution_SingleTime:
                             self.GFlexible_nodal[t][node] -= new_value
                             self.GFlexible[t][flexible_order_i] = new_value
             
-            Storaget_1_original = self.Storage[t-1].copy()
-            self.Storage[t-1] = (self.Storage[t] 
+            #Storaget_1_original = self.Storage[t-1].copy()
+            Storaget_1_reversed = (self.Storage[t] 
                                + np.maximum(self.SPower[t], 0) * self.resolution / self.storage_d_efficiencies 
                                + np.minimum(self.SPower[t], 0) * self.resolution * self.storage_c_efficiencies) # Reverse charge/discharge effect in reverse time
     
@@ -553,14 +556,26 @@ class Solution_SingleTime:
     def _determine_precharge_powers(self, trickling_reserves, precharging_reserves, precharge_energy, t):
         ##### Need to account for the precharge period in trickling/precharge reserves. Update reserves if a new local min/max is found
         t_precharge_start = t
+        used_trickling_reserves = np.zeros_like(trickling_reserves, dtype=np.float64)
+        used_precharging_reserves = np.zeros_like(precharging_reserves, dtype=np.float64)
+        
         while True:
             t -= 1
+
+            trickling_reserves = np.minimum(trickling_reserves, self.Storage[t])
+            precharging_reserves = np.minimum(precharging_reserves, self.CPHS - self.Storage[t])
+
+            remaining_trickling_reserves = np.maximum(trickling_reserves - used_trickling_reserves, 0)
+            remaining_precharging_reserves = np.maximum(precharging_reserves - used_precharging_reserves, 0)
+
+            print("STORAGE: ", t, self.Storage[t])
+            print("Stuff: ", t, remaining_trickling_reserves, used_trickling_reserves, remaining_precharging_reserves, used_precharging_reserves, precharge_energy)
             
-            trickling_change_max, precharging_change_max = self._get_change_power_bounds(trickling_reserves, precharging_reserves, t)
+            trickling_change_max, precharging_change_max = self._get_change_power_bounds(remaining_trickling_reserves, remaining_precharging_reserves, t)
             trickling_max_nodal = self._fill_nodal_array_1d(trickling_change_max, self.storage_nodes)
             precharging_max_nodal = self._fill_nodal_array_1d(precharging_change_max, self.storage_nodes)
 
-            trickling_mask = trickling_reserves > 1e-6
+            trickling_mask = remaining_trickling_reserves > 1e-6
             precharging_mask = (precharging_reserves > 1e-6) & (precharge_energy > 1e-6)
 
             Transmissiont_pre = self.Transmission[t].sum(axis=0)
@@ -586,7 +601,7 @@ class Solution_SingleTime:
 
                     self.SPower[t,i] += change_power
                     Intranodet_trickle[node] -= change_power 
-                    trickling_reserves[i] += change_energy
+                    used_trickling_reserves[i] -= change_energy
                                          
                 if precharging_mask[i]:
                     change_power = min(max(Intranodet_charge[node],-precharging_change_max[i]),0)
@@ -595,7 +610,7 @@ class Solution_SingleTime:
 
                     self.SPower[t,i] += change_power
                     Intranodet_charge[node] -= change_power
-                    precharging_reserves[i] -= change_energy 
+                    used_precharging_reserves[i] += change_energy 
                     precharge_energy[i] -= change_energy 
                     
             self.SPower_nodal[t] = self._fill_nodal_array_1d(self.SPower[t], self.storage_nodes)
@@ -655,10 +670,9 @@ class Solution_SingleTime:
         trickling_reserves, precharging_reserves, precharge_energy, t_first_deficit = self._determine_precharge_energies(t, Netload)
         print(trickling_reserves, precharging_reserves, precharge_energy, t_first_deficit)
         
-        if t < 407:
-            t_precharge_start = self._determine_precharge_powers(trickling_reserves, precharging_reserves, precharge_energy, t_first_deficit)
+        t_precharge_start = self._determine_precharge_powers(trickling_reserves, precharging_reserves, precharge_energy, t_first_deficit)
 
-            self._determine_precharge_storage(t_precharge_start, t) 
+        self._determine_precharge_storage(t_precharge_start, t) 
 
         return
     
@@ -779,10 +793,12 @@ class Solution_SingleTime:
                 deficit_precharging = True
 
             if (perform_precharge and (self.Deficit_nodal[t].sum() < 1e-6)):
+                
                 self._precharge_storage(t, Netload, deficit_precharging)
                 perform_precharge = False
-                if t>406:
+                if t>382:
                     break ###### DEBUG
+                
                 
 
     def _check_feasibility(self, Netload):
