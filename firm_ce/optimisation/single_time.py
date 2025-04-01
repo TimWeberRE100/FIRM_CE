@@ -221,8 +221,7 @@ class Solution_SingleTime:
         self.storage_durations = storage_durations
         self.storage_costs = storage_costs
         self.storage_d_efficiencies = storage_d_efficiencies
-        #self.storage_c_efficiencies = storage_c_efficiencies
-        self.storage_c_efficiencies = storage_d_efficiencies
+        self.storage_c_efficiencies = storage_c_efficiencies
 
         self.Storage = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
         self.SPower = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
@@ -844,7 +843,7 @@ class Solution_SingleTime:
                 
                 self._precharge_storage(t, Netload, deficit_precharging)
                 perform_precharge = False
-                if t>406:
+                if t>473:
                     break ###### DEBUG
                 
                 
