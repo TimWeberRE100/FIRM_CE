@@ -20,7 +20,6 @@ class UnitCost:
         self.vom = vom
         self.lifetime = lifetime
         self.discount_rate = discount_rate
-        self.fuel_cost = 0
 
         if fuel:
             self.fuel_cost_mwh = fuel.cost * heat_rate_incr # $/MWh

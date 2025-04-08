@@ -52,8 +52,9 @@ class Scenario:
         """Parse a comma-separated string into a clean list of strings."""
         return [item.strip() for item in value.split(',') if item.strip()]
     
+    @staticmethod
     def _get_generator_fuels(all_generators: Dict[str,Dict[str,str]], fuel_dict: Dict[str,Fuel]) -> Dict[str,Fuel]:
-        fuel_name_map = {f['name']: f for f in fuel_dict.values()}
+        fuel_name_map = {fuel_dict[idx].name: fuel_dict[idx] for idx in fuel_dict}
         return [fuel_name_map[all_generators[g]['fuel']] for g in all_generators if all_generators[g]['fuel'] in fuel_name_map]
     
     def _get_nodes(self, node_names: str, datafiles: Dict[str, DataFile]) -> Dict[str,Node]:
@@ -67,7 +68,7 @@ class Scenario:
     def _get_generators(self, all_generators: Dict[str,Dict[str,str]], datafiles: Dict[str, DataFile], fuel_dict: Dict[str,Fuel]) -> Dict[str,Generator]:
         """Filter or prepare generator data specific to this scenario."""
         fuels = self._get_generator_fuels(all_generators, fuel_dict)
-        return {idx: Generator(idx, all_generators[idx], datafiles, fuels[idx]) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
+        return {idx: Generator(idx, all_generators[idx], fuels[idx], datafiles) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
     
     def _get_storages(self, all_storages: Dict[str,Dict[str,str]]) -> Dict[str,Storage]:
         """Filter or prepare storage data specific to this scenario."""
@@ -76,7 +77,6 @@ class Scenario:
     def _get_fuels(self, all_fuels: Dict[str,Dict[str,str]]) -> Dict[str,Fuel]:
         """Filter or prepare fuel data specific to this scenario."""
         return {idx: Fuel(idx, all_fuels[idx]) for idx in all_fuels if self.name in self._parse_comma_separated(all_fuels[idx]['scenarios'])}
-    
     
     def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
