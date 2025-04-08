@@ -3,11 +3,11 @@ from firm_ce.file_manager import DataFile
 from firm_ce.components.costs import UnitCost
 
 class Generator:
-    def __init__(self, id: int, generator_dict: Dict[str, str], datafiles: Dict[str, DataFile]) -> None:
+    def __init__(self, id: int, generator_dict: Dict[str, str], fuel_dict: Dict[str, str], datafiles: Dict[str, DataFile]) -> None:
         self.id = id
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
-        self.fuel = str(generator_dict['fuel']) # Fuel type ### CHANGE TO Fuel OBJECT
+        self.fuel = Fuel(fuel_dict)
         self.max_build = int(generator_dict['max_build'])  # MW/year
         self.min_build = int(generator_dict['min_build'])  # MW/year
         self.capacity = float(generator_dict['initial_capacity'])  # MW
@@ -16,7 +16,9 @@ class Generator:
                               fom=float(generator_dict['fom']),
                               vom=float(generator_dict['vom']),
                               lifetime=int(generator_dict['lifetime']),
-                              discount_rate=float(generator_dict['discount_rate']))
+                              discount_rate=float(generator_dict['discount_rate']),
+                              heat_rate_base=float(generator_dict['heat_rate_base']),
+                              heat_rate_incr=float(generator_dict['heat_rate_incr']))
 
         self.data = None
         for key in datafiles:
@@ -58,9 +60,11 @@ class Storage:
         return f"<Storage object [{self.id}]{self.name}>"
 
 class Fuel:
-    def __init__(self, id: int, name: str) -> None:
+    def __init__(self, id: int, name: str, cost: float=0.0, emissions: float=0.0) -> None:
         self.id = int(id)
         self.name = str(name)
+        self.cost = float(cost)
+        self.emissions = float(emissions)
 
     def __repr__(self):
         return f"<Fuel object [{self.id}]{self.name}>"

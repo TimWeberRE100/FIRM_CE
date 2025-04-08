@@ -13,13 +13,18 @@ else:
         return wrapper
 
 class UnitCost:
-    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, capex_e = 0, transformer_capex = 0, length = 0):
+    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, heat_rate_base=0, heat_rate_incr=0, fuel=None, capex_e = 0, transformer_capex = 0, length = 0):
         self.capex_p = capex_p
         self.capex_e = capex_e
         self.fom = fom
         self.vom = vom
         self.lifetime = lifetime
         self.discount_rate = discount_rate
+        self.fuel_cost = 0
+
+        if fuel:
+            self.fuel_cost_mwh = fuel.cost * heat_rate_incr # $/MWh
+            self.fuel_cost_h = fuel.cost * heat_rate_base # $/h
         
         self.transformer_capex = transformer_capex
         self.length = length

@@ -22,6 +22,9 @@ class ImportCSV:
     def get_generators(self) -> dict:
         return self.get_data("generators.csv")  
     
+    def get_fuels(self) -> dict:
+        return self.get_data("fuels.csv")  
+    
     def get_lines(self) -> dict:
         return self.get_data("lines.csv")
     
@@ -66,6 +69,7 @@ def import_csv_data() -> dict:
     data = {
         'scenarios': csv_importer.get_scenarios(),
         'generators': csv_importer.get_generators(),
+        'fuels': csv_importer.get_fuels(),
         'lines': csv_importer.get_lines(),
         'storages': csv_importer.get_storages(),
         'datafiles': csv_importer.get_datafiles(),
