@@ -1,7 +1,7 @@
-id,name,emissions,cost
-0,solar,0,0
-1,wind,0,0
-2,water,0,0
-3,gas,1,13.5
-4,brown coal,1,0.7
-5,black coal,1,4.6
+id,name,emissions,cost,scenarios
+0,solar,0,0,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
+1,wind,0,0,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
+2,water,0,0,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
+3,gas,1,13.5,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
+4,brown coal,1,0.7,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
+5,black coal,1,4.6,"mekong,mekong_gas,mekong_imports,thailand,thailand_gas,thailand_imports"
