@@ -51,8 +51,7 @@ class Solver:
 
         scenario_arrays['intervals'], scenario_arrays['nodes'] = scenario_arrays['MLoad'].shape
         scenario_arrays['lines'] = len(self.scenario.lines)
-        scenario_arrays['years'] = self.scenario.final_year - self.scenario.first_year
-        scenario_arrays['efficiency'] = 0.8
+        scenario_arrays['years'] = self.scenario.final_year - self.scenario.first_year + 1
         scenario_arrays['resolution'] = self.scenario.resolution
         scenario_arrays['allowance'] = self.scenario.allowance
 
@@ -252,7 +251,6 @@ class Solver:
         scenario_arrays['storage_cost_ids'] = scenario_arrays['storage_ids']
         scenario_arrays['line_cost_ids'] = scenario_arrays['line_ids']
 
-        scenario_arrays['CPeak'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])[0]]
         scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]]
         
         return scenario_arrays
@@ -277,7 +275,6 @@ class Solver:
                     scenario_arrays["nodes"],
                     scenario_arrays["lines"],
                     scenario_arrays["years"],
-                    scenario_arrays["efficiency"],
                     scenario_arrays["resolution"],
                     scenario_arrays["allowance"],
                     scenario_arrays["generator_ids"],
@@ -301,7 +298,6 @@ class Solver:
                     scenario_arrays["wind_nodes"],
                     scenario_arrays["flexible_nodes"],
                     scenario_arrays["baseload_nodes"],
-                    scenario_arrays["CPeak"],
                     scenario_arrays["CBaseload"],
                     scenario_arrays["pv_cost_ids"],
                     scenario_arrays["wind_cost_ids"],
@@ -313,6 +309,7 @@ class Solver:
                     scenario_arrays["storage_d_efficiencies"],
                     scenario_arrays["storage_c_efficiencies"],
                     scenario_arrays['Flexible_Limits_Annual'],
+                    self.scenario.first_year
             ),
             tol=0,
             maxiter=self.config.iterations, 

@@ -21,7 +21,6 @@ if JIT_ENABLED:
         ('intervals', int64),
         ('nodes', int64),
         ('lines', int64),
-        ('efficiency', float64),
         ('resolution', float64),
         ('years', int64),
         ('energy', float64),
@@ -30,8 +29,6 @@ if JIT_ENABLED:
         # Generators
         ('generator_ids', int64[:]),
         ('generator_costs', float64[:, :]),
-
-        ('CPeak', float64[:]),
         ('CBaseload', float64[:]),
         ('GBaseload', float64[:, :]),
         ('GFlexible', float64[:, :]),
@@ -90,7 +87,6 @@ if JIT_ENABLED:
         ('GPV_nodal', float64[:, :]),
         ('GWind', float64[:, :]),
         ('GWind_nodal', float64[:, :]),
-        ('CPeak_nodal', float64[:]),
         ('CBaseload_nodal', float64[:]),
         ('GBaseload_nodal', float64[:, :]),
         ('Spillage_nodal', float64[:, :]),
@@ -146,7 +142,6 @@ class Solution_SingleTime:
                 nodes,
                 lines,
                 years,
-                efficiency,
                 resolution,
                 allowance,
                 generator_ids,
@@ -170,7 +165,6 @@ class Solution_SingleTime:
                 wind_nodes,
                 flexible_nodes,
                 baseload_nodes,
-                CPeak,
                 CBaseload,
                 pv_cost_ids,
                 wind_cost_ids,
@@ -181,7 +175,8 @@ class Solution_SingleTime:
                 networksteps,
                 storage_d_efficiencies,
                 storage_c_efficiencies,
-                Flexible_Limits_Annual,) -> None:
+                Flexible_Limits_Annual,
+                first_year,) -> None:
 
         self.x = x  
         self.evaluated=False   
@@ -192,25 +187,21 @@ class Solution_SingleTime:
         self.intervals = intervals
         self.nodes = nodes
         self.lines = lines
-        self.efficiency = efficiency
         self.resolution = resolution
         self.years = years
-        self.year_first_t = self._get_year_t_arr(2020) #### UPDATE TO FIRST_YEAR
+        self.year_first_t = self._get_year_t_arr(first_year)
         self.energy = self.MLoad.sum() * self.resolution / self.years
         self.allowance = allowance*self.energy
-
-        print(self.year_first_t)
 
         # Generators
         self.generator_ids = generator_ids
         self.generator_costs = generator_costs
 
-        self.CPeak = CPeak
         self.CBaseload = CBaseload
         self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
-        self.GFlexible = np.zeros((self.intervals, len(self.CPeak)), dtype=np.float64)
+        self.GFlexible = np.zeros((self.intervals, len(flexible_ids)), dtype=np.float64)
         self.Flexible_Limits_Annual = Flexible_Limits_Annual
-        self.GFlexible_constraint = np.zeros((self.intervals,len(self.CPeak)), dtype=np.float64)
+        self.GFlexible_constraint = np.zeros((self.intervals,len(flexible_ids)), dtype=np.float64)
 
         # Storages
         self.storage_ids = storage_ids
@@ -264,7 +255,6 @@ class Solution_SingleTime:
         self.GPV_nodal = self._fill_nodal_array_2d(self.GPV, solar_nodes)
         self.GWind = self.CWind[np.newaxis, :] * TSWind
         self.GWind_nodal = self._fill_nodal_array_2d(self.GWind, wind_nodes)
-        self.CPeak_nodal = self._fill_nodal_array_1d(self.CPeak, self.flexible_nodes)
         self.CBaseload_nodal = self._fill_nodal_array_1d(self.CBaseload, self.baseload_nodes)
         self.GBaseload_nodal = self._fill_nodal_array_2d(self.GBaseload, self.baseload_nodes)
         
@@ -297,7 +287,7 @@ class Solution_SingleTime:
         self.flexible_sorted_nodal = np.zeros((nodes,max(self.flexible_nodal_count)), dtype=np.int64)
 
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
-        F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] ###### THIS DOES NOT QUITE WORK?
+        F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] # SRMC of 1 MWh in 1 h
 
         for node in range(nodes):
             storage_mask = self.storage_nodes == node
@@ -331,7 +321,7 @@ class Solution_SingleTime:
             first_t = i * (8760 // self.resolution)
 
             leap_days = sum(
-                1 for y in range(first_year, year)
+                1 for y in range(first_year, year+1)
                 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
             )
 
@@ -372,12 +362,22 @@ class Solution_SingleTime:
                 result[:,i] = nodal_generation[:, node_array[i]]
 
         return result
+    
+    def _get_flexible_hours(self):
+        flexible_hours = np.zeros(len(self.flexible_order), dtype=np.float64)
+        for i in range(self.intervals):
+            for f in self.flexible_order:
+                if self.GFlexible[i,f] > 1e-6:
+                    flexible_hours[f] += self.resolution
+
+        return flexible_hours
 
     def _calculate_annual_generation(self):
         self.GPV_annual = self.GPV.sum(axis=0) * self.resolution / self.years
         self.GWind_annual = self.GWind.sum(axis=0) * self.resolution / self.years
         self.GDischarge_annual = self.GDischarge.sum(axis=0) * self.resolution / self.years
         self.GFlexible_annual = self.GFlexible.sum(axis=0) * self.resolution / self.years
+        self.Flexible_hours_annual = self._get_flexible_hours() * self.resolution / self.years
         self.GBaseload_annual = self.GBaseload.sum(axis=0) * self.resolution / self.years
         self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
 
@@ -833,6 +833,7 @@ class Solution_SingleTime:
 
                     self.GFlexible[t,i] += change_power
                     Netloadt[node] -= change_power
+                    flexible_reserves[i] -= change_energy 
 
             for i in range(len(self.storage_nodes)):
                 if precharging_mask[i]:
@@ -881,7 +882,6 @@ class Solution_SingleTime:
                         self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution
             else:
                 self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
-
         return None
 
     def _precharge_storage(self, t, Netload):
@@ -1019,8 +1019,7 @@ class Solution_SingleTime:
 
     def _check_feasibility(self, Netload):
         # Check max_surplus is greater than 0 and less than 50% total energy
-        #### This may not be a good check if Flexible starting capacity is very large
-        max_surplus = -1 * np.minimum(0,Netload).sum() + self.CFlexible.sum()*self.intervals - np.maximum(0,Netload).sum()
+        max_surplus = -1 * np.minimum(0,Netload).sum() + min(self.Flexible_Limits_Annual.sum(),self.CFlexible.sum()*self.intervals) - np.maximum(0,Netload).sum()
         return (max_surplus > 0) and (max_surplus < self.energy*self.years*0.5)
     
     def _transmission_balancing(self):
@@ -1093,7 +1092,6 @@ def parallel_wrapper(xs,
                     nodes,
                     lines,
                     years,
-                    efficiency,
                     resolution,
                     allowance,
                     generator_ids,
@@ -1117,7 +1115,6 @@ def parallel_wrapper(xs,
                     wind_nodes,
                     flexible_nodes,
                     baseload_nodes,
-                    CPeak,
                     CBaseload,
                     pv_cost_ids,
                     wind_cost_ids,
@@ -1128,7 +1125,8 @@ def parallel_wrapper(xs,
                     networksteps,
                     storage_d_efficiencies,
                     storage_c_efficiencies,
-                    Flexible_Limits_Annual,):
+                    Flexible_Limits_Annual,
+                    first_year,):
     result = np.empty(xs.shape[1], dtype=np.float64)
     for i in prange(xs.shape[1]):
         result[i] = objective_st(xs[:,i], 
@@ -1140,7 +1138,6 @@ def parallel_wrapper(xs,
                                 nodes,
                                 lines,
                                 years,
-                                efficiency,
                                 resolution,
                                 allowance,
                                 generator_ids,
@@ -1164,7 +1161,6 @@ def parallel_wrapper(xs,
                                 wind_nodes,
                                 flexible_nodes,
                                 baseload_nodes,
-                                CPeak,
                                 CBaseload,
                                 pv_cost_ids,
                                 wind_cost_ids,
@@ -1175,7 +1171,8 @@ def parallel_wrapper(xs,
                                 networksteps,
                                 storage_d_efficiencies,
                                 storage_c_efficiencies,
-                                Flexible_Limits_Annual,)
+                                Flexible_Limits_Annual,
+                                first_year,)
     return result
 
 @njit
@@ -1188,7 +1185,6 @@ def objective_st(x,
                 nodes,
                 lines,
                 years,
-                efficiency,
                 resolution,
                 allowance,
                 generator_ids,
@@ -1212,7 +1208,6 @@ def objective_st(x,
                 wind_nodes,
                 flexible_nodes,
                 baseload_nodes,
-                CPeak,
                 CBaseload,
                 pv_cost_ids,
                 wind_cost_ids,
@@ -1223,7 +1218,8 @@ def objective_st(x,
                 networksteps,
                 storage_d_efficiencies,
                 storage_c_efficiencies,
-                Flexible_Limits_Annual,):
+                Flexible_Limits_Annual,
+                first_year,):
     solution = Solution_SingleTime(x,
                                 MLoad,
                                 TSPV,
@@ -1233,7 +1229,6 @@ def objective_st(x,
                                 nodes,
                                 lines,
                                 years,
-                                efficiency,
                                 resolution,
                                 allowance,
                                 generator_ids,
@@ -1257,7 +1252,6 @@ def objective_st(x,
                                 wind_nodes,
                                 flexible_nodes,
                                 baseload_nodes,
-                                CPeak,
                                 CBaseload,
                                 pv_cost_ids,
                                 wind_cost_ids,
@@ -1268,6 +1262,7 @@ def objective_st(x,
                                 networksteps,
                                 storage_d_efficiencies,
                                 storage_c_efficiencies,
-                                Flexible_Limits_Annual,)
+                                Flexible_Limits_Annual,
+                                first_year,)
     solution.evaluate()
     return solution.lcoe + solution.penalties

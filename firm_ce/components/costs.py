@@ -33,11 +33,11 @@ def get_present_value(discount_rate, lifetime):
     return (1-(1+discount_rate)**(-1*lifetime))/discount_rate
 
 @njit
-def annualisation_component(power_capacity, energy_capacity, annual_generation, capex_p, capex_e, fom, vom, lifetime, discount_rate):
+def annualisation_component(power_capacity, energy_capacity, annual_generation, capex_p, capex_e, fom, vom, lifetime, discount_rate, fuel_mwh, fuel_h, annual_hours):
     present_value = get_present_value(discount_rate, lifetime)
-    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom
+    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom + annual_generation * pow(10,3) * fuel_mwh + annual_hours * fuel_h if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom + annual_generation * pow(10,3) * fuel_mwh + annual_hours * fuel_h
     
-    #print(capex_p,capex_e,fom,vom,lifetime,discount_rate,annualised_cost,annual_generation,annual_generation * pow(10,3) * vom,power_capacity * pow(10,6) * fom )
+    #print(capex_p,capex_e,fom,vom,lifetime,discount_rate, fuel_mwh, fuel_h, annual_hours,annualised_cost,annual_generation,annual_generation * pow(10,3) * vom,power_capacity * pow(10,6) * fom, annual_generation * pow(10,3) * fuel_mwh, annual_hours * fuel_h)
     return annualised_cost
 
 @njit   
@@ -50,6 +50,7 @@ def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom
 def calculate_costs(solution): 
     generator_capacities = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
     generator_annual_generations = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
+    generator_annual_hours = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
     storage_p_capacities = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
     storage_e_capacities = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
     storage_annual_discharge = np.zeros(max(solution.storage_ids)+1, dtype=np.float64)
@@ -70,6 +71,7 @@ def calculate_costs(solution):
         gen_idx = solution.flexible_cost_ids[idx]
         generator_capacities[gen_idx] = solution.CPeak[idx]
         generator_annual_generations[gen_idx] = solution.GFlexible_annual[idx]
+        generator_annual_hours[gen_idx] = solution.Flexible_hours_annual[idx]
 
     for idx in range(0,len(solution.baseload_cost_ids)):
         gen_idx = solution.baseload_cost_ids[idx]
@@ -97,7 +99,10 @@ def calculate_costs(solution):
             solution.generator_costs[2,idx],
             solution.generator_costs[3,idx],
             solution.generator_costs[4,idx],
-            solution.generator_costs[5,idx]
+            solution.generator_costs[5,idx],
+            solution.generator_costs[6,idx],
+            solution.generator_costs[7,idx],
+            generator_annual_hours[idx],
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
         ], dtype=np.float64).sum()
@@ -112,7 +117,10 @@ def calculate_costs(solution):
             solution.storage_costs[2,idx],
             solution.storage_costs[3,idx],
             solution.storage_costs[4,idx],
-            solution.storage_costs[5,idx]
+            solution.storage_costs[5,idx],
+            0,
+            0,
+            0,
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
         ], dtype=np.float64).sum()
