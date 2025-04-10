@@ -4,23 +4,13 @@ from firm_ce.optimisation.single_time import parallel_wrapper
 from firm_ce.file_manager import read_initial_guess
 import csv
 
-from firm_ce.optimisation.constraints import BalancingMonotonicityConstraint
-
 class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
         self.decision_x0 = read_initial_guess()
-        self.lower_bounds, self.upper_bounds, self.x_W_offset, self.cutoff_W_per_node = self._get_bounds()
+        self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
-
-    def _get_cutoff_W_per_node(self, flexible_generators):
-        cutoff_W_per_node = []
-        for node in sorted(self.scenario.nodes_with_balancing):
-            num_storages = len([self.scenario.storages[idx] for idx in self.scenario.storages if self.scenario.node_names[self.scenario.storages[idx].node] == node])
-            num_flexible = len([generator for generator in flexible_generators if self.scenario.node_names[generator.node] == node])
-            cutoff_W_per_node.append(num_storages + num_flexible - 1)
-        return cutoff_W_per_node
 
     def _get_bounds(self):
         solar_generators = [self.scenario.generators[idx] for idx in self.scenario.generators if self.scenario.generators[idx].unit_type == 'solar']
@@ -33,25 +23,19 @@ class Solver:
         wind_lb = [generator.capacity + generator.min_build for generator in wind_generators]
         flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators]
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] 
-        storage_e_lb = [storage.energy_capacity + storage.min_build_e for storage in storages] 
+        storage_e_lb = [storage.energy_capacity + storage.min_build_e if storage.duration == 0 else 0.0 for storage in storages] 
         line_lb = [line.capacity + line.min_build for line in lines]
-        balancing_W_cutoffs_lb = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[-0.01]
-        lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_p_lb + storage_e_lb + line_lb + balancing_W_cutoffs_lb)
+        lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_p_lb + storage_e_lb + line_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
         wind_ub = [generator.capacity + generator.max_build for generator in wind_generators]
         flexible_p_ub = [generator.capacity + generator.max_build for generator in flexible_generators] 
         storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages] 
-        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration > 0 else 0.0 for storage in storages]
+        storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration == 0 else 0.0 for storage in storages]
         line_ub = [line.capacity + line.max_build for line in lines]
-        balancing_W_cutoffs_ub = (len(self.scenario.storages) + len(flexible_generators) - len(self.scenario.nodes_with_balancing))*[self.scenario.max_frequency]
-        upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub + balancing_W_cutoffs_ub)
+        upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub)
 
-        x_W_offset = len(solar_lb) + len(wind_lb) + len(flexible_p_lb) + len(storage_p_lb) + len(storage_e_lb) + len(line_lb)
-
-        cutoff_W_per_node = self._get_cutoff_W_per_node(flexible_generators)
-
-        return lower_bounds, upper_bounds, x_W_offset, cutoff_W_per_node
+        return lower_bounds, upper_bounds
 
     def _prepare_scenario_arrays(self):
         
@@ -102,7 +86,7 @@ class Solver:
         )
 
         scenario_arrays['generator_costs'] = np.zeros(
-            (7, max(self.scenario.generators)+1), dtype=np.float64
+            (8, max(self.scenario.generators)+1), dtype=np.float64
         )
 
         scenario_arrays['TSPV'] = np.array([
@@ -135,8 +119,6 @@ class Solver:
                                                 dtype=np.int64
                                             )
 
-        scenario_arrays['max_frequency'] = self.scenario.max_frequency
-
         scenario_arrays['storage_durations'] = np.array(
             [self.scenario.storages[idx].duration
             for idx in self.scenario.storages],
@@ -167,8 +149,6 @@ class Solver:
         )
 
         # Flexible
-        scenario_arrays["nodes_with_balancing"] = np.array(list(set(np.concatenate([scenario_arrays['storage_nodes'], scenario_arrays['flexible_nodes']]))), dtype=np.int64)
-
         scenario_arrays['flexible_ids'] = np.array(
                                             [self.scenario.generators[idx].id 
                                             for idx in self.scenario.generators
@@ -213,7 +193,6 @@ class Solver:
         scenario_arrays['storage_p_idx'] = scenario_arrays['flexible_p_idx'] + len(self.scenario.storages) 
         scenario_arrays['storage_e_idx'] = scenario_arrays['storage_p_idx'] + len(self.scenario.storages) 
         scenario_arrays['lines_idx'] = scenario_arrays['storage_e_idx'] + len(self.scenario.lines)
-        scenario_arrays['balancing_W_idx'] = scenario_arrays['lines_idx'] + (len(self.scenario.storages)-len(scenario_arrays['nodes_with_balancing']))
 
         # Costs
         '''
@@ -238,6 +217,8 @@ class Solver:
             scenario_arrays['generator_costs'][3, gen_idx] = g.cost.vom
             scenario_arrays['generator_costs'][4, gen_idx] = g.cost.lifetime
             scenario_arrays['generator_costs'][5, gen_idx] = g.cost.discount_rate
+            scenario_arrays['generator_costs'][6, gen_idx] = g.cost.fuel_cost_mwh
+            scenario_arrays['generator_costs'][7, gen_idx] = g.cost.fuel_cost_h
 
         for i, idx in enumerate(self.scenario.storages):
             s = self.scenario.storages[idx]
@@ -278,19 +259,10 @@ class Solver:
         scenario_arrays = self._prepare_scenario_arrays()
         self._initialise_callback()
 
-        # Establish monotonicity of balancing frequency cutoffs at each node
-        balancing_constraint = BalancingMonotonicityConstraint(self.cutoff_W_per_node, self.x_W_offset)
-        monotonicity_constraint = NonlinearConstraint(
-            fun=balancing_constraint,
-            lb=balancing_constraint.lb,
-            ub=balancing_constraint.ub,
-        )
-
         self.result = differential_evolution(
             x0=self.decision_x0,
             func=parallel_wrapper, 
             bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
-            constraints=(monotonicity_constraint,),
             args=(scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
@@ -307,8 +279,6 @@ class Solver:
                     scenario_arrays["storage_ids"],
                     scenario_arrays["storage_nodes"],
                     scenario_arrays["flexible_ids"],
-                    scenario_arrays["nodes_with_balancing"],
-                    scenario_arrays['max_frequency'],
                     scenario_arrays["storage_durations"],
                     scenario_arrays["storage_costs"],
                     scenario_arrays["line_ids"],
@@ -321,7 +291,6 @@ class Solver:
                     scenario_arrays['storage_p_idx'],
                     scenario_arrays["storage_e_idx"],
                     scenario_arrays["lines_idx"],
-                    scenario_arrays['balancing_W_idx'],
                     scenario_arrays["solar_nodes"],
                     scenario_arrays["wind_nodes"],
                     scenario_arrays["flexible_nodes"],

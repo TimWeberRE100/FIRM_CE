@@ -1,0 +1,9 @@
+id,name,emissions,cost
+0,solar,0,0
+1,wind,0,0
+2,water,0,0
+3,new_ocgt_nsw,1,19.4227
+4,new_ocgt_qld,1,17.7492
+5,new_ocgt_sa,1,18.4368
+6,new_ocgt_tas,1,19.4671
+7,new_ocgt_vic,1,17.8962

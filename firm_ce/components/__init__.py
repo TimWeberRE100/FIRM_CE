@@ -1,6 +1,7 @@
 from firm_ce.components.components import (
     Generator,
-    Storage
+    Storage,
+    Fuel
 )
 from firm_ce.components.transmission import (
     Line,
