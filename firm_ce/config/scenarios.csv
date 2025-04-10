@@ -1,4 +1,3 @@
 id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraints,type
-0,gas,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
-1,nem,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
-2,battery,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
+0,constrained_phes,0.05,0.0015,2042,2052,"CNSW,NNSW,SNSW,SNW,CQ,GG,NQ,SQ,VIC,CSA,SESA,TAS","EnergyConnect,N-Q-MNSP1,NSW1-QLD1,V-S-MNSP1,V-SA,VIC1-NSW1,T-V-MNSP1,CNSW-NNSW,CNSW-SNW,CQ-GG,CQ-NQ,SESA-CSA,SNSW-CNSW,SQ-CQ,Marinus_1,Marinus_2,",,single_time
+1,relaxed_phes,0.05,0.0015,2042,2052,"CNSW,NNSW,SNSW,SNW,CQ,GG,NQ,SQ,VIC,CSA,SESA,TAS","EnergyConnect,N-Q-MNSP1,NSW1-QLD1,V-S-MNSP1,V-SA,VIC1-NSW1,T-V-MNSP1,CNSW-NNSW,CNSW-SNW,CQ-GG,CQ-NQ,SESA-CSA,SNSW-CNSW,SQ-CQ,Marinus_1,Marinus_2,",,single_time
