@@ -53,3 +53,9 @@ id,name,fuel,capex,fom,vom,lifetime,discount_rate,heat_rate_base,heat_rate_incr,
 51,gas_TH,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,TH,0,0,0,flexible,"mekong_gas,mekong_imports"
 52,coal_VH,black coal,0,64.9,4.7,0,0.05,420.42,8.811818898,VH,0,0,0,baseload,"mekong,mekong_gas,mekong_imports"
 53,coal_VS,black coal,0,64.9,4.7,0,0.05,420.42,8.811818898,VS,0,0,0,baseload,"mekong,mekong_gas,mekong_imports"
+54,CH_imports,water,0,0,100,0,0.05,0,0,CH_I,50,0,0,flexible,mekong_imports
+55,MY_imports,water,0,0,100,0,0.05,0,0,MY_I,50,0,0,flexible,"mekong_imports,thailand_imports"
+56,MM_imports,water,0,0,100,0,0.05,0,0,MM_I,50,0,0,flexible,"mekong_imports,thailand_imports"
+57,KH_imports,water,0,0,100,0,0.05,0,0,KH_I,50,0,0,flexible,thailand_imports
+58,LAS_imports,water,0,0,100,0,0.05,0,0,LAS_I,50,0,0,flexible,thailand_imports
+59,LAN_imports,water,0,0,100,0,0.05,0,0,LAN_I,50,0,0,flexible,thailand_imports

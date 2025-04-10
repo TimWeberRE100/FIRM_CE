@@ -239,8 +239,6 @@ class Solution_SingleTime:
             if storage_durations[idx] > 0:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
 
-        #print(self.CPV,self.CWind,self.CFlexible,self.CPHP,self.CPHS,self.CTrans)
-
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
 
@@ -288,7 +286,7 @@ class Solution_SingleTime:
 
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
         F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] # SRMC of 1 MWh in 1 h
-
+        
         for node in range(nodes):
             storage_mask = self.storage_nodes == node
             if np.any(storage_mask):
@@ -992,11 +990,17 @@ class Solution_SingleTime:
                     for idx in self.storage_sorted_nodal[node,:]:
                         self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
 
+                        if idx == 0:
+                            break
+
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
                 if np.any(flexible_mask):
-                    for idx in self.flexible_sorted_nodal[node,:]:   
+                    for idx in self.flexible_sorted_nodal[node,:]:  
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True) 
+
+                        if idx == 0:
+                            break
             
             self.Storage[t] = self._update_storage(t, self.Storage[t-1])
 
@@ -1057,13 +1061,13 @@ class Solution_SingleTime:
         return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        start_time = time.time()
+        """ start_time = time.time() """
 
         deficit, TFlowsAbs = self._transmission_balancing()
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
 
-        end_time = time.time()
-        print(f"Transmission time: {end_time-start_time:.4f} seconds")
+        """ end_time = time.time()
+        print(f"Transmission time: {end_time-start_time:.4f} seconds") """
 
         self._calculate_annual_generation()
         cost = calculate_costs(self)

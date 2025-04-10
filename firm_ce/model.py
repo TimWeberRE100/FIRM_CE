@@ -117,4 +117,3 @@ class Model:
         for scenario in self.scenarios.values():
             
             self.results[scenario.name] = scenario.solve(self.config)
-            exit() ####### DEBUG
