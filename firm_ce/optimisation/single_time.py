@@ -180,7 +180,8 @@ class Solution_SingleTime:
                 line_cost_ids,
                 networksteps,
                 storage_d_efficiencies,
-                storage_c_efficiencies,) -> None:
+                storage_c_efficiencies,
+                Flexible_Limits_Annual,) -> None:
 
         self.x = x  
         self.evaluated=False   
@@ -194,8 +195,11 @@ class Solution_SingleTime:
         self.efficiency = efficiency
         self.resolution = resolution
         self.years = years
+        self.year_first_t = self._get_year_t_arr(2020) #### UPDATE TO FIRST_YEAR
         self.energy = self.MLoad.sum() * self.resolution / self.years
         self.allowance = allowance*self.energy
+
+        print(self.year_first_t)
 
         # Generators
         self.generator_ids = generator_ids
@@ -205,6 +209,8 @@ class Solution_SingleTime:
         self.CBaseload = CBaseload
         self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
         self.GFlexible = np.zeros((self.intervals, len(self.CPeak)), dtype=np.float64)
+        self.Flexible_Limits_Annual = Flexible_Limits_Annual
+        self.GFlexible_constraint = np.zeros((self.intervals,len(self.CPeak)), dtype=np.float64)
 
         # Storages
         self.storage_ids = storage_ids
@@ -241,6 +247,8 @@ class Solution_SingleTime:
         for idx in range(len(storage_durations)):
             if storage_durations[idx] > 0:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
+
+        #print(self.CPV,self.CWind,self.CFlexible,self.CPHP,self.CPHS,self.CTrans)
 
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
@@ -289,7 +297,7 @@ class Solution_SingleTime:
         self.flexible_sorted_nodal = np.zeros((nodes,max(self.flexible_nodal_count)), dtype=np.int64)
 
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
-        F_variable_costs = min(self.CFlexible) * (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] ###### THIS DOES NOT QUITE WORK?
+        F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] ###### THIS DOES NOT QUITE WORK?
 
         for node in range(nodes):
             storage_mask = self.storage_nodes == node
@@ -314,6 +322,24 @@ class Solution_SingleTime:
         self.baseload_cost_ids = baseload_cost_ids
         self.storage_cost_ids = storage_cost_ids
         self.line_cost_ids = line_cost_ids
+
+    def _get_year_t_arr(self,first_year):
+        year_first_t = np.zeros(self.years, dtype=np.int64)
+        for i in range(self.years):
+            year = first_year + i
+
+            first_t = i * (8760 // self.resolution)
+
+            leap_days = sum(
+                1 for y in range(first_year, year)
+                if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
+            )
+
+            leap_adjust = leap_days * (24 // self.resolution)
+
+            year_first_t[i] = first_t + leap_adjust
+
+        return year_first_t
 
     def _fill_nodal_array_2d(self, generation_array, node_array):
         result = np.zeros((self.intervals, self.nodes), dtype=np.float64)
@@ -376,7 +402,7 @@ class Solution_SingleTime:
         if is_flexible:
             # For flexible generation, lower bound is 0.
             lower = 0 if lower_bound is None else lower_bound
-            upper = self.CFlexible[idx] if upper_bound is None else upper_bound
+            upper = self._Flexible_max[idx] if upper_bound is None else upper_bound
             current = self.GFlexible_nodal[t][node]
             new_value = helpers.scalar_clamp(current, lower, upper)
             self.GFlexible_nodal[t][node] -= new_value
@@ -394,6 +420,8 @@ class Solution_SingleTime:
     
     def _determine_precharge_energies(self, t, Netload):
         Storaget_1_reversed = self.Storage[t-1].copy() 
+        Flexible_Limit_reversed = self.GFlexible_constraint[t-1].copy()
+        Flexible_Limit_reversed2 = Flexible_Limit_reversed.copy()
         local_min = Storaget_1_reversed.copy() 
         local_max = Storaget_1_reversed.copy()      
         
@@ -409,6 +437,18 @@ class Solution_SingleTime:
             self._Discharget_max_nodal = self._fill_nodal_array_1d(self._Discharget_max, self.storage_nodes)
             self._Charget_max = np.minimum(self.CPHP, Storaget_p_lb_rev) # Reversed energy constraint in reverse time
             self._Charget_max_nodal = self._fill_nodal_array_1d(self._Charget_max, self.storage_nodes)
+
+            if t-1 in self.year_first_t:
+                for i in range(len(self.year_first_t)):
+                    if t-1 == self.year_first_t[i]:
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution
+            else:
+                for i in range(len(self.year_first_t)):
+                    if t-1 > self.year_first_t[i]:
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution
+
+            self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)# Reversed energy constraint in reverse time
+            self._Flexible_max_nodal = self._fill_nodal_array_1d(self._Flexible_max, self.flexible_nodes)
 
             self.Transmission[t] = np.zeros((len(self.CTrans), self.nodes), dtype = np.float64) # Reset the transmission
 
@@ -452,7 +492,7 @@ class Solution_SingleTime:
 
                 self.GFlexible_nodal[t] = np.minimum(
                     np.maximum(Netloadt - self.SPower_nodal[t], 0),
-                    self.CFlexible_nodal
+                    self._Flexible_max_nodal
                 ) 
 
             self.Spillage_nodal[t] = -1 * np.minimum(0, Netloadt - np.minimum(self.SPower_nodal[t], 0))
@@ -472,7 +512,7 @@ class Solution_SingleTime:
 
                 self.GFlexible_nodal[t] = np.minimum(
                     np.maximum(Netloadt - self.SPower_nodal[t], 0),
-                    self.CFlexible_nodal
+                    self._Flexible_max_nodal
                 ) 
 
             # Apportion to individual storages/flexible 
@@ -492,6 +532,7 @@ class Solution_SingleTime:
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True)
             
             Storaget_1_reversed = self._update_storage(t, Storaget_1_reversed, False)
+            Flexible_Limit_reversed += self.GFlexible[t] * self.resolution
             
             local_max = np.maximum(local_max, Storaget_1_reversed)
             local_min = np.minimum(local_min, Storaget_1_reversed)
@@ -507,8 +548,9 @@ class Solution_SingleTime:
                 precharge_mask = (local_max - local_min > Storaget_1_forward)
                 precharge_energy[~precharge_mask] = 0
                 trickling_reserves = local_max - local_min
+                flexible_reserves = Flexible_Limit_reversed - Flexible_Limit_reversed2
 
-                return trickling_reserves, precharge_energy, t+1
+                return trickling_reserves, precharge_energy, flexible_reserves, t+1
     
     def _get_energy_change(self, original_power, change_power, storage_idx):
         # Energy change sense based on forward time relationship (t increasing)
@@ -553,8 +595,8 @@ class Solution_SingleTime:
 
         else:
             # Trickling
-            trickling_change_max = self.CFlexible - self.GFlexible[t] #### Add energy constraint
-
+            trickling_change_max = np.minimum(self.CFlexible - self.GFlexible[t], trickling_reserves / self.resolution) 
+        
         # Precharging
         discharge_reduction_constraint = np.minimum(precharge_energy * self.storage_d_efficiencies / self.resolution,
                                                     np.maximum(self.SPower[t], 0))
@@ -566,16 +608,17 @@ class Solution_SingleTime:
 
         return trickling_change_max, precharging_change_max
     
-    def _determine_precharge_powers(self, trickling_reserves, precharge_energy, t, Netload):
+    def _determine_precharge_powers(self, trickling_reserves, precharge_energy, flexible_reserves, t, Netload):
         t_precharge_start = 0
         trickling_mask = (self.Storage[t] - trickling_reserves > 1e-6) & (precharge_energy < 1e-6)  
         precharging_mask = (precharge_energy > 1e-6) 
+        flexible_mask = (self.GFlexible_constraint[t] - flexible_reserves > 1e-6)
 
         while True:
             t -= 1    
 
-            remaining_trickling_reserves = np.maximum(self.Storage[t] - trickling_reserves,0) 
-            trickling_mask = (remaining_trickling_reserves > 1e-6) & trickling_mask 
+            remaining_trickling_reserves = np.maximum(self.Storage[t] - trickling_reserves,0)             
+            trickling_mask = (remaining_trickling_reserves > 1e-6) & trickling_mask             
             precharging_mask = (self.Storage[t] + 1e-6 < self.CPHS) & (precharge_energy > 1e-6) & precharging_mask 
 
             trickling_change_max, precharging_change_max = self._get_change_power_bounds(remaining_trickling_reserves, precharge_energy, t, False)
@@ -706,10 +749,9 @@ class Solution_SingleTime:
 
             if (precharge_energy > 1e-6).any():
                 # Use flexible if all trickling reserves have been used
-                ###### MAKE FLEXIBLE RESERVES BASED ON ENERGY CONSTRAINT
-                precharge_energy = self._determine_flexible_precharging(t, precharging_mask, precharge_energy, np.full(len(self.flexible_nodes), NP_FLOAT_MAX, dtype=np.float64))
+                precharge_energy, flexible_reserves, flexible_mask = self._determine_flexible_precharging(t, precharging_mask, precharge_energy, flexible_reserves)
                 
-            if (precharge_energy < 1e-6).all() or (not precharging_mask.any()) or (t < 1):# or (not trickling_mask.any() and not flexible_mask.any()):
+            if (precharge_energy < 1e-6).all() or (not precharging_mask.any()) or (t < 1) or (not trickling_mask.any() and not flexible_mask.any()):
                 t_precharge_start = t
                 break
                 
@@ -717,12 +759,13 @@ class Solution_SingleTime:
     
     def _determine_flexible_precharging(self, t, precharging_mask, precharge_energy, flexible_reserves):
         # Remaining_flexible_reserves
-        trickling_mask = flexible_reserves > 1e-6     
+        remaining_flexible_reserves = np.maximum(self.GFlexible_constraint[t] - flexible_reserves,0) 
+        flexible_mask = (remaining_flexible_reserves > 1e-6)
         precharging_mask = (self.Storage[t] + 1e-6 < self.CPHS) & (precharge_energy > 1e-6) & precharging_mask       
 
-        trickling_change_max, precharging_change_max = self._get_change_power_bounds(flexible_reserves, precharge_energy, t, True)
-        if not trickling_mask.all():
-            trickling_change_max[~trickling_mask] = 0 
+        trickling_change_max, precharging_change_max = self._get_change_power_bounds(remaining_flexible_reserves, precharge_energy, t, True)
+        if not flexible_mask.all():
+            trickling_change_max[~flexible_mask] = 0 
         if not precharging_mask.all():
             precharging_change_max[~precharging_mask] = 0 
         trickling_max_nodal = self._fill_nodal_array_1d(trickling_change_max, self.flexible_nodes)
@@ -743,13 +786,14 @@ class Solution_SingleTime:
 
         for i in range(len(self.flexible_nodes)):
             ##### ORDER THE FLEXIBLE GEN
-            if trickling_mask[i]:
+            if flexible_mask[i]:
                 node = self.flexible_nodes[i]
 
                 change_power = max(min(Intranodet_trickle[node],trickling_change_max[i]),0)
                 change_energy = -change_power / self.resolution
 
                 self.GFlexible[t,i] += change_power
+                flexible_reserves[i] -= change_energy 
                 Intranodet_trickle[node] -= change_power  
                 trickling_change_max[i] -= change_power         
 
@@ -781,7 +825,7 @@ class Solution_SingleTime:
 
             for i in range(len(self.flexible_nodes)):
                 ##### ORDER THE FLEXIBLE GEN
-                if trickling_mask[i]:
+                if flexible_mask[i]:
                     node = self.flexible_nodes[i]
 
                     change_power = max(min(Netloadt[node],trickling_change_max[i]),0)
@@ -804,7 +848,7 @@ class Solution_SingleTime:
             self.SPower_nodal[t] = self._fill_nodal_array_1d(self.SPower[t], self.storage_nodes)
             self.GFlexible_nodal[t] = self._fill_nodal_array_1d(self.GFlexible[t], self.flexible_nodes)
 
-        return precharge_energy
+        return precharge_energy, flexible_reserves, flexible_mask
     
     def _determine_precharge_storage(self, t_precharge_start, t_end_deficit):
         for t in range(t_precharge_start, t_end_deficit):
@@ -813,21 +857,37 @@ class Solution_SingleTime:
             self._Discharget_max = np.minimum(self.CPHP, Storaget_p_lb)
             self._Charget_max = np.minimum(self.CPHP, Storaget_p_ub)
             SPowert = self.SPower[t].copy()
+            GFlexiblet = self.GFlexible[t].copy()
+
+            if t in self.year_first_t:
+                for i in range(len(self.year_first_t)):
+                    if t == self.year_first_t[i]:
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution
+            else:
+                Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
+            self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)
 
             self.SPower[t] = (
                     np.maximum(np.minimum(SPowert, self._Discharget_max),0) +
                     np.minimum(np.maximum(SPowert, -self._Charget_max),0) 
                     
-                )            
+                )    
+            self.GFlexible[t] = np.minimum(GFlexiblet, self._Flexible_max)
 
             self.Storage[t] = self._update_storage(t, self.Storage[t-1])
+            if t in self.year_first_t:
+                for i in range(len(self.year_first_t)):
+                    if t == self.year_first_t[i]:
+                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution
+            else:
+                self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
 
         return None
 
     def _precharge_storage(self, t, Netload):
-        trickling_reserves, precharge_energy, t_deficit_start = self._determine_precharge_energies(t, Netload)
+        trickling_reserves, precharge_energy, flexible_reserves, t_deficit_start = self._determine_precharge_energies(t, Netload)
 
-        t_precharge_start = self._determine_precharge_powers(trickling_reserves, precharge_energy, t_deficit_start, Netload)
+        t_precharge_start = self._determine_precharge_powers(trickling_reserves, precharge_energy, flexible_reserves, t_deficit_start, Netload)
 
         self._determine_precharge_storage(t_precharge_start, t+1)
 
@@ -844,6 +904,16 @@ class Solution_SingleTime:
             self._Discharget_max_nodal = self._fill_nodal_array_1d(self._Discharget_max, self.storage_nodes)
             self._Charget_max = np.minimum(self.CPHP, Storaget_p_ub)
             self._Charget_max_nodal = self._fill_nodal_array_1d(self._Charget_max, self.storage_nodes)
+            
+            if t in self.year_first_t:
+                for i in range(len(self.year_first_t)):
+                    if t == self.year_first_t[i]:
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution
+            else:
+                Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
+            
+            self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)
+            self._Flexible_max_nodal = self._fill_nodal_array_1d(self._Flexible_max, self.flexible_nodes)
 
             Netloadt = Netload[t].copy()  
             if not precharging_allowed:
@@ -870,7 +940,7 @@ class Solution_SingleTime:
                 # Draw down from neighbours storage and flexible reserves                
                 self.Spillage_nodal[t] = (
                     self._Discharget_max_nodal
-                    + self.CFlexible_nodal
+                    + self._Flexible_max_nodal
                 )
 
                 self.Transmission[t] = get_transmission_flows_t(
@@ -888,7 +958,7 @@ class Solution_SingleTime:
 
                 self.GFlexible_nodal[t] = np.minimum(
                     np.maximum(Netloadt - self.SPower_nodal[t], 0),
-                    self.CFlexible_nodal
+                    self._Flexible_max_nodal
                 ) 
 
             self.Spillage_nodal[t] = -1 * np.minimum(0, Netloadt - np.minimum(self.SPower_nodal[t], 0))
@@ -909,7 +979,7 @@ class Solution_SingleTime:
 
                 self.GFlexible_nodal[t] = np.minimum(
                     np.maximum(Netloadt - self.SPower_nodal[t], 0),
-                    self.CFlexible_nodal
+                    self._Flexible_max_nodal
                 ) 
             
             # Apportion to individual storages/flexible 
@@ -929,6 +999,13 @@ class Solution_SingleTime:
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True) 
             
             self.Storage[t] = self._update_storage(t, self.Storage[t-1])
+
+            if t in self.year_first_t:
+                for i in range(len(self.year_first_t)):
+                    if t == self.year_first_t[i]:
+                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution
+            else:
+                self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
 
             if not precharging_allowed:   
                 continue
@@ -964,7 +1041,7 @@ class Solution_SingleTime:
         self.TFlows = (self.Transmission).sum(axis=2)
         self.GDischarge = np.maximum(self.SPower, 0)
 
-        """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
+        np.savetxt("results/Netload.csv", Netload, delimiter=",")
         np.savetxt("results/ImpExp.csv", ImpExp, delimiter=",")
         np.savetxt("results/Deficit.csv", self.Deficit_nodal, delimiter=",")
         np.savetxt("results/Spillage.csv", self.Spillage_nodal, delimiter=",")
@@ -976,18 +1053,18 @@ class Solution_SingleTime:
         OUTPUT2 = np.concatenate((Netload[:18000,:],ImpExp[:18000,:],(self.GFlexible)[:18000,:],(self.SPower)[:18000,:],self.Deficit_nodal[:18000,:],self.Spillage_nodal[:18000,:],self.Storage[:18000,:]), axis=1)
         
         np.savetxt("results/OUTPUT.csv", 1000*OUTPUT, delimiter=",")
-        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",") """
+        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",")
 
         return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        """ start_time = time.time() """
+        start_time = time.time()
 
         deficit, TFlowsAbs = self._transmission_balancing()
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
 
-        """ end_time = time.time()
-        print(f"Transmission time: {end_time-start_time:.4f} seconds") """
+        end_time = time.time()
+        print(f"Transmission time: {end_time-start_time:.4f} seconds")
 
         self._calculate_annual_generation()
         cost = calculate_costs(self)
@@ -997,8 +1074,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss) / 1000 # $/MWh
         
-        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
-        exit() """
+        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
+        exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
@@ -1050,7 +1127,8 @@ def parallel_wrapper(xs,
                     line_cost_ids,
                     networksteps,
                     storage_d_efficiencies,
-                    storage_c_efficiencies,):
+                    storage_c_efficiencies,
+                    Flexible_Limits_Annual,):
     result = np.empty(xs.shape[1], dtype=np.float64)
     for i in prange(xs.shape[1]):
         result[i] = objective_st(xs[:,i], 
@@ -1096,7 +1174,8 @@ def parallel_wrapper(xs,
                                 line_cost_ids,
                                 networksteps,
                                 storage_d_efficiencies,
-                                storage_c_efficiencies,)
+                                storage_c_efficiencies,
+                                Flexible_Limits_Annual,)
     return result
 
 @njit
@@ -1143,7 +1222,8 @@ def objective_st(x,
                 line_cost_ids,
                 networksteps,
                 storage_d_efficiencies,
-                storage_c_efficiencies,):
+                storage_c_efficiencies,
+                Flexible_Limits_Annual,):
     solution = Solution_SingleTime(x,
                                 MLoad,
                                 TSPV,
@@ -1187,6 +1267,7 @@ def objective_st(x,
                                 line_cost_ids,
                                 networksteps,
                                 storage_d_efficiencies,
-                                storage_c_efficiencies,)
+                                storage_c_efficiencies,
+                                Flexible_Limits_Annual,)
     solution.evaluate()
     return solution.lcoe + solution.penalties

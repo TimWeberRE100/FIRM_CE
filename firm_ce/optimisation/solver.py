@@ -101,6 +101,12 @@ class Solver:
             if self.scenario.generators[idx].unit_type == 'wind'
         ], dtype=np.float64).T
 
+        scenario_arrays['Flexible_Limits_Annual'] = np.array([
+            self.scenario.generators[idx].annual_limit
+            for idx in self.scenario.generators
+            if self.scenario.generators[idx].unit_type == "flexible"
+        ], dtype=np.float64).T
+
         scenario_arrays['solar_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['solar'])[0]] 
         scenario_arrays['wind_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['wind'])[0]] 
         scenario_arrays['flexible_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])[0]] 
@@ -306,6 +312,7 @@ class Solver:
                     scenario_arrays["networksteps"],
                     scenario_arrays["storage_d_efficiencies"],
                     scenario_arrays["storage_c_efficiencies"],
+                    scenario_arrays['Flexible_Limits_Annual'],
             ),
             tol=0,
             maxiter=self.config.iterations, 

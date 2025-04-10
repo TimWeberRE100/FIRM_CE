@@ -4,8 +4,8 @@ id,name,initial_power_capacity,initial_energy_capacity,duration,capex_p,capex_e,
 2,phes_sa,0,0,48,646,57,0,0,60,0.05,SA,0.8,1,50,200,0,0,phes,"nem,battery,gas"
 3,phes_vic,0,0,48,646,57,0,0,60,0.05,VIC,0.8,1,50,200,0,0,phes,"nem,battery,gas"
 4,phes_tas,0,0,48,646,57,0,0,60,0.05,TAS,0.8,1,50,200,0,0,phes,"nem,battery,gas"
-5,bess_qld,0,0,4,1692,0,0,0,20,0.05,QLD,0.9,1,50,200,0,0,bess,battery
-6,bess_nsw,0,0,4,1692,0,0,0,20,0.05,NSW,0.9,1,50,200,0,0,bess,battery
-7,bess_sa,0,0,4,1692,0,0,0,20,0.05,SA,0.9,1,50,200,0,0,bess,battery
-8,bess_vic,0,0,4,1692,0,0,0,20,0.05,VIC,0.9,1,50,200,0,0,bess,battery
-9,bess_tas,0,0,4,1692,0,0,0,20,0.05,TAS,0.9,1,50,200,0,0,bess,battery
+5,bess_qld,0,0,4,1692,0,0,0,20,0.05,QLD,0.9,1,50,200,0,0,bess,"battery,gas"
+6,bess_nsw,0,0,4,1692,0,0,0,20,0.05,NSW,0.9,1,50,200,0,0,bess,"battery,gas"
+7,bess_sa,0,0,4,1692,0,0,0,20,0.05,SA,0.9,1,50,200,0,0,bess,"battery,gas"
+8,bess_vic,0,0,4,1692,0,0,0,20,0.05,VIC,0.9,1,50,200,0,0,bess,"battery,gas"
+9,bess_tas,0,0,4,1692,0,0,0,20,0.05,TAS,0.9,1,50,200,0,0,bess,"battery,gas"

@@ -32,13 +32,20 @@ class Generator:
                               fuel=fuel)
 
         self.data = None
+        self.annual_limit = 0
         for key in datafiles:
-            if datafiles[key].type != 'generation':
+            if (datafiles[key].type != 'generation') and (datafiles[key].type != 'flexible_annual_limit'):
                 continue
             if self.name not in datafiles[key].data.keys():
                 continue
-            self.data = list(datafiles[key].data[self.name])
-            break
+            if datafiles[key].type == 'generation':
+                self.data = list(datafiles[key].data[self.name])
+                break
+            elif datafiles[key].type == 'flexible_annual_limit':
+                self.annual_limit = list(datafiles[key].data[self.name])
+                break
+
+                
 
     def __repr__(self):
         return f"<Generator object [{self.id}]{self.name}>"

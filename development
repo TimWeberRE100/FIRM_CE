@@ -21,10 +21,6 @@
     b. Effect of change in PHES costs
     c. Behaviour of batteries + PHES in hybrid systems
 
-PLEXOS bugs
-- Add transmission line costs
-- Double check fuel costs are correctly included! I think they are
-
 PLEXOS CHANGES
 - Remove maintenance (forced outage rate, outage factor, mean time to repair)
 - Remove MLF
@@ -55,16 +51,6 @@ FIRM_CE bugs
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Energy constraints on flexible?
 - https://doi.org/10.1016/j.epsr.2010.06.018
-- Test model that forces batteries to always be fully charged?
 - Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE
-
-- If storage is empty, precharge using next highest frequency storage
-- If all storages are empty, precharge with flexible in cost order
-
-- Precharge, unless it will spill? Or precharge whenever storage is empty?
-    - When a storage is empty, mark the first interval and start counting the number of intervals it remains empty
-    - Mark which flexible are available to precharge as you go using a boolean array?
-    - Calculate precharge energy = Storage Power Capacity * Empty Intervals for each empty system
-    - Calculate precharge intervals = min(Precharge Energy / Flexible Capacity, previous intervals until full storages) starting with cheapest flexible
     
