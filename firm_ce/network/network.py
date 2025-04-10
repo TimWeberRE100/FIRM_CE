@@ -35,12 +35,23 @@ class Network:
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
         node_names = {nodes[idx].name : nodes[idx].id for idx in nodes}
 
+        l = 0
+        n = 0
+        line_order = {}
+        node_order = {}
+        for key in lines:
+            line_order[key] = l
+            l += 1
+        for key in nodes:
+            node_order[key] = n
+            n += 1
+
         for key in lines:
             line = lines[key]
             line_id = line.id
             start_node_id = node_names[line.node_start]
             end_node_id = node_names[line.node_end]
-            topology[line_id] = [start_node_id, end_node_id]
+            topology[line_order[line_id]] = [node_order[start_node_id], node_order[end_node_id]]
 
         return topology
     

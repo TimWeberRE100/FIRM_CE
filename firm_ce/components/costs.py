@@ -69,7 +69,7 @@ def calculate_costs(solution):
 
     for idx in range(0,len(solution.flexible_cost_ids)):
         gen_idx = solution.flexible_cost_ids[idx]
-        generator_capacities[gen_idx] = solution.CPeak[idx]
+        generator_capacities[gen_idx] = solution.CFlexible[idx]
         generator_annual_generations[gen_idx] = solution.GFlexible_annual[idx]
         generator_annual_hours[gen_idx] = solution.Flexible_hours_annual[idx]
 
