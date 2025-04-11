@@ -1,5 +1,0 @@
-id,scenarios,filename,datafile_type
-1,"nem,gas,battery",electricity_1h.csv,demand
-2,"nem,gas,battery",solar_1h.csv,generation
-3,"nem,gas,battery",wind_1h.csv,generation
-4,"nem,gas,battery",flexible_annual_limit.csv,flexible_annual_limit

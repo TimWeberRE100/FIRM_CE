@@ -25,6 +25,7 @@ if JIT_ENABLED:
         ('years', int64),
         ('energy', float64),
         ('allowance', float64),
+        ('year_first_t', int64[:]),
 
         # Generators
         ('generator_ids', int64[:]),
@@ -32,6 +33,9 @@ if JIT_ENABLED:
         ('CBaseload', float64[:]),
         ('GBaseload', float64[:, :]),
         ('GFlexible', float64[:, :]),
+        ('Flexible_Limits_Annual', float64[:, :]),
+        ('GFlexible_constraint', float64[:, :]),
+        ('_Flexible_max', float64[:]),
 
         # Storages
         ('storage_ids', int64[:]),
@@ -95,6 +99,7 @@ if JIT_ENABLED:
         ('SPower_nodal', float64[:, :]),
         ('_Charget_max_nodal', float64[:]),
         ('_Discharget_max_nodal', float64[:]),
+        ('_Flexible_max_nodal', float64[:]),
         ('storage_sorted_nodal', int64[:, :]),
         ('flexible_sorted_nodal', int64[:, :]),
 
@@ -202,6 +207,7 @@ class Solution_SingleTime:
         self.GFlexible = np.zeros((self.intervals, len(flexible_ids)), dtype=np.float64)
         self.Flexible_Limits_Annual = Flexible_Limits_Annual
         self.GFlexible_constraint = np.zeros((self.intervals,len(flexible_ids)), dtype=np.float64)
+        self._Flexible_max = np.zeros(len(flexible_ids), dtype=np.float64)
 
         # Storages
         self.storage_ids = storage_ids
@@ -263,6 +269,7 @@ class Solution_SingleTime:
 
         self._Charget_max_nodal = np.zeros(self.nodes, dtype=np.float64) 
         self._Discharget_max_nodal = np.zeros(self.nodes, dtype=np.float64) 
+        self._Flexible_max_nodal = np.zeros(self.nodes, dtype=np.float64) 
 
         self.GPV_annual = np.zeros(self.CPV.shape, dtype=np.float64)
         self.GWind_annual = np.zeros(self.CWind.shape, dtype=np.float64)
@@ -313,15 +320,16 @@ class Solution_SingleTime:
 
     def _get_year_t_arr(self,first_year):
         year_first_t = np.zeros(self.years, dtype=np.int64)
+
         for i in range(self.years):
             year = first_year + i
 
             first_t = i * (8760 // self.resolution)
 
-            leap_days = sum(
-                1 for y in range(first_year, year+1)
-                if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0)
-            )
+            leap_days = 0
+            for y in range(first_year, year + 1):
+                if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):
+                    leap_days += 1
 
             leap_adjust = leap_days * (24 // self.resolution)
 
@@ -1050,7 +1058,7 @@ class Solution_SingleTime:
         self.TFlows = (self.Transmission).sum(axis=2)
         self.GDischarge = np.maximum(self.SPower, 0)
 
-        np.savetxt("results/Netload.csv", Netload, delimiter=",")
+        """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
         np.savetxt("results/ImpExp.csv", ImpExp, delimiter=",")
         np.savetxt("results/Deficit.csv", self.Deficit_nodal, delimiter=",")
         np.savetxt("results/Spillage.csv", self.Spillage_nodal, delimiter=",")
@@ -1062,7 +1070,7 @@ class Solution_SingleTime:
         OUTPUT2 = np.concatenate((Netload[:18000,:],ImpExp[:18000,:],(self.GFlexible)[:18000,:],(self.SPower)[:18000,:],self.Deficit_nodal[:18000,:],self.Spillage_nodal[:18000,:],self.Storage[:18000,:]), axis=1)
         
         np.savetxt("results/OUTPUT.csv", 1000*OUTPUT, delimiter=",")
-        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",")
+        np.savetxt("results/OUTPUT2.csv", 1000*OUTPUT2, delimiter=",") """
 
         return self.Deficit_nodal, np.abs(self.TFlows)
 
@@ -1083,8 +1091,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - loss) / 1000 # $/MWh
         
-        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
-        exit()
+        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
+        exit() """
         return lcoe, pen_deficit
 
     def evaluate(self):
