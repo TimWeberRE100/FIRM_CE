@@ -106,6 +106,7 @@ if JIT_ENABLED:
         ('GPV_annual', float64[:]),
         ('GWind_annual', float64[:]),
         ('GFlexible_annual', float64[:]),
+        ('Flexible_hours_annual', float64[:]),
         ('GBaseload_annual', float64[:]),
         ('GDischarge_annual', float64[:]),
         ('TFlowsAbs_annual', float64[:]),
@@ -274,6 +275,7 @@ class Solution_SingleTime:
         self.GPV_annual = np.zeros(self.CPV.shape, dtype=np.float64)
         self.GWind_annual = np.zeros(self.CWind.shape, dtype=np.float64)
         self.GFlexible_annual = np.zeros(self.CFlexible.shape, dtype=np.float64)
+        self.Flexible_hours_annual = np.zeros(self.CFlexible.shape, dtype=np.float64)
         self.GBaseload_annual = np.zeros(self.CBaseload.shape, dtype=np.float64)
         self.GDischarge_annual = np.zeros(self.CPHP.shape, dtype=np.float64)
         self.TFlowsAbs_annual = np.zeros(0, dtype=np.float64)
