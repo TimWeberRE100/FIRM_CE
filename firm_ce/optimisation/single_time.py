@@ -78,6 +78,7 @@ if JIT_ENABLED:
 
         # Transmission
         ('Transmission', float64[:, :, :]),
+        ('trans_tflows_mask', boolean[:, :]),
 
         # Nodal assignments
         ('flexible_nodes', int64[:]),
@@ -144,6 +145,7 @@ class Solution_SingleTime:
                 TSPV,
                 TSWind,
                 network,
+                transmission_mask,
                 intervals,
                 nodes,
                 lines,
@@ -248,6 +250,7 @@ class Solution_SingleTime:
 
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
+        self.trans_tflows_mask = transmission_mask
 
         # Nodal Values
         self.flexible_nodes = flexible_nodes 
@@ -1050,14 +1053,14 @@ class Solution_SingleTime:
         # Ignore precharging unless likely to be close to optimal solution
         precharging_allowed = self._check_feasibility(Netload)
 
-        self._transmission_for_period(0,self.intervals, Netload, precharging_allowed)        
+        self._transmission_for_period(0,self.intervals, Netload, precharging_allowed)   
         
         ImpExp = self.Transmission.sum(axis=1)   
 
         self.SPower_nodal = self._fill_nodal_array_2d(self.SPower, self.storage_nodes)
         self.Deficit_nodal = np.maximum(0, Netload - ImpExp - self._fill_nodal_array_2d(self.GFlexible, self.flexible_nodes) - self.SPower_nodal)
         self.Spillage_nodal = -1 * np.minimum(0, Netload - ImpExp - self.SPower_nodal) 
-        self.TFlows = (self.Transmission).sum(axis=2)
+        self.TFlows = (np.atleast_3d(self.trans_tflows_mask).T*self.Transmission).sum(axis=2)
         self.GDischarge = np.maximum(self.SPower, 0)
 
         """ np.savetxt("results/Netload.csv", Netload, delimiter=",")
@@ -1108,6 +1111,7 @@ def parallel_wrapper(xs,
                     TSPV,
                     TSWind,
                     network,
+                    transmission_mask,
                     intervals,
                     nodes,
                     lines,
@@ -1154,6 +1158,7 @@ def parallel_wrapper(xs,
                                 TSPV,
                                 TSWind,
                                 network,
+                                transmission_mask,
                                 intervals,
                                 nodes,
                                 lines,
@@ -1201,6 +1206,7 @@ def objective_st(x,
                 TSPV,
                 TSWind,
                 network,
+                transmission_mask,
                 intervals,
                 nodes,
                 lines,
@@ -1245,6 +1251,7 @@ def objective_st(x,
                                 TSPV,
                                 TSWind,
                                 network,
+                                transmission_mask,
                                 intervals,
                                 nodes,
                                 lines,

@@ -1,14 +1,13 @@
 import numpy as np
 from scipy.optimize import differential_evolution, NonlinearConstraint
-from firm_ce.optimisation.single_time import parallel_wrapper
-from firm_ce.file_manager import read_initial_guess
+from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
 import csv
 
 class Solver:
-    def __init__(self, config, scenario) -> None:
+    def __init__(self, config, scenario, decision_x0) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = read_initial_guess()
+        self.decision_x0 = decision_x0
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
 
@@ -178,6 +177,7 @@ class Solver:
 
         scenario_arrays['network'] = self.scenario.network.network
         scenario_arrays['networksteps'] = self.scenario.network.networksteps
+        scenario_arrays['transmission_mask'] = self.scenario.network.transmission_mask
 
         scenario_arrays['TLoss'] = np.array(
             [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines],
@@ -271,6 +271,7 @@ class Solver:
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
                     scenario_arrays["network"],
+                    scenario_arrays['transmission_mask'],
                     scenario_arrays["intervals"],
                     scenario_arrays["nodes"],
                     scenario_arrays["lines"],
@@ -326,6 +327,57 @@ class Solver:
         
     def _capacity_expansion(self):
         pass
+
+    def statistics(self):
+        scenario_arrays = self._prepare_scenario_arrays()
+        solution = Solution_SingleTime(self.decision_x0,
+                    scenario_arrays["MLoad"],
+                    scenario_arrays["TSPV"],
+                    scenario_arrays["TSWind"],
+                    scenario_arrays["network"],
+                    scenario_arrays['transmission_mask'],
+                    scenario_arrays["intervals"],
+                    scenario_arrays["nodes"],
+                    scenario_arrays["lines"],
+                    scenario_arrays["years"],
+                    scenario_arrays["resolution"],
+                    scenario_arrays["allowance"],
+                    scenario_arrays["generator_ids"],
+                    scenario_arrays["generator_costs"],
+                    scenario_arrays["storage_ids"],
+                    scenario_arrays["storage_nodes"],
+                    scenario_arrays["flexible_ids"],
+                    scenario_arrays["storage_durations"],
+                    scenario_arrays["storage_costs"],
+                    scenario_arrays["line_ids"],
+                    scenario_arrays["line_lengths"],
+                    scenario_arrays["line_costs"],
+                    scenario_arrays["TLoss"],
+                    scenario_arrays["pv_idx"],
+                    scenario_arrays["wind_idx"],
+                    scenario_arrays["flexible_p_idx"],
+                    scenario_arrays['storage_p_idx'],
+                    scenario_arrays["storage_e_idx"],
+                    scenario_arrays["lines_idx"],
+                    scenario_arrays["solar_nodes"],
+                    scenario_arrays["wind_nodes"],
+                    scenario_arrays["flexible_nodes"],
+                    scenario_arrays["baseload_nodes"],
+                    scenario_arrays["CBaseload"],
+                    scenario_arrays["pv_cost_ids"],
+                    scenario_arrays["wind_cost_ids"],
+                    scenario_arrays["flexible_cost_ids"],
+                    scenario_arrays["baseload_cost_ids"],
+                    scenario_arrays["storage_cost_ids"],
+                    scenario_arrays["line_cost_ids"],
+                    scenario_arrays["networksteps"],
+                    scenario_arrays["storage_d_efficiencies"],
+                    scenario_arrays["storage_c_efficiencies"],
+                    scenario_arrays['Flexible_Limits_Annual'],
+                    self.scenario.first_year)
+        solution.evaluate()
+
+        return solution
 
     def evaluate(self):
         if self.config.type not in ['single_time','capacity_expansion']:

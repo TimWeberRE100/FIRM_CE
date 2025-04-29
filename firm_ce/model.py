@@ -1,6 +1,6 @@
 from typing import Dict, List
 
-from firm_ce.file_manager import import_csv_data, DataFile 
+from firm_ce.file_manager import import_csv_data, DataFile, read_initial_guess
 from firm_ce.components import Generator, Storage, Line, Node, Fuel
 from firm_ce.optimisation import Solver
 from firm_ce.network import Network
@@ -83,7 +83,7 @@ class Scenario:
         return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
 
     def solve(self, config):
-        solver = Solver(config, self)
+        solver = Solver(config, self, read_initial_guess())
         solver.evaluate()
         return solver.solution
 
@@ -111,9 +111,7 @@ class Model:
         self.scenarios = {
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }
-        self.results = {}
 
     def solve(self):
-        for scenario in self.scenarios.values():
-            
-            self.results[scenario.name] = scenario.solve(self.config)
+        for scenario in self.scenarios.values():            
+            scenario.solve(self.config)
