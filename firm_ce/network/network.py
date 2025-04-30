@@ -68,7 +68,8 @@ class Network:
         transmission_mask = np.zeros((self.node_count, len(self.topology)), dtype=np.bool_)
         for n, row in enumerate(self.topology):
             transmission_mask[row[0], n] = True
-        return transmission_mask
+        
+        return np.atleast_3d(transmission_mask).T
     
     def _get_direct_connections(self) -> np.ndarray:
         direct_connections = np.full((self.node_count+1, self.node_count+1), -1, dtype=np.int64)

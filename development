@@ -51,6 +51,7 @@ FIRM_CE bugs
 - Energy constraints on flexible?
 - https://doi.org/10.1016/j.epsr.2010.06.018
 - Min load for ROR hydro?
-- Existing capacity: FOM and VOM and Fuel, not LCOE
-- Solar and wind transmission connection costs
+- Existing capacity: FOM and VOM and Fuel, not LCOE - why are hydro costs so high compared to gas?
+- save callback to scenario results folder?
+- flexible gen must be ordered for precharging
     
