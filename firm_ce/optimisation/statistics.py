@@ -4,7 +4,6 @@ import csv
 import numpy as np
 from datetime import datetime
 
-from firm_ce.model import Model
 from firm_ce.optimisation.solver import Solver
 from firm_ce.file_manager import read_initial_guess
 from firm_ce.components.costs import calculate_costs
@@ -12,10 +11,10 @@ from firm_ce.components.costs import calculate_costs
 
 def generate_result_files(result_x, scenario, config):
     dir_path = create_scenario_dir(scenario.name)
-    header_gw, header_mw, header_summary, baseload_capacities = get_generator_details(scenario)
+    header_gw, header_mw, header_summary = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
-    save_capacity_results(dir_path, header_gw, np.hstack((baseload_capacities, result_x)))
+    save_capacity_results(dir_path, header_gw, solution)
     save_interval_results(dir_path, header_mw, solution)
     save_summary_statistics(dir_path, header_summary, solution)
     save_summary_costs(dir_path, solution, scenario)
@@ -41,19 +40,17 @@ def get_generator_details(scenario):
     solar = group_by_type('solar')
     wind = group_by_type('wind')
     flexible = group_by_type('flexible')
+    generators = [scenario.generators[idx] for idx in scenario.generators]
 
-    storages = list(scenario.storages.values())
-    lines = list(scenario.lines.values())
-    nodes = list(scenario.nodes.values())
+    storages = [scenario.storages[idx] for idx in scenario.storages]
+    lines = [scenario.lines[idx] for idx in scenario.lines]
+    nodes = [scenario.nodes[idx] for idx in scenario.nodes]
 
     def make_headers(generators, unit):
         return [f"{g.name} [{unit}]" for g in generators]
 
     header_gw = np.array(
-        make_headers(baseload, 'GW') +
-        make_headers(solar, 'GW') +
-        make_headers(wind, 'GW') +
-        make_headers(flexible, 'GW') +
+        make_headers(generators, 'GW') +
         make_headers(storages, 'GW') +
         [f"{s.name} [GWh]" for s in storages] +
         make_headers(lines, 'GW')
@@ -80,8 +77,7 @@ def get_generator_details(scenario):
         [f"{n.name} Average Annual Deficit [TWh]" for n in nodes]
     )
 
-    baseload_capacities = np.array([g.capacity for g in baseload])
-    return header_gw, header_mw, header_summary, baseload_capacities
+    return header_gw, header_mw, header_summary
 
 
 def save_csv(path, header, rows, decimals=None):
@@ -93,9 +89,14 @@ def save_csv(path, header, rows, decimals=None):
     print(f"Saved to {path}")
 
 
-def save_capacity_results(dir_path, header, result_x):
+def save_capacity_results(dir_path, header, solution):
+    _, _, _, tech_capacities = calculate_costs(solution)
+    capacities = np.array([tech_capacities[0][i] for i in range(len(tech_capacities[0])) if tech_capacities[0][i]>0] +
+                          [tech_capacities[1][i] for i in range(len(tech_capacities[1])) if tech_capacities[1][i]>0] +
+                          [tech_capacities[3][i] for i in range(len(tech_capacities[3])) if tech_capacities[1][i]>0] +
+                          [tech_capacities[2][i] for i in range(len(tech_capacities[2])) if tech_capacities[2][i]>0])
     path = os.path.join(dir_path, 'capacities.csv')
-    save_csv(path, header, [result_x], decimals=1)
+    save_csv(path, header, [capacities], decimals=1)
 
 
 def save_interval_results(dir_path, header, solution):
@@ -202,6 +203,7 @@ def save_summary_costs(dir_path, solution, scenario):
 
 
 if __name__ == '__main__':
+    from firm_ce.model import Model
     model = Model()
     result_x = read_initial_guess()
     generate_result_files(result_x, model.scenarios['mekong_imports'], model.config)

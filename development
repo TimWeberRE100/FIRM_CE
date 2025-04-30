@@ -47,12 +47,10 @@ PLEXOS CHANGES
 - Remove from lines Min Capacity Reserves, Max Capacity Reserves, Marginal Loss Factor, Marginal Loss Factor Back, Loss Allocation etc., 
 
 FIRM_CE bugs
-- Add fuel costs into calculation
 - Different scenarios may have different numbers of decision variables for initial_guess.csv
 - Energy constraints on flexible?
 - https://doi.org/10.1016/j.epsr.2010.06.018
 - Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE
-- Transmission losses
 - Solar and wind transmission connection costs
     

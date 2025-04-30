@@ -119,6 +119,9 @@ if JIT_ENABLED:
         ('baseload_cost_ids', int64[:]),
         ('storage_cost_ids', int64[:]),
         ('line_cost_ids', int64[:]),
+
+        ('generator_line_ids', int64),
+        ('storage_line_ids', int64)
     ]
 else:
     def jitclass(spec):
@@ -185,7 +188,9 @@ class Solution_SingleTime:
                 storage_d_efficiencies,
                 storage_c_efficiencies,
                 Flexible_Limits_Annual,
-                first_year,) -> None:
+                first_year,
+                generator_line_ids,
+                storage_line_ids) -> None:
 
         self.x = x  
         self.evaluated=False   
@@ -205,6 +210,7 @@ class Solution_SingleTime:
 
         # Generators
         self.generator_ids = generator_ids
+        self.generator_line_ids = generator_line_ids
         self.generator_costs = generator_costs
 
         self.CBaseload = CBaseload
@@ -216,6 +222,7 @@ class Solution_SingleTime:
 
         # Storages
         self.storage_ids = storage_ids
+        self.storage_line_ids = storage_line_ids
         self.storage_nodes = storage_nodes
         self.storage_durations = storage_durations
         self.storage_costs = storage_costs
@@ -1152,7 +1159,9 @@ def parallel_wrapper(xs,
                     storage_d_efficiencies,
                     storage_c_efficiencies,
                     Flexible_Limits_Annual,
-                    first_year,):
+                    first_year,
+                    generator_line_ids,
+                    storage_line_ids):
     result = np.empty(xs.shape[1], dtype=np.float64)
     for i in prange(xs.shape[1]):
         result[i] = objective_st(xs[:,i], 
@@ -1199,7 +1208,9 @@ def parallel_wrapper(xs,
                                 storage_d_efficiencies,
                                 storage_c_efficiencies,
                                 Flexible_Limits_Annual,
-                                first_year,)
+                                first_year,
+                                generator_line_ids,
+                                storage_line_ids)
     return result
 
 @njit
@@ -1247,7 +1258,9 @@ def objective_st(x,
                 storage_d_efficiencies,
                 storage_c_efficiencies,
                 Flexible_Limits_Annual,
-                first_year,):
+                first_year,
+                generator_line_ids,
+                storage_line_ids):
     solution = Solution_SingleTime(x,
                                 MLoad,
                                 TSPV,
@@ -1292,6 +1305,8 @@ def objective_st(x,
                                 storage_d_efficiencies,
                                 storage_c_efficiencies,
                                 Flexible_Limits_Annual,
-                                first_year,)
+                                first_year,
+                                generator_line_ids,
+                                storage_line_ids)
     solution.evaluate()
     return solution.lcoe + solution.penalties
