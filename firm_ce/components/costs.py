@@ -105,7 +105,7 @@ def calculate_costs(solution):
             generator_annual_hours[idx],
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
-        ], dtype=np.float64).sum()
+        ], dtype=np.float64)
     
     storage_costs = np.array([
         annualisation_component(
@@ -123,7 +123,7 @@ def calculate_costs(solution):
             0,
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
-        ], dtype=np.float64).sum()
+        ], dtype=np.float64)
     
     transmission_costs = np.array([
         annualisation_transmission(
@@ -138,9 +138,11 @@ def calculate_costs(solution):
             solution.line_lengths[idx]
         ) for idx in range(0,len(line_capacities))
         if line_capacities[idx] > 0
-        ], dtype=np.float64).sum()
+        ], dtype=np.float64)
 
-    costs = generator_costs + storage_costs + transmission_costs
-    #print(costs)
+    costs = generator_costs.sum() + storage_costs.sum() + transmission_costs.sum()
+    tech_costs = (generator_costs, storage_costs, transmission_costs)
+    capacities = (generator_capacities, storage_p_capacities, line_capacities)
+    annual_gen = (generator_annual_generations, storage_annual_discharge, line_annual_flows)
         
-    return costs
+    return costs, tech_costs, annual_gen, capacities

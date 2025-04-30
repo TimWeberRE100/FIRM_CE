@@ -18,6 +18,7 @@ if JIT_ENABLED:
         ('penalties', float64),
 
         ('MLoad', float64[:, :]),
+        ('loss', float64),
         ('intervals', int64),
         ('nodes', int64),
         ('lines', int64),
@@ -192,6 +193,7 @@ class Solution_SingleTime:
         self.penalties = 0.0
 
         self.MLoad = MLoad / 1000 # MW to GW
+        self.loss = 0.0
         self.intervals = intervals
         self.nodes = nodes
         self.lines = lines
@@ -1089,12 +1091,12 @@ class Solution_SingleTime:
         print(f"Transmission time: {end_time-start_time:.4f} seconds") """
 
         self._calculate_annual_generation()
-        cost = calculate_costs(self)
+        cost, _, _, _ = calculate_costs(self)
 
         loss = TFlowsAbs.sum(axis=0) * self.TLoss
-        loss = loss.sum() * self.resolution / self.years
+        self.loss = loss.sum() * self.resolution / self.years
 
-        lcoe = cost / np.abs(self.energy - loss) / 1000 # $/MWh
+        lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
         """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
         exit() """
