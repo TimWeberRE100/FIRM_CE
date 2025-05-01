@@ -208,7 +208,7 @@ if __name__ == '__main__':
     from firm_ce.model import Model
     model = Model()
     result_x = read_initial_guess()
-    generate_result_files(result_x, model.scenarios['mekong_imports'], model.config)
+    generate_result_files(result_x, model.scenarios['gas'], model.config)
 
     """ for scenario_name in initial_guesses.keys():
         generate_result_files(initial_guesses[scenario_name], model.scenarios[scenario_name]) """
