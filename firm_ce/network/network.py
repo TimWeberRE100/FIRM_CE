@@ -55,6 +55,17 @@ class Network:
             node_order[key] = n
             n += 1
 
+        l = 0
+        n = 0
+        line_order = {}
+        node_order = {}
+        for key in lines:
+            line_order[key] = l
+            l += 1
+        for key in nodes:
+            node_order[key] = n
+            n += 1
+
         for key in lines:
             line = lines[key]
             line_id = line.id
