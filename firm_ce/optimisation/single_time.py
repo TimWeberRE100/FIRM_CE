@@ -322,9 +322,8 @@ class Solution_SingleTime:
             if np.any(flexible_mask):
                 sorted_indices = np.argsort(F_variable_costs[flexible_mask])
 
-                L = sorted_indices.shape[0]
-                for i in range(L):
-                    self.flexible_sorted_nodal[node, i] = L - sorted_indices[i] - 1
+                for i in range(sorted_indices.shape[0]):
+                    self.flexible_sorted_nodal[node, i] = sorted_indices[i]
 
         # Cost Values
         self.pv_cost_ids = pv_cost_ids
@@ -1088,7 +1087,7 @@ class Solution_SingleTime:
         print(f"Transmission time: {end_time-start_time:.4f} seconds") """
 
         self._calculate_annual_generation()
-        cost = calculate_costs(self)
+        cost, _, _, _ = calculate_costs(self)
 
         loss = TFlowsAbs.sum(axis=0) * self.TLoss
         self.loss = loss.sum() * self.resolution / self.years
