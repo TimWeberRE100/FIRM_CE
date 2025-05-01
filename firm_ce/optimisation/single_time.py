@@ -214,7 +214,7 @@ class Solution_SingleTime:
         self.generator_line_ids = generator_line_ids
         self.generator_costs = generator_costs
 
-        self.CBaseload = CBaseload
+        self.CBaseload = CBaseload + EPSILON_FLOAT64 # Prevent 0GW capacities from being excluded from statistics
         self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
         self.GFlexible = np.zeros((self.intervals, len(flexible_ids)), dtype=np.float64)
         self.Flexible_Limits_Annual = Flexible_Limits_Annual
@@ -247,6 +247,7 @@ class Solution_SingleTime:
         self.TFlowsAbs = np.zeros((intervals, lines), dtype=np.float64)
 
         # Decision Variables
+        x += EPSILON_FLOAT64 # Prevent 0GW capacities from being excluded from statistics
         self.CPV = x[: pv_idx]
         self.CWind = x[pv_idx : wind_idx]
         self.CFlexible = x[wind_idx : flexible_p_idx]
