@@ -303,8 +303,8 @@ class Solution_SingleTime:
         for node in flexible_nodes:
             self.flexible_nodal_count[node] += 1
 
-        self.storage_sorted_nodal = np.zeros((nodes,max(self.storage_nodal_count)), dtype=np.int64)
-        self.flexible_sorted_nodal = np.zeros((nodes,max(self.flexible_nodal_count)), dtype=np.int64)
+        self.storage_sorted_nodal = -1*np.ones((nodes,max(self.storage_nodal_count)), dtype=np.int64)
+        self.flexible_sorted_nodal = -1*np.ones((nodes,max(self.flexible_nodal_count)), dtype=np.int64)
 
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
         F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] # SRMC of 1 MWh in 1 h
@@ -544,19 +544,17 @@ class Solution_SingleTime:
                 storage_mask = self.storage_nodes == node
                 if np.any(storage_mask):
                     for idx in self.storage_sorted_nodal[node,::-1]:
-                        self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
-
-                        if idx == 0:
+                        if idx == -1:
                             break
+                        self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
 
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
                 if np.any(flexible_mask):
-                    for idx in self.flexible_sorted_nodal[node,:]:       
+                    for idx in self.flexible_sorted_nodal[node,:]: 
+                        if idx == -1:
+                            break      
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True)
-
-                        if idx == 0:
-                            break
             
             Storaget_1_reversed = self._update_storage(t, Storaget_1_reversed, False)
             Flexible_Limit_reversed += self.GFlexible[t] * self.resolution
@@ -1019,20 +1017,18 @@ class Solution_SingleTime:
                 storage_mask = self.storage_nodes == node
                 if np.any(storage_mask):
                     for idx in self.storage_sorted_nodal[node,:]:
-                        self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
-
-                        if idx == 0:
+                        if idx == -1:
                             break
+                        self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
 
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
                 if np.any(flexible_mask):
-                    for idx in self.flexible_sorted_nodal[node,:]:  
+                    for idx in self.flexible_sorted_nodal[node,:]: 
+                        if idx == -1:
+                            break 
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True) 
-
-                        if idx == 0:
-                            break
-            
+                                    
             self.Storage[t] = self._update_storage(t, self.Storage[t-1])
 
             if t in self.year_first_t:
