@@ -1,6 +1,7 @@
 from typing import Dict
 from firm_ce.file_manager import DataFile 
 from firm_ce.components.costs import UnitCost
+from firm_ce.components.transmission import Line
 
 class Fuel:
     def __init__(self, id: int, fuel_dict: Dict[str, str]) -> None:
@@ -13,7 +14,7 @@ class Fuel:
         return f"<Fuel object [{self.id}]{self.name}>"
 
 class Generator:
-    def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, datafiles: Dict[str, DataFile]) -> None:
+    def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, line: Line, datafiles: Dict[str, DataFile]) -> None:
         self.id = id
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
@@ -21,6 +22,7 @@ class Generator:
         self.max_build = int(generator_dict['max_build'])  # MW/year
         self.min_build = int(generator_dict['min_build'])  # MW/year
         self.capacity = float(generator_dict['initial_capacity'])  # MW
+        self.line = line
         self.unit_type = str(generator_dict['unit_type'])
         self.cost = UnitCost(capex_p=int(generator_dict['capex']),
                               fom=float(generator_dict['fom']),
@@ -43,15 +45,13 @@ class Generator:
                 break
             elif datafiles[key].type == 'flexible_annual_limit':
                 self.annual_limit = list(datafiles[key].data[self.name])
-                break
-
-                
+                break                
 
     def __repr__(self):
         return f"<Generator object [{self.id}]{self.name}>"
 
 class Storage:
-    def __init__(self, id: int, storage_dict: Dict[str, str]) -> None:
+    def __init__(self, id: int, storage_dict: Dict[str, str], line: Line) -> None:
         self.id = id
         self.name = str(storage_dict['name'])
         self.node = str(storage_dict['node'])
@@ -64,6 +64,7 @@ class Storage:
         self.max_build_e = int(storage_dict['max_build_e'])  # MWh/year
         self.min_build_p = int(storage_dict['min_build_p'])  # MW/year
         self.min_build_e = int(storage_dict['min_build_e'])  # MWh/year
+        self.line = line
         self.unit_type = str(storage_dict['unit_type'])
 
         self.cost = UnitCost(capex_p=int(storage_dict['capex_p']),

@@ -16,6 +16,7 @@ else:
 
 class Network:
     def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node]) -> None:
+        lines = self._remove_minor_lines(lines)
         self.topology = self._get_topology(lines, nodes)
         self.node_count = len(nodes)
         self.transmission_mask = self._get_transmission_mask()
@@ -27,6 +28,14 @@ class Network:
 
         self.direct_connections = self.direct_connections[:-1, :-1]
 
+    @staticmethod
+    def _remove_minor_lines(lines: Dict[str,Line]):
+        cleaned_lines = {}
+        for key in lines:
+            if (lines[key].node_start != 'nan') and (lines[key].node_end != 'nan'):
+                cleaned_lines[key] = lines[key]
+        return cleaned_lines
+
     def _get_network_steps(self):
         return np.where(TRIANGULAR == self.network.shape[2])[0][0]
 
@@ -34,6 +43,17 @@ class Network:
         num_lines = len(lines)
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
         node_names = {nodes[idx].name : nodes[idx].id for idx in nodes}
+        
+        l = 0
+        n = 0
+        line_order = {}
+        node_order = {}
+        for key in lines:
+            line_order[key] = l
+            l += 1
+        for key in nodes:
+            node_order[key] = n
+            n += 1
 
         l = 0
         n = 0
@@ -59,7 +79,8 @@ class Network:
         transmission_mask = np.zeros((self.node_count, len(self.topology)), dtype=np.bool_)
         for n, row in enumerate(self.topology):
             transmission_mask[row[0], n] = True
-        return transmission_mask
+        
+        return np.atleast_3d(transmission_mask).T
     
     def _get_direct_connections(self) -> np.ndarray:
         direct_connections = np.full((self.node_count+1, self.node_count+1), -1, dtype=np.int64)

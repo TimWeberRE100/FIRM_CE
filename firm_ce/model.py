@@ -1,9 +1,10 @@
 from typing import Dict, List
 
-from firm_ce.file_manager import import_csv_data, DataFile 
+from firm_ce.file_manager import import_csv_data, DataFile
 from firm_ce.components import Generator, Storage, Line, Node, Fuel
 from firm_ce.optimisation import Solver
 from firm_ce.network import Network
+from firm_ce.optimisation.statistics import generate_result_files
 
 class ModelData:
     def __init__(self) -> None:
@@ -34,8 +35,8 @@ class Scenario:
         self.nodes = self._get_nodes(scenario_data.get('nodes', ''), datafiles)
         self.lines = self._get_lines(model_data.lines)
         self.fuels = self._get_fuels(model_data.fuels)
-        self.generators = self._get_generators(model_data.generators, datafiles, self.fuels)
-        self.storages = self._get_storages(model_data.storages)
+        self.generators = self._get_generators(model_data.generators, datafiles, self.fuels, self.lines)
+        self.storages = self._get_storages(model_data.storages, self.lines)
         self.type = scenario_data.get('type', '')
         self.network = Network(self.lines, self.nodes)
 
@@ -57,6 +58,17 @@ class Scenario:
         fuel_name_map = {fuel_dict[idx].name: fuel_dict[idx] for idx in fuel_dict}
         return [fuel_name_map[all_generators[g]['fuel']] for g in all_generators if all_generators[g]['fuel'] in fuel_name_map]
     
+    @staticmethod
+    def _get_component_lines(all_components: Dict[str,Dict[str,str]], line_dict: Dict[str,Line]) -> Dict[str,Line]:
+        line_name_map = {line_dict[idx].name: line_dict[idx] for idx in line_dict}
+        result = []
+        for g in all_components:
+            if all_components[g]['line'] in line_name_map:
+                result.append(line_name_map[all_components[g]['line']])
+            else:
+                result.append(None)
+        return result
+    
     def _get_nodes(self, node_names: str, datafiles: Dict[str, DataFile]) -> Dict[str,Node]:
         node_names = self._parse_comma_separated(node_names)
         return {idx: Node(idx,node_names[idx], datafiles) for idx in range(len(node_names))}
@@ -65,14 +77,16 @@ class Scenario:
         """Extract line names from scenario data."""
         return {idx: Line(idx, all_lines[idx]) for idx in all_lines if self.name in self._parse_comma_separated(all_lines[idx]['scenarios'])}
 
-    def _get_generators(self, all_generators: Dict[str,Dict[str,str]], datafiles: Dict[str, DataFile], fuel_dict: Dict[str,Fuel]) -> Dict[str,Generator]:
+    def _get_generators(self, all_generators: Dict[str,Dict[str,str]], datafiles: Dict[str, DataFile], fuel_dict: Dict[str,Fuel], line_dict: Dict[str,Line]) -> Dict[str,Generator]:
         """Filter or prepare generator data specific to this scenario."""
         fuels = self._get_generator_fuels(all_generators, fuel_dict)
-        return {idx: Generator(idx, all_generators[idx], fuels[idx], datafiles) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
+        lines = self._get_component_lines(all_generators, line_dict)
+        return {idx: Generator(idx, all_generators[idx], fuels[idx], lines[idx], datafiles) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
     
-    def _get_storages(self, all_storages: Dict[str,Dict[str,str]]) -> Dict[str,Storage]:
+    def _get_storages(self, all_storages: Dict[str,Dict[str,str]], line_dict: Dict[str,Line]) -> Dict[str,Storage]:
         """Filter or prepare storage data specific to this scenario."""
-        return {idx: Storage(idx, all_storages[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
+        lines = self._get_component_lines(all_storages, line_dict)
+        return {idx: Storage(idx, all_storages[idx], lines[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
     
     def _get_fuels(self, all_fuels: Dict[str,Dict[str,str]]) -> Dict[str,Fuel]:
         """Filter or prepare fuel data specific to this scenario."""
@@ -85,7 +99,7 @@ class Scenario:
     def solve(self, config):
         solver = Solver(config, self)
         solver.evaluate()
-        return solver.solution
+        return solver.result
 
 class ModelSettings:
     def __init__(self, settings_dict: Dict[str, str]) -> None:
@@ -111,10 +125,8 @@ class Model:
         self.scenarios = {
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }
-        self.results = {}
 
     def solve(self):
-        for scenario in self.scenarios.values():
-            
-            self.results[scenario.name] = scenario.solve(self.config)
-            exit() ####### DEBUG
+        for scenario in self.scenarios.values():            
+            result_x = scenario.solve(self.config)
+            generate_result_files(result_x, scenario, self.config)
