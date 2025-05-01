@@ -36,6 +36,9 @@ class ImportCSV:
     
     def get_config(self) -> dict:
         return self.get_data("config.csv")
+    
+    def get_initial_guess(self) -> dict:
+        return self.get_data("initial_guess.csv")
 
     def get_setting(self, setting_filename) -> dict:
         return self.get_data(setting_filename)
@@ -74,6 +77,7 @@ def import_csv_data() -> dict:
         'storages': csv_importer.get_storages(),
         'datafiles': csv_importer.get_datafiles(),
         'config': csv_importer.get_config(),
+        'initial_guess': csv_importer.get_initial_guess(),
     }
 
     csv_importer = ImportCSV("firm_ce/settings")
@@ -83,11 +87,3 @@ def import_csv_data() -> dict:
         data['settings'][settings[idx]['name']] = csv_importer.get_setting(settings[idx]['filename'])
 
     return data
-
-def read_initial_guess():
-    try:
-        initial_guess = np.genfromtxt(open('firm_ce/config/initial_guess.csv', "r"), delimiter=',', dtype=float)
-    except Exception as e:
-        print(f"Failed to read initial_guess.csv: {e}")
-        initial_guess = None
-    return initial_guess

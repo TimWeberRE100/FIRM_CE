@@ -1,4 +1,5 @@
 from typing import Dict, List
+import numpy as np
 
 from firm_ce.file_manager import import_csv_data, DataFile
 from firm_ce.components import Generator, Storage, Line, Node, Fuel
@@ -17,6 +18,7 @@ class ModelData:
         self.storages = objects.get('storages')
         self.datafiles = objects.get('datafiles')
         self.config = objects.get('config')
+        self.x0s = objects.get('initial_guess')
         self.settings = objects.get('settings')
 
 class Scenario:
@@ -27,6 +29,7 @@ class Scenario:
         self.name = scenario_data.get('scenario_name', '')
 
         datafiles = self._get_datafiles(model_data.datafiles)
+        self.x0 = self._get_x0(model_data.x0s)
 
         self.resolution = float(scenario_data.get('resolution', 0.0))
         self.allowance = float(scenario_data.get('allowance', 0.0))
@@ -95,6 +98,15 @@ class Scenario:
     def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
         return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
+
+    def _get_x0(self, all_x0s: Dict[str,Dict[str,str]]) -> np.ndarray:
+        """Get the initial guess corresponding to this scenario."""
+        for entry in all_x0s.values():
+            if entry.get('scenario') == self.name:
+                x0_str = entry.get('x_0', '').strip()
+                x0_list = [float(x) for x in x0_str.split(',') if x.strip()]
+                return np.array(x0_list, dtype=np.float64)
+        return None
 
     def solve(self, config):
         solver = Solver(config, self)

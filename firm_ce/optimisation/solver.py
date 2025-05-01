@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.optimize import differential_evolution, NonlinearConstraint
 from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
-from firm_ce.file_manager import read_initial_guess
 import csv
 
 
@@ -9,7 +8,7 @@ class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = read_initial_guess()
+        self.decision_x0 = scenario.x0
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
         self.result = None
