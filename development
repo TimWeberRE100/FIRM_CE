@@ -53,5 +53,5 @@ FIRM_CE bugs
 - Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE - why are hydro costs so high compared to gas?
 - save callback to scenario results folder?
-- flexible gen must be ordered for precharging
+- Can flexible gen be dispatched one at a time, so that cheapest is prioritised?
     

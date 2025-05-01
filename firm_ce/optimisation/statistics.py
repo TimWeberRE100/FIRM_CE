@@ -14,6 +14,8 @@ def generate_result_files(result_x, scenario, config):
     header_gw, header_mw, header_summary = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
+    save_csv(os.path.join(dir_path, 'x.csv'), result_x, [], decimals=None)
+
     save_capacity_results(dir_path, header_gw, solution)
     save_interval_results(dir_path, header_mw, solution)
     save_summary_statistics(dir_path, header_summary, solution)
@@ -29,7 +31,7 @@ def create_scenario_dir(scenario_name):
 
 
 def generate_solution(scenario, result_x, config):
-    return Solver(config, scenario, result_x).statistics()
+    return Solver(config, scenario).statistics(result_x)
 
 
 def get_generator_details(scenario):

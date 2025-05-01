@@ -1,15 +1,18 @@
 import numpy as np
 from scipy.optimize import differential_evolution, NonlinearConstraint
 from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
+from firm_ce.file_manager import read_initial_guess
 import csv
 
+
 class Solver:
-    def __init__(self, config, scenario, decision_x0) -> None:
+    def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = decision_x0
+        self.decision_x0 = read_initial_guess()
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
+        self.result = None
 
     def _get_bounds(self):
         solar_generators = [self.scenario.generators[idx] for idx in self.scenario.generators if self.scenario.generators[idx].unit_type == 'solar']
@@ -276,7 +279,7 @@ class Solver:
         scenario_arrays = self._prepare_scenario_arrays()
         self._initialise_callback()
 
-        self.result = differential_evolution(
+        de_result = differential_evolution(
             x0=self.decision_x0,
             func=parallel_wrapper, 
             bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
@@ -339,13 +342,14 @@ class Solver:
             workers=1,
             vectorized=True,
             )
+        self.result = de_result.x
         
     def _capacity_expansion(self):
         pass
 
-    def statistics(self):
+    def statistics(self, result_x):
         scenario_arrays = self._prepare_scenario_arrays()
-        solution = Solution_SingleTime(self.decision_x0,
+        solution = Solution_SingleTime(result_x,
                     scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
