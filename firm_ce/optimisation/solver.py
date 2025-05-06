@@ -1,7 +1,6 @@
 import numpy as np
 from scipy.optimize import differential_evolution, NonlinearConstraint
 from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
-from firm_ce.file_manager import read_initial_guess
 import csv
 
 
@@ -9,7 +8,7 @@ class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = read_initial_guess()
+        self.decision_x0 = scenario.x0
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
         self.result = None
@@ -23,7 +22,7 @@ class Solver:
 
         solar_lb = [generator.capacity + generator.min_build for generator in solar_generators]
         wind_lb = [generator.capacity + generator.min_build for generator in wind_generators]
-        flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators]
+        flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators] 
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] 
         storage_e_lb = [storage.energy_capacity + storage.min_build_e if storage.duration == 0 else 0.0 for storage in storages] 
         line_lb = [line.capacity + line.min_build for line in lines if (line.node_start != 'nan') and (line.node_end != 'nan')]
@@ -106,6 +105,12 @@ class Solver:
             self.scenario.generators[idx].data
             for idx in self.scenario.generators
             if self.scenario.generators[idx].unit_type == 'wind'
+        ], dtype=np.float64).T
+
+        scenario_arrays['TSBaseload'] = np.array([
+            self.scenario.generators[idx].data
+            for idx in self.scenario.generators
+            if self.scenario.generators[idx].unit_type == 'baseload'
         ], dtype=np.float64).T
 
         scenario_arrays['Flexible_Limits_Annual'] = np.array([
@@ -286,6 +291,7 @@ class Solver:
             args=(scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
+                    scenario_arrays['TSBaseload'],
                     scenario_arrays["network"],
                     scenario_arrays['transmission_mask'],
                     scenario_arrays["intervals"],
@@ -353,6 +359,7 @@ class Solver:
                     scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
+                    scenario_arrays['TSBaseload'],
                     scenario_arrays["network"],
                     scenario_arrays['transmission_mask'],
                     scenario_arrays["intervals"],

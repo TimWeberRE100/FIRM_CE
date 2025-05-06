@@ -3,7 +3,7 @@ from typing import List
 import time
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MAX
+from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64, NP_FLOAT_MIN
 from firm_ce.components.costs import calculate_costs
 import firm_ce.helpers as helpers
 
@@ -149,6 +149,7 @@ class Solution_SingleTime:
                 MLoad,
                 TSPV,
                 TSWind,
+                TSBaseload,
                 network,
                 transmission_mask,
                 intervals,
@@ -215,7 +216,7 @@ class Solution_SingleTime:
         self.generator_costs = generator_costs
 
         self.CBaseload = CBaseload + EPSILON_FLOAT64 # Prevent 0GW capacities from being excluded from statistics
-        self.GBaseload = self.CBaseload * np.ones((self.intervals, len(self.CBaseload)), dtype=np.float64)
+        self.GBaseload = self.CBaseload[np.newaxis, :] * TSBaseload
         self.GFlexible = np.zeros((self.intervals, len(flexible_ids)), dtype=np.float64)
         self.Flexible_Limits_Annual = Flexible_Limits_Annual
         self.GFlexible_constraint = np.zeros((self.intervals,len(flexible_ids)), dtype=np.float64)
@@ -463,11 +464,11 @@ class Solution_SingleTime:
             if t-1 in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t-1 == self.year_first_t[i]:
-                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
             else:
                 for i in range(len(self.year_first_t)):
                     if t-1 > self.year_first_t[i]:
-                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
 
             self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)# Reversed energy constraint in reverse time
             self._Flexible_max_nodal = self._fill_nodal_array_1d(self._Flexible_max, self.flexible_nodes)
@@ -897,7 +898,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
             else:
                 Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
             self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)
@@ -942,7 +943,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
             else:
                 Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
             
@@ -1044,7 +1045,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution
+                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
             else:
                 self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
 
@@ -1114,6 +1115,7 @@ def parallel_wrapper(xs,
                     MLoad,
                     TSPV,
                     TSWind,
+                    TSBaseload,
                     network,
                     transmission_mask,
                     intervals,
@@ -1163,6 +1165,7 @@ def parallel_wrapper(xs,
                                 MLoad,
                                 TSPV,
                                 TSWind,
+                                TSBaseload,
                                 network,
                                 transmission_mask,
                                 intervals,
@@ -1213,6 +1216,7 @@ def objective_st(x,
                 MLoad,
                 TSPV,
                 TSWind,
+                TSBaseload,
                 network,
                 transmission_mask,
                 intervals,
@@ -1260,6 +1264,7 @@ def objective_st(x,
                                 MLoad,
                                 TSPV,
                                 TSWind,
+                                TSBaseload,
                                 network,
                                 transmission_mask,
                                 intervals,
