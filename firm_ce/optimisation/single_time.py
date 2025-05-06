@@ -464,11 +464,11 @@ class Solution_SingleTime:
             if t-1 in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t-1 == self.year_first_t[i]:
-                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
             else:
                 for i in range(len(self.year_first_t)):
                     if t-1 > self.year_first_t[i]:
-                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
+                        Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
 
             self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)# Reversed energy constraint in reverse time
             self._Flexible_max_nodal = self._fill_nodal_array_1d(self._Flexible_max, self.flexible_nodes)
@@ -898,7 +898,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
             else:
                 Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
             self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)
@@ -943,7 +943,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
+                        Flexiblet_p_lb = self.Flexible_Limits_Annual[i] / self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
             else:
                 Flexiblet_p_lb = self.GFlexible_constraint[t-1] / self.resolution
             
@@ -1045,7 +1045,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.array([],dtype=np.float64)
+                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
             else:
                 self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
 
