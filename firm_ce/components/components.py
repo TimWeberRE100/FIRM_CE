@@ -19,8 +19,8 @@ class Generator:
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
         self.fuel = fuel
-        self.max_build = int(generator_dict['max_build'])  # GW/year
-        self.min_build = int(generator_dict['min_build'])  # GW/year
+        self.max_build = int(generator_dict['max_build'])  # GW
+        self.min_build = int(generator_dict['min_build'])  # GW
         self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])

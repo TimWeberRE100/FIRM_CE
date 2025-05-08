@@ -27,5 +27,5 @@ id,name,length,capex,transformer_capex,fom,vom,lifetime,discount_rate,node_start
 25,onshore_wind_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
 26,offshore_wind_connection,100,2800,0,28,0,30,0.05,nan,nan,0,0,0,0,submarine,"mekong,mekong_imports,mekong_gas"
 27,phes_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
-28,battery_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
+28,battery_connection,5,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
 29,other_generators,0,0,0,0,0,1,1,nan,nan,0,0,0,0,0,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
