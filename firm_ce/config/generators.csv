@@ -27,7 +27,7 @@ id,name,fuel,capex,fom,vom,lifetime,discount_rate,heat_rate_base,heat_rate_incr,
 25,wind_NEC,wind,986,29.5,0,25,0.05,0,0,NEC,200,0,0,onshore_wind_connection,wind,"thailand,thailand_gas,thailand_imports"
 26,wind_SAC,wind,986,29.5,0,25,0.05,0,0,SAC,200,0,0,onshore_wind_connection,wind,"thailand,thailand_gas,thailand_imports"
 27,wind_TH,wind,986,29.5,0,25,0.05,0,0,TH,800,0,0,onshore_wind_connection,wind,"mekong,mekong_gas,mekong_imports"
-28,hydro_KH,water,0,48.657,5.98521,0,0.05,0,0,KH,0,0,2.786,other_generators,flexible,NONE
+28,hydro_KH,water,0,48.657,5.98521,0,0.05,0,0,KH,0,0,0.0000001,other_generators,flexible,mekong
 29,hydro_LAN,water,0,48.657,5.98521,0,0.05,0,0,LAN,0,0,0.889,other_generators,flexible,NONE
 30,hydro_LAS,water,0,48.657,5.98521,0,0.05,0,0,LAS,0,0,2.8,other_generators,flexible,NONE
 31,hydro_VH,water,0,48.657,5.98521,0,0.05,0,0,VH,0,0,12.5,other_generators,flexible,NONE

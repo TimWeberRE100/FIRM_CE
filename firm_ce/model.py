@@ -103,8 +103,11 @@ class Scenario:
         """Get the initial guess corresponding to this scenario."""
         for entry in all_x0s.values():
             if entry.get('scenario') == self.name:
+                
                 x0_str = entry.get('x_0', '').strip()
+                
                 x0_list = [float(x) for x in x0_str.split(',') if x.strip()]
+
                 return np.array(x0_list, dtype=np.float64)
         return None
 

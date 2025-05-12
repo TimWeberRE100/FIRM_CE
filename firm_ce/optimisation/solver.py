@@ -36,6 +36,24 @@ class Solver:
         line_ub = [line.capacity + line.max_build for line in lines if (line.node_start != 'nan') and (line.node_end != 'nan')]
         upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub)
 
+        def make_key(generators, unit):
+            return [f"{g.name} [{unit}]" for g in generators]
+
+        header_gw = np.array(
+            make_key(solar_generators, 'GW') +
+            make_key(wind_generators, 'GW') +
+            make_key(flexible_generators, 'GW') +
+            make_key(storages, 'GW') +
+            [f"{s.name} [GWh]" for s in storages] +
+            make_key(lines, 'GW')
+        )
+       
+        for i in range(len(self.decision_x0)):
+            if i<len(header_gw):
+                print(f"{header_gw[i]}: {self.decision_x0[i]}")
+            else:
+                print(f"UNASSIGNED: {self.decision_x0[i]}")
+
         return lower_bounds, upper_bounds
 
     def _prepare_scenario_arrays(self):

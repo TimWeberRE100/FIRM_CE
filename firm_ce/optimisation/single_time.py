@@ -914,7 +914,7 @@ class Solution_SingleTime:
             if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
                     if t == self.year_first_t[i]:
-                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution
+                        self.GFlexible_constraint[t] = self.Flexible_Limits_Annual[i] - self.GFlexible[t] * self.resolution if self.Flexible_Limits_Annual.shape[0] > 0 else np.empty(shape=(0),dtype=np.float64)
             else:
                 self.GFlexible_constraint[t] = self.GFlexible_constraint[t-1] - self.GFlexible[t] * self.resolution
         return None
