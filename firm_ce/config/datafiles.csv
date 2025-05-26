@@ -1,6 +1,4 @@
 id,scenarios,filename,datafile_type
-1,"nem,gas,battery",electricity_1h.csv,demand
-2,"nem,gas,battery",solar_1h.csv,generation
-3,"nem,gas,battery",wind_1h.csv,generation
-4,"nem,gas,battery",flexible_annual_limit.csv,flexible_annual_limit
-5,"nem,gas,battery",baseload_1h.csv,generation
+1,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_NG_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST,FIRM_NG_ST",electricity.csv,demand
+2,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_NG_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST,FIRM_NG_ST",solar.csv,generation
+3,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_NG_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST,FIRM_NG_ST",wind.csv,generation

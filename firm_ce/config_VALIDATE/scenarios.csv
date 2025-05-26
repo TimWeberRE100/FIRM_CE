@@ -1,0 +1,4 @@
+id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraints,type
+0,gas,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
+1,nem,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
+2,battery,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
