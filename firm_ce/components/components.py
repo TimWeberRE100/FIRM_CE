@@ -19,9 +19,9 @@ class Generator:
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
         self.fuel = fuel
-        self.max_build = int(generator_dict['max_build'])  # MW/year
-        self.min_build = int(generator_dict['min_build'])  # MW/year
-        self.capacity = float(generator_dict['initial_capacity'])  # MW
+        self.max_build = int(generator_dict['max_build'])  # GW/year
+        self.min_build = int(generator_dict['min_build'])  # GW/year
+        self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])
         self.cost = UnitCost(capex_p=int(generator_dict['capex']),
@@ -55,15 +55,15 @@ class Storage:
         self.id = id
         self.name = str(storage_dict['name'])
         self.node = str(storage_dict['node'])
-        self.power_capacity = float(storage_dict['initial_power_capacity'])  # MW
-        self.energy_capacity = float(storage_dict['initial_energy_capacity'])  # MWh
+        self.power_capacity = float(storage_dict['initial_power_capacity'])  # GW
+        self.energy_capacity = float(storage_dict['initial_energy_capacity'])  # GWh
         self.duration = int(storage_dict['duration']) if int(storage_dict['duration']) > 0 else 0
         self.charge_efficiency = float(storage_dict['charge_efficiency'])  # %
         self.discharge_efficiency = float(storage_dict['discharge_efficiency'])  # %
-        self.max_build_p = int(storage_dict['max_build_p'])  # MW/year
-        self.max_build_e = int(storage_dict['max_build_e'])  # MWh/year
-        self.min_build_p = int(storage_dict['min_build_p'])  # MW/year
-        self.min_build_e = int(storage_dict['min_build_e'])  # MWh/year
+        self.max_build_p = int(storage_dict['max_build_p'])  # GW/year
+        self.max_build_e = int(storage_dict['max_build_e'])  # GWh/year
+        self.min_build_p = int(storage_dict['min_build_p'])  # GW/year
+        self.min_build_e = int(storage_dict['min_build_e'])  # GWh/year
         self.line = line
         self.unit_type = str(storage_dict['unit_type'])
 

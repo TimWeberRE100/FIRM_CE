@@ -47,11 +47,8 @@ PLEXOS CHANGES
 - Remove from lines Min Capacity Reserves, Max Capacity Reserves, Marginal Loss Factor, Marginal Loss Factor Back, Loss Allocation etc., 
 
 FIRM_CE bugs
-- Different scenarios may have different numbers of decision variables for initial_guess.csv
-- Energy constraints on flexible?
-- https://doi.org/10.1016/j.epsr.2010.06.018
-- Min load for ROR hydro?
 - Existing capacity: FOM and VOM and Fuel, not LCOE - why are hydro costs so high compared to gas?
 - save callback to scenario results folder?
 - Can flexible gen be dispatched one at a time, so that cheapest is prioritised?
+- If no flexible are present in the model, it cannot compile
     

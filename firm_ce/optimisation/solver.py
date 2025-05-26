@@ -107,6 +107,12 @@ class Solver:
             if self.scenario.generators[idx].unit_type == 'wind'
         ], dtype=np.float64).T
 
+        scenario_arrays['TSBaseload'] = np.array([
+            self.scenario.generators[idx].data
+            for idx in self.scenario.generators
+            if self.scenario.generators[idx].unit_type == 'baseload'
+        ], dtype=np.float64).T
+
         scenario_arrays['Flexible_Limits_Annual'] = np.array([
             self.scenario.generators[idx].annual_limit
             for idx in self.scenario.generators
@@ -285,6 +291,7 @@ class Solver:
             args=(scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
+                    scenario_arrays["TSBaseload"],
                     scenario_arrays["network"],
                     scenario_arrays['transmission_mask'],
                     scenario_arrays["intervals"],
@@ -352,6 +359,7 @@ class Solver:
                     scenario_arrays["MLoad"],
                     scenario_arrays["TSPV"],
                     scenario_arrays["TSWind"],
+                    scenario_arrays["TSBaseload"],
                     scenario_arrays["network"],
                     scenario_arrays['transmission_mask'],
                     scenario_arrays["intervals"],
