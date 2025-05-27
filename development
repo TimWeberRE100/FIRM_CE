@@ -52,4 +52,5 @@ FIRM_CE bugs
 - Can flexible gen be dispatched one at a time, so that cheapest is prioritised?
 - If no flexible or baseload are present in the model, it cannot compile
 - ISP data is currently 11 years - remove first and last 6 months (for financial years)
+- Statistics breaks if empty baseload or etc.
     
