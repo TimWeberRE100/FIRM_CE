@@ -75,7 +75,6 @@ def import_csv_data() -> dict:
         'fuels': csv_importer.get_fuels(),
         'lines': csv_importer.get_lines(),
         'storages': csv_importer.get_storages(),
-        'datafiles': csv_importer.get_datafiles(),
         'config': csv_importer.get_config(),
         'initial_guess': csv_importer.get_initial_guess(),
     }
@@ -85,5 +84,11 @@ def import_csv_data() -> dict:
     data['settings'] = {}
     for idx in range(len(settings)):
         data['settings'][settings[idx]['name']] = csv_importer.get_setting(settings[idx]['filename'])
+
+    return data
+
+def import_datafiles() -> dict:
+    csv_importer = ImportCSV("firm_ce/config")
+    data = csv_importer.get_datafiles()
 
     return data

@@ -1,0 +1,2 @@
+id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraints,type
+0,FIRM_ISP_WT,0.5,0.00002,2042,2052,"CNSW,NNSW,SNSW,SNW,CQ,GG,NQ,SQ,VIC,CSA,SESA,TAS","EnergyConnect,N-Q-MNSP1,NSW1-QLD1,V-S-MNSP1,V-SA,VIC1-NSW1,T-V-MNSP1,CNSW-NNSW,CNSW-SNW,CQ-GG,CQ-NQ,SESA-CSA,SNSW-CNSW,SQ-CQ,Marinus_1,Marinus_2,",,single_time

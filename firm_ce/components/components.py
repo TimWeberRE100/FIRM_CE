@@ -14,7 +14,7 @@ class Fuel:
         return f"<Fuel object [{self.id}]{self.name}>"
 
 class Generator:
-    def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, line: Line, datafiles: Dict[str, DataFile]) -> None:
+    def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, line: Line) -> None:
         self.id = id
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
@@ -32,9 +32,11 @@ class Generator:
                               heat_rate_base=float(generator_dict['heat_rate_base']),
                               heat_rate_incr=float(generator_dict['heat_rate_incr']),
                               fuel=fuel)
-
+        
         self.data = None
         self.annual_limit = 0
+    
+    def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
         for key in datafiles:
             if (datafiles[key].type != 'generation') and (datafiles[key].type != 'flexible_annual_limit'):
                 continue
@@ -45,7 +47,11 @@ class Generator:
                 break
             elif datafiles[key].type == 'flexible_annual_limit':
                 self.annual_limit = list(datafiles[key].data[self.name])
-                break                
+                break    
+
+    def unload_datafile(self) -> None:       
+        self.data = None
+        self.annual_limit = 0     
 
     def __repr__(self):
         return f"<Generator object [{self.id}]{self.name}>"

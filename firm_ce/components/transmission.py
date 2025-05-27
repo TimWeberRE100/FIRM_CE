@@ -3,14 +3,19 @@ from firm_ce.file_manager import DataFile
 from firm_ce.components.costs import UnitCost
 
 class Node:
-    def __init__(self, id: int, name: str, datafiles: Dict[str, DataFile]) -> None:
+    def __init__(self, id: int, name: str) -> None:
         self.id = int(id)
         self.name = str(name)
+        self.demand_data = None
 
+    def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
         for key in datafiles:
             if datafiles[key].type != 'demand':
                 continue
             self.demand_data = list(datafiles[key].data[self.name])
+
+    def unload_datafile(self) -> None:       
+        self.demand_data = None
 
     def __repr__(self):
         return f"<Node object [{self.id}]{self.name}>"
