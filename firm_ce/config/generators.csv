@@ -407,4 +407,4 @@ id,name,fuel,capex,fom,vom,lifetime,discount_rate,heat_rate_base,heat_rate_incr,
 405,SQ OCGT Large,new_ocgt_qld,1117.725,10.7869,7.72,25,0.07,720.7293,8.2115,SQ,15,0,0,other_connection,flexible,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST"
 406,TAS OCGT Large,new_ocgt_tas,1122.715,10.7869,7.72,25,0.07,720.7293,8.2115,TAS,15,0,0,other_connection,flexible,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST"
 407,VIC OCGT Large,new_ocgt_vic,1122.715,10.7869,7.72,25,0.07,720.7293,8.2115,VIC,15,0,0,other_connection,flexible,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST"
-408,fake_baseload,water,0,0,0,0,0.07,0,0,TAS,0,0,0,other_connection,baseload,"FIRM_ISP_WT,FIRM_UC_WT,FIRM_IS_WT,FIRM_CA_WT,FIRM_NG_WT,FIRM_ISP_ST,FIRM_UC_ST,FIRM_IS_ST,FIRM_CA_ST,FIRM_NG_ST"
+408,fake_baseload,water,0,0,0,0,0.07,0,0,TAS,0,0,0,other_connection,baseload,none

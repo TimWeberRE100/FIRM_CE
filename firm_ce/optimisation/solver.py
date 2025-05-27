@@ -47,7 +47,7 @@ class Solver:
         scenario_arrays['MLoad'] = np.array(
             [self.scenario.nodes[idx].demand_data
             for idx in range(0, max(self.scenario.nodes)+1)],
-            dtype=np.float64
+            dtype=np.float64, ndmin=2
         ).T
 
         scenario_arrays['intervals'], scenario_arrays['nodes'] = scenario_arrays['MLoad'].shape
@@ -99,25 +99,25 @@ class Solver:
             self.scenario.generators[idx].data
             for idx in self.scenario.generators
             if self.scenario.generators[idx].unit_type == 'solar'
-        ], dtype=np.float64).T
+        ], dtype=np.float64, ndmin=2).T
 
         scenario_arrays['TSWind'] = np.array([
             self.scenario.generators[idx].data
             for idx in self.scenario.generators
             if self.scenario.generators[idx].unit_type == 'wind'
-        ], dtype=np.float64).T
+        ], dtype=np.float64, ndmin=2).T
 
         scenario_arrays['TSBaseload'] = np.array([
             self.scenario.generators[idx].data
             for idx in self.scenario.generators
             if self.scenario.generators[idx].unit_type == 'baseload'
-        ], dtype=np.float64).T
+        ], dtype=np.float64, ndmin=2).T
 
         scenario_arrays['Flexible_Limits_Annual'] = np.array([
             self.scenario.generators[idx].annual_limit
             for idx in self.scenario.generators
             if self.scenario.generators[idx].unit_type == "flexible"
-        ], dtype=np.float64).T
+        ], dtype=np.float64, ndmin=2).T
 
         scenario_arrays['solar_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['solar'])[0]] 
         scenario_arrays['wind_nodes'] = scenario_arrays['generator_nodes'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['wind'])[0]] 
@@ -195,9 +195,9 @@ class Solver:
             (7, max(self.scenario.lines)+1), dtype=np.float64
         )
 
-        scenario_arrays['network'] = self.scenario.network.network
-        scenario_arrays['networksteps'] = self.scenario.network.networksteps
-        scenario_arrays['transmission_mask'] = self.scenario.network.transmission_mask
+        scenario_arrays['network'] = self.scenario.network.network # ndmin?
+        scenario_arrays['networksteps'] = self.scenario.network.networksteps # ndmin?
+        scenario_arrays['transmission_mask'] = self.scenario.network.transmission_mask # ndmin?
 
         scenario_arrays['TLoss'] = np.array(
             [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines if (self.scenario.lines[idx].node_start != 'nan') and (self.scenario.lines[idx].node_end != 'nan')],
@@ -273,7 +273,7 @@ class Solver:
         scenario_arrays['line_cost_ids'] = scenario_arrays['line_ids'][~np.isin(scenario_arrays['line_ids'], scenario_arrays['generator_line_ids'])&~np.isin(scenario_arrays['line_ids'], scenario_arrays['storage_line_ids'])]
 
         scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]]
-        
+
         return scenario_arrays
     
     def _initialise_callback(self):
