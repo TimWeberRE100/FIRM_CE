@@ -260,6 +260,18 @@ class Solution_SingleTime:
             if storage_durations[idx] > 0:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
 
+        """ print(self.CPV)
+        print(self.CWind)
+        print(self.CFlexible)
+        print(self.CPHP)
+        print(self.CPHS)
+        print(self.CTrans)
+        print(self.GBaseload)
+        print(self.years)
+        print(self.Flexible_Limits_Annual)
+        print(self.GFlexible_constraint)
+        print(self._Flexible_max) """
+
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
         self.trans_tflows_mask = transmission_mask
@@ -293,7 +305,7 @@ class Solution_SingleTime:
         self.Flexible_hours_annual = np.zeros(self.CFlexible.shape, dtype=np.float64)
         self.GBaseload_annual = np.zeros(self.CBaseload.shape, dtype=np.float64)
         self.GDischarge_annual = np.zeros(self.CPHP.shape, dtype=np.float64)
-        self.TFlowsAbs_annual = np.zeros(0, dtype=np.float64)
+        self.TFlowsAbs_annual = np.zeros(self.CTrans.shape, dtype=np.float64)
 
         # Balancing
         self.storage_order = np.arange(len(storage_ids), dtype=np.int64)
@@ -932,6 +944,8 @@ class Solution_SingleTime:
         perform_precharge = False
 
         for t in range(start_t, end_t):
+            """ if t%100 == 0:
+                print(t) #### DEBUG """
             # Initialise time interval
             Storaget_p_lb = self.Storage[t-1] * self.storage_d_efficiencies / self.resolution 
             Storaget_p_ub = (self.CPHS - self.Storage[t-1]) / self.storage_c_efficiencies / self.resolution 
@@ -1101,7 +1115,7 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
-        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual.sum())
+        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
         exit() """
         return lcoe, pen_deficit
 

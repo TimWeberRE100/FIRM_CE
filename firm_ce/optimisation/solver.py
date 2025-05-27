@@ -8,7 +8,7 @@ class Solver:
     def __init__(self, config, scenario) -> None:
         self.config = config
         self.scenario = scenario
-        self.decision_x0 = scenario.x0
+        self.decision_x0 = scenario.x0 if len(scenario.x0) > 0 else None
         self.lower_bounds, self.upper_bounds = self._get_bounds()
         self.solution = None
         self.result = None
@@ -94,7 +94,7 @@ class Solver:
         scenario_arrays['generator_costs'] = np.zeros(
             (8, max(self.scenario.generators)+1), dtype=np.float64
         )
-
+        
         scenario_arrays['TSPV'] = np.array([
             self.scenario.generators[idx].data
             for idx in self.scenario.generators

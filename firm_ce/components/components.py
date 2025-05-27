@@ -19,12 +19,12 @@ class Generator:
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
         self.fuel = fuel
-        self.max_build = int(generator_dict['max_build'])  # GW/year
-        self.min_build = int(generator_dict['min_build'])  # GW/year
+        self.max_build = float(generator_dict['max_build'])  # GW/year
+        self.min_build = float(generator_dict['min_build'])  # GW/year
         self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])
-        self.cost = UnitCost(capex_p=int(generator_dict['capex']),
+        self.cost = UnitCost(capex_p=float(generator_dict['capex']),
                               fom=float(generator_dict['fom']),
                               vom=float(generator_dict['vom']),
                               lifetime=int(generator_dict['lifetime']),
@@ -60,19 +60,19 @@ class Storage:
         self.duration = int(storage_dict['duration']) if int(storage_dict['duration']) > 0 else 0
         self.charge_efficiency = float(storage_dict['charge_efficiency'])  # %
         self.discharge_efficiency = float(storage_dict['discharge_efficiency'])  # %
-        self.max_build_p = int(storage_dict['max_build_p'])  # GW/year
-        self.max_build_e = int(storage_dict['max_build_e'])  # GWh/year
-        self.min_build_p = int(storage_dict['min_build_p'])  # GW/year
-        self.min_build_e = int(storage_dict['min_build_e'])  # GWh/year
+        self.max_build_p = float(storage_dict['max_build_p'])  # GW/year
+        self.max_build_e = float(storage_dict['max_build_e'])  # GWh/year
+        self.min_build_p = float(storage_dict['min_build_p'])  # GW/year
+        self.min_build_e = float(storage_dict['min_build_e'])  # GWh/year
         self.line = line
         self.unit_type = str(storage_dict['unit_type'])
 
-        self.cost = UnitCost(capex_p=int(storage_dict['capex_p']),
+        self.cost = UnitCost(capex_p=float(storage_dict['capex_p']),
                               fom=float(storage_dict['fom']),
                               vom=float(storage_dict['vom']),
                               lifetime=int(storage_dict['lifetime']),
                               discount_rate=float(storage_dict['discount_rate']),
-                              capex_e=int(storage_dict['capex_e']),
+                              capex_e=float(storage_dict['capex_e']),
                               )
 
     def __repr__(self):

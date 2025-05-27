@@ -103,8 +103,11 @@ class Scenario:
         """Get the initial guess corresponding to this scenario."""
         for entry in all_x0s.values():
             if entry.get('scenario') == self.name:
-                x0_str = entry.get('x_0', '').strip()
-                x0_list = [float(x) for x in x0_str.split(',') if x.strip()]
+                if (isinstance(entry.get('x_0', ''), float) and np.isnan(entry.get('x_0', ''))):
+                    x0_list = []
+                else:
+                    x0_str = entry.get('x_0', '').strip()    
+                    x0_list = [float(x) for x in x0_str.split(',') if x.strip()]
                 return np.array(x0_list, dtype=np.float64)
         return None
 
@@ -130,15 +133,20 @@ class ModelConfig:
         self.settings = ModelSettings(settings_dict)
 
 class Model:
-    def __init__(self) -> None:
+    def __init__(self) -> None:        
         model_data = ModelData()
 
         self.config = ModelConfig(model_data.config, model_data.settings)
         self.scenarios = {
+            # REMOVE DATAFILES FROM SCENARIO INIT
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }
 
+        # UNLOAD MODEL_DATA
+
     def solve(self):
-        for scenario in self.scenarios.values():            
+        for scenario in self.scenarios.values(): 
+            # LOAD GENERATOR DATA           
             result_x = scenario.solve(self.config)
             generate_result_files(result_x, scenario, self.config)
+            # UNLOAD GENERATOR DATA
