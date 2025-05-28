@@ -1,6 +1,7 @@
 import numpy as np
+from typing import List
 
-from firm_ce.constants import JIT_ENABLED
+from firm_ce.helpers.constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba import njit    
@@ -11,6 +12,10 @@ else:
         def wrapper(f):
             return f
         return wrapper
+    
+def parse_comma_separated(value: str) -> List[str]:
+    """Parse a comma-separated string into a clean list of strings."""
+    return [item.strip() for item in value.split(',') if item.strip()]
     
 @njit
 def set_difference_int(array1, array2):

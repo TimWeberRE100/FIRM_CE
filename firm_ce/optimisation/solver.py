@@ -25,7 +25,7 @@ class Solver:
         flexible_p_lb = [generator.capacity + generator.min_build for generator in flexible_generators]
         storage_p_lb = [storage.power_capacity + storage.min_build_p for storage in storages] 
         storage_e_lb = [storage.energy_capacity + storage.min_build_e if storage.duration == 0 else 0.0 for storage in storages] 
-        line_lb = [line.capacity + line.min_build for line in lines if (line.node_start != 'nan') and (line.node_end != 'nan')]
+        line_lb = [line.capacity + line.min_build for line in lines if (not np.isnan(line.node_start)) and (not np.isnan(line.node_end))]
         lower_bounds = np.array(solar_lb + wind_lb + flexible_p_lb + storage_p_lb + storage_e_lb + line_lb)
 
         solar_ub = [generator.capacity + generator.max_build for generator in solar_generators]
@@ -33,7 +33,7 @@ class Solver:
         flexible_p_ub = [generator.capacity + generator.max_build for generator in flexible_generators] 
         storage_p_ub = [storage.power_capacity + storage.max_build_p for storage in storages] 
         storage_e_ub = [storage.energy_capacity + storage.max_build_e if storage.duration == 0 else 0.0 for storage in storages]
-        line_ub = [line.capacity + line.max_build for line in lines if (line.node_start != 'nan') and (line.node_end != 'nan')]
+        line_ub = [line.capacity + line.max_build for line in lines if (not np.isnan(line.node_start)) and (not np.isnan(line.node_end))]
         upper_bounds = np.array(solar_ub + wind_ub + flexible_p_ub + storage_p_ub + storage_e_ub + line_ub)
 
         return lower_bounds, upper_bounds
@@ -200,7 +200,7 @@ class Solver:
         scenario_arrays['transmission_mask'] = self.scenario.network.transmission_mask # ndmin?
 
         scenario_arrays['TLoss'] = np.array(
-            [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines if (self.scenario.lines[idx].node_start != 'nan') and (self.scenario.lines[idx].node_end != 'nan')],
+            [self.scenario.lines[idx].loss_factor for idx in self.scenario.lines if (not np.isnan(self.scenario.lines[idx].node_start)) and (not np.isnan(self.scenario.lines[idx].node_end))],
             dtype=np.float64
         )
 

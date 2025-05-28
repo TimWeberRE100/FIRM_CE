@@ -3,9 +3,9 @@ from typing import List
 import time
 
 from firm_ce.network import get_transmission_flows_t
-from firm_ce.constants import JIT_ENABLED, EPSILON_FLOAT64
+from firm_ce.helpers.constants import JIT_ENABLED, EPSILON_FLOAT64
 from firm_ce.components.costs import calculate_costs
-import firm_ce.helpers as helpers
+import firm_ce.helpers.helpers as helpers
 
 if JIT_ENABLED:
     from numba import float64, int64, boolean, njit, prange
@@ -195,7 +195,7 @@ class Solution_SingleTime:
                 storage_line_ids) -> None:
 
         self.x = x  
-        #np.savetxt("./results/x.csv",self.x)
+        np.savetxt("./results/x.csv",self.x)
         self.evaluated=False   
         self.lcoe = 0.0
         self.penalties = 0.0

@@ -2,7 +2,7 @@ from typing import Dict
 import numpy as np
 
 from firm_ce.components import Line, Node
-from firm_ce.constants import TRIANGULAR, JIT_ENABLED
+from firm_ce.helpers.constants import TRIANGULAR, JIT_ENABLED
 
 if JIT_ENABLED:
     from numba import njit

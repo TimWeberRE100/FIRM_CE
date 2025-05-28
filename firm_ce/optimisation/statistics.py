@@ -97,13 +97,13 @@ def save_capacity_results(dir_path, header, solution):
                           [tech_capacities[3][i] for i in range(len(tech_capacities[3])) if tech_capacities[1][i]>0] +
                           [tech_capacities[2][i] for i in range(len(tech_capacities[2])) if tech_capacities[2][i]>0])
     path = os.path.join(dir_path, 'capacities.csv')
-    save_csv(path, header, [capacities], decimals=1)
+    save_csv(path, header, [capacities], decimals=3)
 
 
 def save_interval_results(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad,
-        solution.GBaseload,
+        #solution.GBaseload,
         solution.GPV,
         solution.GWind,
         solution.GFlexible,
@@ -118,7 +118,8 @@ def save_interval_results(dir_path, header, solution):
 
     network_array = np.vstack([
         solution.MLoad.sum(axis=1),
-        solution.GBaseload.sum(axis=1),
+        #solution.GBaseload.sum(axis=1),
+        np.zeros_like(solution.MLoad.sum(axis=1), dtype=np.float64),
         solution.GPV.sum(axis=1),
         solution.GWind.sum(axis=1),
         solution.GFlexible.sum(axis=1),
@@ -137,7 +138,7 @@ def save_interval_results(dir_path, header, solution):
 def save_summary_statistics(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad.sum(axis=0),
-        solution.GBaseload.sum(axis=0),
+        #solution.GBaseload.sum(axis=0),
         solution.GPV.sum(axis=0),
         solution.GWind.sum(axis=0),
         solution.GFlexible.sum(axis=0),
@@ -207,4 +208,6 @@ if __name__ == '__main__':
     from firm_ce.model import Model
     model = Model()
     for scenario in model.scenarios.values():
+        scenario.load_datafiles()  
         generate_result_files(scenario.x0, scenario, model.config)
+        scenario.unload_datafiles()  

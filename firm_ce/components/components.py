@@ -1,5 +1,5 @@
 from typing import Dict
-from firm_ce.file_manager import DataFile 
+from firm_ce.helpers.file_manager import DataFile 
 from firm_ce.components.costs import UnitCost
 from firm_ce.components.transmission import Line
 

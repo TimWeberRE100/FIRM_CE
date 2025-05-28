@@ -2,24 +2,13 @@ from typing import Dict, List
 import numpy as np
 import gc
 
-from firm_ce.file_manager import import_csv_data, import_datafiles, DataFile
+from firm_ce.helpers.helpers import parse_comma_separated
+from firm_ce.helpers.file_manager import import_datafiles, DataFile
 from firm_ce.components import Generator, Storage, Line, Node, Fuel
 from firm_ce.optimisation import Solver
 from firm_ce.network import Network
 from firm_ce.optimisation.statistics import generate_result_files
-
-class ModelData:
-    def __init__(self) -> None:
-        objects = import_csv_data()
-
-        self.scenarios = objects.get('scenarios')
-        self.generators = objects.get('generators')
-        self.fuels = objects.get('fuels')
-        self.lines = objects.get('lines')
-        self.storages = objects.get('storages')
-        self.config = objects.get('config')
-        self.x0s = objects.get('initial_guess')
-        self.settings = objects.get('settings')
+from firm_ce.helpers.validate import ModelData
 
 class Scenario:
     def __init__(self, model_data: ModelData, scenario_id: int) -> None:
@@ -73,11 +62,6 @@ class Scenario:
         self.intervals = 0
 
         gc.collect()
-
-    @staticmethod
-    def _parse_comma_separated(value: str) -> List[str]:
-        """Parse a comma-separated string into a clean list of strings."""
-        return [item.strip() for item in value.split(',') if item.strip()]
     
     @staticmethod
     def _get_generator_fuels(all_generators: Dict[str,Dict[str,str]], fuel_dict: Dict[str,Fuel]) -> Dict[str,Fuel]:
@@ -96,31 +80,31 @@ class Scenario:
         return result
     
     def _get_nodes(self, node_names: str) -> Dict[str,Node]:
-        node_names = self._parse_comma_separated(node_names)
+        node_names = parse_comma_separated(node_names)
         return {idx: Node(idx,node_names[idx]) for idx in range(len(node_names))}
 
     def _get_lines(self, all_lines: Dict[str,Dict[str,str]]) -> Dict[str,Line]:
         """Extract line names from scenario data."""
-        return {idx: Line(idx, all_lines[idx]) for idx in all_lines if self.name in self._parse_comma_separated(all_lines[idx]['scenarios'])}
+        return {idx: Line(idx, all_lines[idx]) for idx in all_lines if self.name in parse_comma_separated(all_lines[idx]['scenarios'])}
 
     def _get_generators(self, all_generators: Dict[str,Dict[str,str]], fuel_dict: Dict[str,Fuel], line_dict: Dict[str,Line]) -> Dict[str,Generator]:
         """Filter or prepare generator data specific to this scenario."""
         fuels = self._get_generator_fuels(all_generators, fuel_dict)
         lines = self._get_component_lines(all_generators, line_dict)
-        return {idx: Generator(idx, all_generators[idx], fuels[idx], lines[idx]) for idx in all_generators if self.name in self._parse_comma_separated(all_generators[idx]['scenarios'])}
+        return {idx: Generator(idx, all_generators[idx], fuels[idx], lines[idx]) for idx in all_generators if self.name in parse_comma_separated(all_generators[idx]['scenarios'])}
     
     def _get_storages(self, all_storages: Dict[str,Dict[str,str]], line_dict: Dict[str,Line]) -> Dict[str,Storage]:
         """Filter or prepare storage data specific to this scenario."""
         lines = self._get_component_lines(all_storages, line_dict)
-        return {idx: Storage(idx, all_storages[idx], lines[idx]) for idx in all_storages if self.name in self._parse_comma_separated(all_storages[idx]['scenarios'])}
+        return {idx: Storage(idx, all_storages[idx], lines[idx]) for idx in all_storages if self.name in parse_comma_separated(all_storages[idx]['scenarios'])}
     
     def _get_fuels(self, all_fuels: Dict[str,Dict[str,str]]) -> Dict[str,Fuel]:
         """Filter or prepare fuel data specific to this scenario."""
-        return {idx: Fuel(idx, all_fuels[idx]) for idx in all_fuels if self.name in self._parse_comma_separated(all_fuels[idx]['scenarios'])}
+        return {idx: Fuel(idx, all_fuels[idx]) for idx in all_fuels if self.name in parse_comma_separated(all_fuels[idx]['scenarios'])}
     
     def _get_datafiles(self, all_datafiles: Dict[str,Dict[str,str]]) -> Dict[str,DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
-        return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in self._parse_comma_separated(all_datafiles[idx]['scenarios'])}
+        return {all_datafiles[idx]['filename']: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in parse_comma_separated(all_datafiles[idx]['scenarios'])}
 
     def _get_x0(self, all_x0s: Dict[str,Dict[str,str]]) -> np.ndarray:
         """Get the initial guess corresponding to this scenario."""
@@ -158,6 +142,8 @@ class ModelConfig:
 class Model:
     def __init__(self) -> None:        
         model_data = ModelData()
+        if not model_data.validate():
+            exit()
 
         self.config = ModelConfig(model_data.config, model_data.settings)
         self.scenarios = {
