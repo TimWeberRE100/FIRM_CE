@@ -550,9 +550,6 @@ class Solution_SingleTime:
                             break
                         self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
 
-                        if idx == 0:
-                            break
-
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
                 if np.any(flexible_mask):
@@ -560,9 +557,6 @@ class Solution_SingleTime:
                         if idx == -1:
                             break      
                         self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True)
-
-                        if idx == 0:
-                            break
             
             Storaget_1_reversed = self._update_storage(t, Storaget_1_reversed, False)
             Flexible_Limit_reversed += self.GFlexible[t] * self.resolution
@@ -1028,9 +1022,6 @@ class Solution_SingleTime:
                         if idx == -1:
                             break
                         self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
-
-                        if idx == 0:
-                            break
 
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
