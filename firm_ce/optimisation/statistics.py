@@ -2,18 +2,24 @@ import os
 import re
 import csv
 import numpy as np
-from datetime import datetime
+import shutil
 
 from firm_ce.optimisation.solver import Solver
 from firm_ce.system.costs import calculate_costs
 
 
-def generate_result_files(result_x, scenario, config):
+def generate_result_files(result_x, population, population_energies, scenario, config, copy_callback=True):
     dir_path = create_scenario_dir(scenario.name, scenario.results_dir)
+
+    if copy_callback:
+        shutil.copy(os.path.join("results", "temp", "callback.csv"), os.path.join(dir_path, "callback.csv"))
+
     header_gw, header_mw, header_summary = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
     save_csv(os.path.join(dir_path, 'x.csv'), result_x, [], decimals=None)
+    save_csv(os.path.join(dir_path, 'population.csv'), [], population, decimals=None)
+    save_csv(os.path.join(dir_path, 'population_energies.csv'), [], population_energies, decimals=None)
 
     save_capacity_results(dir_path, header_gw, solution)
     save_interval_results(dir_path, header_mw, solution)
@@ -208,5 +214,5 @@ if __name__ == '__main__':
     model = Model()
     for scenario in model.scenarios.values():
         scenario.load_datafiles()  
-        generate_result_files(scenario.x0, scenario, model.config)
+        generate_result_files(scenario.x0, scenario, model.config, False)
         scenario.unload_datafiles()  

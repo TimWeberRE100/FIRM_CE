@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 from typing import List
 
 from firm_ce.common.constants import JIT_ENABLED
@@ -14,12 +15,34 @@ else:
         return wrapper
     
 def parse_comma_separated(value: str) -> List[str]:
-    """Parse a comma-separated string into a clean list of strings."""
+    """
+    Parse a comma-separated string into a list of trimmed, non-empty strings.
+
+    Parameters:
+    -------
+    value (str): A string containing comma-separated values.
+
+    Returns:
+    -------
+    List[str]: A list of cleaned strings with whitespace removed and empty entries excluded.
+    """
     return [item.strip() for item in value.split(',') if item.strip()]
     
 @njit
-def set_difference_int(array1, array2):
-    # Replaces np.setdiff1d for JIT compatibility
+def set_difference_int(array1: NDArray[np.int64], array2: NDArray[np.int64]) -> NDArray[np.bool_]:
+    """
+    Compute the set difference of two 1D integer arrays (elements in array1 not in array2),
+    in a Numba JIT-compatible way.
+
+    Parameters:
+    -------
+    array1 (np.ndarray): First input array of integers.
+    array2 (np.ndarray): Second input array of integers.
+
+    Returns:
+    -------
+    np.ndarray: Array of elements in array1 but not in array2.
+    """
     count = 0
     for i in range(array1.shape[0]):
         candidate = array1[i]
@@ -46,8 +69,20 @@ def set_difference_int(array1, array2):
     return result
 
 @njit
-def isin_numba(arr, values):
-    # Replaces np.isin for JIT compatibility
+def isin_numba(arr: NDArray[np.number], values: NDArray[np.number]) -> NDArray[np.bool_]:
+    """
+    Determine whether each element of an array is in a set of values,
+    in a Numba JIT-compatible way.
+
+    Parameters:
+    -------
+    arr (np.ndarray): Array of values to check.
+    values (np.ndarray): Array of values to check against.
+
+    Returns:
+    -------
+    np.ndarray: Boolean array indicating whether each element of arr is in values.
+    """
     values_set = set(values)  
     result = np.zeros(arr.shape, dtype=np.bool_)
 
@@ -58,24 +93,18 @@ def isin_numba(arr, values):
     return result
 
 @njit
-def quantile_95(arr):
-    # Replaces np.quantile for JIT compatibility
-    n = arr.shape[0]
-    if n == 0:
-        return 0.0
-    temp = arr.copy()
-    temp.sort()
-    
-    pos = 0.95 * (n - 1)
-    lower_idx = int(pos)
-    upper_idx = lower_idx + 1
-    if upper_idx >= n:
-        return temp[lower_idx]
-    weight = pos - lower_idx
-    return temp[lower_idx] * (1 - weight) + temp[upper_idx] * weight
+def sum_positive_values(arr: NDArray[np.number]) -> NDArray[np.number]:
+    """
+    Sum only the positive values in each column of a 2D array.
 
-@njit
-def sum_positive_values(arr):
+    Parameters:
+    -------
+    arr (np.ndarray): 2D array of numeric values.
+
+    Returns:
+    -------
+    np.ndarray: 1D array where each element is the sum of positive values in the corresponding column.
+    """
     rows, cols = arr.shape
     result = np.zeros(cols, dtype=arr.dtype)
     
@@ -89,51 +118,18 @@ def sum_positive_values(arr):
     return result
 
 @njit
-def max_along_axis_n(arr, axis_n):
-    rows, cols = arr.shape
-    max_vals = np.empty(cols, dtype=arr.dtype)
-    for j in range(cols):
-        max_vals[j] = arr[axis_n, j]  
-        for i in range(1, rows): 
-            if arr[i, j] > max_vals[j]:
-                max_vals[j] = arr[i, j]
-    return max_vals
+def scalar_clamp(value: np.float64, lower_bound: np.float64, upper_bound: np.float64) -> float:
+    """
+    Clamp a scalar value between a lower and upper bound.
 
-@njit
-def sum_along_axis_n(arr, axis_n):
-    rows, cols = arr.shape
-    sum_vals = np.zeros(cols, dtype=arr.dtype)
-    for j in range(cols):
-        sum_vals[j] = arr[axis_n, j]
-        for i in range(rows):
-            if i != axis_n:
-                sum_vals[j] += arr[i, j]
-    return sum_vals
+    Parameters:
+    -------
+    value (np.float64): Input value.
+    lower_bound (np.float64): Minimum allowed value.
+    upper_bound (np.float64): Maximum allowed value.
 
-@njit
-def factorial(n):
-    result = 1
-    for i in range(2, n+1):
-        result *= i
-    return result
-
-@njit
-def swap(a, i, j):
-    temp = a[i]
-    a[i] = a[j]
-    a[j] = temp
-
-@njit
-def sum_along_axis_n(arr, axis_n):
-    rows, cols = arr.shape
-    sum_vals = np.zeros(cols, dtype=arr.dtype)
-    for j in range(cols):
-        sum_vals[j] = arr[axis_n, j]
-        for i in range(rows):
-            if i != axis_n:
-                sum_vals[j] += arr[i, j]
-    return sum_vals
-
-@njit
-def scalar_clamp(value, lower_bound, upper_bound):
+    Returns:
+    -------
+    float: Clamped value.
+    """
     return max(min(value, upper_bound), lower_bound)

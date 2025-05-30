@@ -1,9 +1,11 @@
 from typing import Dict
 import numpy as np
+from numpy.typing import NDArray
 
 from firm_ce.common.constants import TRIANGULAR, JIT_ENABLED
 from firm_ce.io.file_manager import DataFile 
 from firm_ce.system.costs import UnitCost
+from firm_ce.io.validate import is_nan
 
 if JIT_ENABLED:
     from numba import njit
@@ -16,30 +18,70 @@ else:
         return wrapper
 
 class Node:
+    """
+    Represents a node (bus) in the network. All nodes require a demand trace
+    stored in a datafile within 'data' and referenced in 'config/datafiles.csv'. 
+    """
+
     def __init__(self, id: int, name: str) -> None:
+        """
+        Initialize a Node.
+
+        Parameters:
+        -------
+        id (int): Unique identifier for the node.
+        name (str): Name of the node.
+        """
         self.id = int(id)
         self.name = str(name)
         self.demand_data = None
 
     def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
+        """
+        Load demand data for this node from a set of DataFiles.
+
+        Demand traces should have units of MW/interval.
+
+        Parameters:
+        -------
+        datafiles (Dict[str, DataFile]): A dictionary of DataFile objects.
+        """
+
         for key in datafiles:
             if datafiles[key].type != 'demand':
                 continue
             self.demand_data = list(datafiles[key].data[self.name])
 
-    def unload_datafile(self) -> None:       
+    def unload_datafile(self) -> None:   
+        """Unload any attached data to free memory."""    
         self.demand_data = None
 
     def __repr__(self):
         return f"<Node object [{self.id}]{self.name}>"
 
 class Line:
+    """
+    Represents a transmission line connecting two nodes within the network.
+
+    If node_start and node_end values are empty (np.nan) then the line is a
+    minor line that instead connects a generator or storage object to the
+    transmission network.
+    """
+
     def __init__(self, id: int, line_dict: Dict[str, str]) -> None:
+        """
+        Initialize a Line object.
+
+        Parameters:
+        -------
+        id (int): Unique identifier for the line.
+        line_dict (Dict[str, str]): Dictionary with line attributes.
+        """
         self.id = id
         self.name = str(line_dict['name'])
         self.length = int(line_dict['length']) # km
-        self.node_start = str(line_dict['node_start'])  # Starting node name
-        self.node_end = str(line_dict['node_end'])  # Ending node name
+        self.node_start = str(line_dict['node_start']) if not is_nan(line_dict['node_start']) else np.nan # Starting node name
+        self.node_end = str(line_dict['node_end']) if not is_nan(line_dict['node_end']) else np.nan  # Ending node name
         self.loss_factor = float(line_dict['loss_factor'])  # Transmission losses % per 1000 km
         self.max_build = float(line_dict['max_build'])  # GW/year
         self.min_build = float(line_dict['min_build'])  # GW/year
@@ -58,7 +100,22 @@ class Line:
         return f"<Line object [{self.id}]{self.name}>"
     
 class Network:
+    """
+    Constructs the network topology for transmission modeling using lines and nodes.
+    Provides access to transmission masks, direct connection matrices, and nth-order networks
+    required for transmission business rules in the unit commitment problem.
+    """
+
     def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node]) -> None:
+        """
+        Initialize the Network topology and build all relevant matrices and masks.
+
+        Parameters:
+        -------
+        lines (Dict[int, Line]): Dictionary of transmission lines.
+        nodes (Dict[int, Node]): Dictionary of nodes in the system.
+        """
+
         lines = self._remove_minor_lines(lines)
         self.topology = self._get_topology(lines, nodes)
         self.node_count = len(nodes)
@@ -72,17 +129,47 @@ class Network:
         self.direct_connections = self.direct_connections[:-1, :-1]
 
     @staticmethod
-    def _remove_minor_lines(lines: Dict[str,Line]):
+    def _remove_minor_lines(lines: Dict[str,Line]) -> Dict[int, Line]:
+        """
+        Removes minor lines that are used for connecting generator and storage
+        units to the transmission network.
+
+        Parameters:
+        -------
+        lines (Dict[int, Line]): Raw line dictionary containing all lines.
+
+        Returns:
+        -------
+        Dict[int, Line]: Cleaned line dictionary with minor lines removed.
+        """
+
         cleaned_lines = {}
         for key in lines:
-            if (lines[key].node_start != 'nan') and (lines[key].node_end != 'nan'):
+            if not (is_nan(lines[key].node_start) or is_nan(lines[key].node_end)):
                 cleaned_lines[key] = lines[key]
         return cleaned_lines
 
-    def _get_network_steps(self):
+    def _get_network_steps(self) -> int:
+        """
+        Returns the number of network steps (primary, secondary, ...) available.
+
+        Returns:
+        -------
+        int: Index of the final valid TRIANGULAR number.
+        """
         return np.where(TRIANGULAR == self.network.shape[2])[0][0]
 
-    def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> np.ndarray:
+    def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> NDArray[np.int64]:
+        """
+        Constructs the base topology matrix mapping each line to its start/end nodes.
+
+        Returns:
+        -------
+        NDArray[np.int64]: Array of shape (num_lines, 2). Each row represents a line. The
+                            first column gives the node_start id, the second column gives
+                            the node_end id.
+        """
+
         num_lines = len(lines)
         topology = np.full((num_lines, 2), -1, dtype=np.int64)
         node_names = {nodes[idx].name : nodes[idx].id for idx in nodes}
@@ -118,14 +205,30 @@ class Network:
 
         return topology
     
-    def _get_transmission_mask(self) -> np.ndarray:
+    def _get_transmission_mask(self) -> NDArray[np.bool_]:
+        """
+        Generate the transmission mask which is applied to the 3D Transmission matrix
+        to select elements necessary for calculating transmission flows over the
+        timeseries.
+
+        Returns:
+        -------
+        NDArray[np.bool_]: Array of shape (1, num_lines, num_nodes).
+        """
         transmission_mask = np.zeros((self.node_count, len(self.topology)), dtype=np.bool_)
         for n, row in enumerate(self.topology):
             transmission_mask[row[0], n] = True
         
         return np.atleast_3d(transmission_mask).T
     
-    def _get_direct_connections(self) -> np.ndarray:
+    def _get_direct_connections(self) -> NDArray[np.int64]:
+        """
+        Generate a direct connection matrix of line indices between node pairs.
+
+        Returns:
+        -------
+        NDArray[np.int64]: Square matrix of shape (node_count + 1, node_count + 1).
+        """
         direct_connections = np.full((self.node_count+1, self.node_count+1), -1, dtype=np.int64)
         for n, row in enumerate(self.topology):
             i, j = row
@@ -133,15 +236,35 @@ class Network:
             direct_connections[j,i] = n
         return direct_connections
     
-    def network_neighbours(self, n):
+    def network_neighbours(self, n: int) -> NDArray[np.int64]:
+        """
+        Find all node connections that include the given node.
+
+        Parameters:
+        -------
+        node (int): Node index.
+
+        Returns:
+        -------
+        NDArray[np.int64]: Array of connected node indices.
+        """
         isn_mask = np.isin(self.topology, n)
         hasn_mask = isn_mask.sum(axis=1).astype(bool)
         joins_n = self.topology[hasn_mask][~isn_mask[hasn_mask]]
         return joins_n
     
-    def nthary_network(self, network_1):
-        """primary, secondary, tertiary, ..., nthary"""
-        """supply n-1thary to generate nthary etc."""
+    def nthary_network(self, network_1: NDArray[np.int64]) -> NDArray[np.int64]:
+        """
+        Generate the next-order network (2nd, 3rd, etc.) from existing paths.
+
+        Parameters:
+        -------
+        network_1 (NDArray[np.int64]): Existing n-th order network path of shape (paths, steps).
+
+        Returns:
+        -------
+        NDArray[np.int64]: New n+1 order network with extended paths.
+        """
         networkn = -1*np.ones((1,network_1.shape[1]+1), dtype=np.int64)
         for row in network_1:
             _networkn = -1*np.ones((1,network_1.shape[1]+1), dtype=np.int64)
@@ -173,7 +296,14 @@ class Network:
         networkn = networkn[1:,:]
         return networkn
     
-    def _get_topologies_nd(self):
+    def _get_topologies_nd(self) -> list[NDArray[np.int64]]:
+        """
+        Iteratively build higher-order network topologies.
+
+        Returns:
+        -------
+        List[NDArray[np.int64]]: List of arrays, each representing a hop level.
+        """
         topologies_nd = [self.topology]
 
         while True:
@@ -184,13 +314,32 @@ class Network:
                 break
         return topologies_nd
 
-    def count_lines(self, network):
+    def count_lines(self, network: NDArray[np.int64]) -> int:
+        """
+        Count the maximum number of concurrent connections at any node.
+
+        Parameters:
+        -------
+        network (NDArray[np.int64]): Network array.
+
+        Returns:
+        -------
+        int: Max number of connections.
+        """
         _, counts = np.unique(network[:, np.array([0,-1])], return_counts=True)
         if counts.size > 0:
             return counts.max()
         return 0
     
-    def _get_network(self):
+    def _get_network(self) -> NDArray[np.int64]:
+        """
+        Build a 4D network array encoding all paths along lines between nodes.
+
+        Returns:
+        -------
+        NDArray[np.int64]: Shape (2, node_count, TRIANGULAR, max_connections).
+        """
+
         network = -1*np.ones((2, self.node_count, TRIANGULAR[len(self.topologies_nd)], self.max_connections), dtype=np.int64)
         for i, net in enumerate(self.topologies_nd):
             conns = np.zeros(self.node_count, int)
@@ -211,7 +360,34 @@ class Network:
         return network
     
 @njit
-def get_transmission_flows_t(Fillt, Surplust, Hcapacity, network, networksteps, Importt, Exportt):
+def get_transmission_flows_t(Fillt: NDArray[np.float64], 
+                             Surplust: NDArray[np.float64], 
+                             Hcapacity: NDArray[np.float64], 
+                             network: NDArray[np.int64], 
+                             networksteps: int, 
+                             Importt: NDArray[np.float64], 
+                             Exportt: NDArray[np.float64]
+                             ) -> NDArray[np.float64]:
+    """
+    Compute the transmission flows between nodes over time, including primary and nth-order flows.
+
+    Parameters:
+    -------
+    Fillt (NDArray[np.float64]): 1D array of positive demand (e.g., netload or remaining charging capacity) to fill at each node 
+                                    for time interval t [GW].
+    Surplust (NDArray[np.float64]): Excess generation available at each node for time interval t [GW].
+    Hcapacity (NDArray[np.float64]): Rated capacity for each line [GW].
+    network (NDArray[np.int64]): 4D matrix of transmission path routing between nodes.
+    networksteps (int): Number of valid network "hops" (1st order, 2nd order, etc.). For example, networksteps of 2 will allow 
+                            second-order neighbouring nodes to transmit between each other.
+    Importt (NDArray[np.float64]): Matrix of current imports per line and node for time interval t [GW].
+    Exportt (NDArray[np.float64]): Matrix of current exports per line and node for time interval t [GW].
+
+    Returns:
+    -------
+    NDArray[np.float64]: Updated combined import/export transmission flow matrix.
+    """
+
     # The primary connections are simpler (and faster) to model than the general
     #   nthary connection
     # Since many if not most calls of this function only require primary transmission

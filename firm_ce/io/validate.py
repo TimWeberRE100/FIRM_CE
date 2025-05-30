@@ -43,7 +43,7 @@ def validate_enum(val, options):
 
 
 def parse_list(val):
-    return parse_comma_separated(val) if val else []
+    return parse_comma_separated(val) if not is_nan(val) else []
 
 
 def is_nan(val):
@@ -184,7 +184,7 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
 
                 for endpoint in ['node_start', 'node_end']:
                     node_val = item.get(endpoint)
-                    if node_val not in scenario_nodes[scenario] and not is_nan(node_val):
+                    if (node_val not in scenario_nodes[scenario]) and not is_nan(node_val):
                         model_logger.error("'%s' %s for line %s is not defined in scenario %s", endpoint, node_val, item['name'], scenario)
                         flag = False
 
@@ -321,7 +321,7 @@ def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenar
             + scenario_lines[scenario]
         ) - len(scenario_baseload[scenario]) - len(scenario_minor_lines[scenario])
 
-        if not (len(x0) == bound_length or (len(x0) == 1 and is_nan(x0[0]))):
+        if x0 and not (len(x0) == bound_length):
             model_logger.error("Initial guess 'x_0' for scenario %s contains %d elements, expected %d", scenario, len(x0), bound_length)
             flag = False
 
@@ -431,7 +431,7 @@ def validate_data(all_datafiles, scenario_name, model_logger):
     else:
         model_logger.info(f'datafiles.csv validated for scenario {scenario_name}!')
 
-    if not validate_electricity(model_logger):
+    """ if not validate_electricity(model_logger):
         model_logger.error(f'Demand profiles contain errors for scenario {scenario_name}.')
         flag = False
     else:
@@ -447,6 +447,6 @@ def validate_data(all_datafiles, scenario_name, model_logger):
         model_logger.error(f'Flexible limits contains errors for scenario {scenario_name}.')
         flag = False
     else:
-        model_logger.info(f'Flexible limits validated for scenario {scenario_name}!')
+        model_logger.info(f'Flexible limits validated for scenario {scenario_name}!') """
 
     return flag

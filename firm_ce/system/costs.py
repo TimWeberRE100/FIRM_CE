@@ -1,4 +1,6 @@
 import numpy as np
+from numpy.typing import NDArray
+from typing import Optional, Tuple
 
 from firm_ce.common.constants import JIT_ENABLED
 
@@ -13,41 +15,180 @@ else:
         return wrapper
 
 class UnitCost:
-    def __init__(self, capex_p, fom, vom, lifetime, discount_rate, heat_rate_base=0, heat_rate_incr=0, fuel=None, capex_e = 0, transformer_capex = 0, length = 0):
-        self.capex_p = capex_p
-        self.capex_e = capex_e
-        self.fom = fom
-        self.vom = vom
-        self.lifetime = lifetime
-        self.discount_rate = discount_rate
+    """
+    Represents cost parameters for a generator, storage, or line object.
+    """
+    def __init__(self, 
+                 capex_p: float,
+                 fom: float,
+                 vom: float,
+                 lifetime: int,
+                 discount_rate: float,
+                 heat_rate_base: float = 0.0,
+                 heat_rate_incr: float = 0.0,
+                 fuel: Optional[object] = None,
+                 capex_e: float = 0.0,
+                 transformer_capex: float = 0.0,
+                 length: float = 0.0
+                 ) -> None:
+        """
+        Initialize cost attributes for a Generator, Storage or Line object.
+
+        Parameters:
+        -------
+        capex_p (float): Power capacity capital cost ($/kW for generator/storage, $/MW-km for line)
+        fom (float): Fixed O&M cost ($/kW/year for generator/storage, $/MW/km/year for line)
+        vom (float): Variable O&M cost ($/MWh)
+        lifetime (int): Asset lifetime in years
+        discount_rate (float): Annual discount rate in range [0,1]
+        heat_rate_base (float): Constant heat rate term (GJ/h)
+        heat_rate_incr (float): First order marginal heat rate term (GJ/MWh)
+        fuel (Fuel): Fuel object
+        capex_e (float): Energy capacity capital cost ($/kWh for storage only)
+        transformer_capex (float): Transformer-specific cost ($/MW)
+        length (float): Line length (used for scaling costs and transmission losses)
+        """
+
+        self.capex_p = capex_p # $/kW
+        self.capex_e = capex_e # $/kWh, non-zero for energy storage
+        self.fom = fom # $/kW/year
+        self.vom = vom # $/MWh
+        self.lifetime = lifetime # years
+        self.discount_rate = discount_rate # [0,1]
 
         if fuel:
             self.fuel_cost_mwh = fuel.cost * heat_rate_incr # $/MWh
             self.fuel_cost_h = fuel.cost * heat_rate_base # $/h
         
-        self.transformer_capex = transformer_capex
-        self.length = length
+        self.transformer_capex = transformer_capex # $/kW, non-zero for lines
+        self.length = length # km, non-zero for lines
 
 @njit
-def get_present_value(discount_rate, lifetime):
+def get_present_value(discount_rate: np.float64, lifetime: np.float64) -> np.float64:
+    """
+    Calculate the present value of an annuity over a given lifetime.
+
+    Parameters:
+    -------
+    discount_rate (np.float64): Discount rate (decimal in range [0,1])
+    lifetime (np.float64): Number of years
+
+    Returns:
+    -------
+    np.float64: Present value of a $1/year annuity over 'lifetime' years.
+    """
     return (1-(1+discount_rate)**(-1*lifetime))/discount_rate
 
 @njit
-def annualisation_component(power_capacity, energy_capacity, annual_generation, capex_p, capex_e, fom, vom, lifetime, discount_rate, fuel_mwh, fuel_h, annual_hours):
+def annualisation_component(power_capacity: np.float64, 
+                            energy_capacity: np.float64, 
+                            annual_generation: np.float64, 
+                            capex_p: np.float64, 
+                            capex_e: np.float64, 
+                            fom: np.float64, 
+                            vom: np.float64, 
+                            lifetime: np.float64, 
+                            discount_rate: np.float64, 
+                            fuel_mwh: np.float64, 
+                            fuel_h: np.float64, 
+                            annual_hours: np.float64
+                            ) -> np.float64:
+    """
+    Compute the annualised cost of a generator or storage unit.
+
+    Parameters:
+    -------
+    power_capacity (np.float64): GW
+    energy_capacity (np.float64): GWh (0 for generators)
+    annual_generation (np.float64): GWh
+    capex_p (np.float64): $/kW capital cost
+    capex_e (np.float64): $/kWh capital cost (0 for generators)
+    fom (np.float64): Fixed O&M ($/kW/year)
+    vom (np.float64): Variable O&M ($/MWh)
+    lifetime (np.float64): Years
+    discount_rate (np.float64): Decimal in range [0,1]
+    fuel_mwh (np.float64): Fuel cost per MWh (based upon heat_rate_incr)
+    fuel_h (np.float64): Fuel cost per hour (based upon heat_rate_base)
+    annual_hours (np.float64): Hours operated annually
+
+    Returns:
+    -------
+    np.float64: Total annualised cost in $
+    """
+
     present_value = get_present_value(discount_rate, lifetime)
-    annualised_cost = (energy_capacity * pow(10,6) * capex_e + power_capacity * pow(10,6) * capex_p) / present_value + power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom + annual_generation * pow(10,3) * fuel_mwh + annual_hours * fuel_h if present_value > 0 else power_capacity * pow(10,6) * fom + annual_generation * pow(10,3) * vom + annual_generation * pow(10,3) * fuel_mwh + annual_hours * fuel_h
-    
-    #print(capex_p,capex_e,fom,vom,lifetime,discount_rate, fuel_mwh, fuel_h, annual_hours,annualised_cost,annual_generation,annual_generation * pow(10,3) * vom,power_capacity * pow(10,6) * fom, annual_generation * pow(10,3) * fuel_mwh, annual_hours * fuel_h)
+    if present_value > 0:
+        annualised_cost = (
+            (energy_capacity * 1e6 * capex_e + power_capacity * 1e6 * capex_p) / present_value
+            + power_capacity * 1e6 * fom
+            + annual_generation * 1e3 * vom
+            + annual_generation * 1e3 * fuel_mwh
+            + annual_hours * fuel_h
+        )
+    else:
+        annualised_cost = (
+            power_capacity * 1e6 * fom
+            + annual_generation * 1e3 * vom
+            + annual_generation * 1e3 * fuel_mwh
+            + annual_hours * fuel_h
+        )
     return annualised_cost
 
 @njit   
-def annualisation_transmission(power_capacity, annual_energy_flows, capex_p, fom, vom, lifetime, discount_rate, transformer_capex, length):
+def annualisation_transmission(power_capacity: np.float64, 
+                               annual_energy_flows: np.float64, 
+                               capex_p: np.float64, 
+                               fom: np.float64, 
+                               vom: np.float64, 
+                               lifetime: np.float64, 
+                               discount_rate: np.float64, 
+                               transformer_capex: np.float64, 
+                               length: np.float64
+                               ) -> np.float64:
+    """
+    Compute annualised cost for a transmission line.
+
+    Parameters:
+    -------
+    power_capacity (np.float64): GW
+    annual_energy_flows (np.float64): GWh
+    capex_p (np.float64): $/MW/km
+    fom (np.float64): $/MW/km/year
+    vom (np.float64): $/MWh
+    lifetime (np.float64): Years
+    discount_rate (np.float64): Decimal in range [0,1]
+    transformer_capex (np.float64): $/MW capital cost of transformers
+    length (np.float64): Line length in km
+
+    Returns:
+    -------
+    np.float64: Annualised cost in $
+    """
+
     present_value = get_present_value(discount_rate, lifetime)
 
     return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * pow(10,3) * vom 
 
 @njit
-def calculate_costs(solution): 
+def calculate_costs(solution) -> Tuple[np.float64, 
+                                       Tuple[NDArray[np.float64]], 
+                                       Tuple[NDArray[np.float64]], 
+                                       Tuple[NDArray[np.float64]]]: 
+    """
+    Compute total annualised system costs for a given solution.
+
+    Parameters:
+    -------
+    solution (Solution_SingleTime): The solution object associated with a specific x in the differential evolution.
+
+    Returns:
+    -------
+    Tuple of:
+    - total_cost (np.float64): Average annual system cost for the total system ($)
+    - tech_costs (Tuple[NDArray[np.float64]]): tuple of arrays (average annual costs for generators, storage, transmission)
+    - annual_gen (Tuple[NDArray[np.float64]]): tuple of arrays (average annual generator output, storage discharged energy, line flows)
+    - capacities (Tuple[NDArray[np.float64]]): tuple of arrays (generator GW, storage GW, storage GWh, line GW)
+    """
     generator_capacities = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
     generator_annual_generations = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)
     generator_annual_hours = np.zeros(max(solution.generator_ids)+1, dtype=np.float64)

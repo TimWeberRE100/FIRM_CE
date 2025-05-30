@@ -195,7 +195,6 @@ class Solution_SingleTime:
                 storage_line_ids) -> None:
 
         self.x = x  
-        np.savetxt("./results/x.csv",self.x)
         self.evaluated=False   
         self.lcoe = 0.0
         self.penalties = 0.0
@@ -261,7 +260,7 @@ class Solution_SingleTime:
             if storage_durations[idx] > 0:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
 
-        print(pv_idx,wind_idx,flexible_p_idx,storage_p_idx,storage_e_idx,lines_idx)
+        """ print(pv_idx,wind_idx,flexible_p_idx,storage_p_idx,storage_e_idx,lines_idx)
         print(self.CPV)
         print(self.CWind)
         print(self.CFlexible)
@@ -272,7 +271,7 @@ class Solution_SingleTime:
         print(self.years)
         print(self.Flexible_Limits_Annual)
         print(self.GFlexible_constraint)
-        print(self._Flexible_max)
+        print(self._Flexible_max) """
 
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
@@ -946,8 +945,8 @@ class Solution_SingleTime:
         perform_precharge = False
 
         for t in range(start_t, end_t):
-            if t%100 == 0:
-                print(t) #### DEBUG
+            """ if t%100 == 0:
+                print(t) #### DEBUG """
             # Initialise time interval
             Storaget_p_lb = self.Storage[t-1] * self.storage_d_efficiencies / self.resolution 
             Storaget_p_ub = (self.CPHS - self.Storage[t-1]) / self.storage_c_efficiencies / self.resolution 
@@ -1053,9 +1052,6 @@ class Solution_SingleTime:
                             break
                         self._clamp_and_assign(t, node, self.storage_order[storage_mask][idx])
 
-                        """ if idx == 0:
-                            break """
-
                 # Apportion flexible
                 flexible_mask = self.flexible_nodes == node
                 if np.any(flexible_mask):
@@ -1112,13 +1108,13 @@ class Solution_SingleTime:
         return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        start_time = time.time()
+        """ start_time = time.time() """
 
         deficit, TFlowsAbs = self._transmission_balancing()
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
 
-        end_time = time.time()
-        print(f"Transmission time: {end_time-start_time:.4f} seconds")
+        """ end_time = time.time()
+        print(f"Transmission time: {end_time-start_time:.4f} seconds") """
 
         self._calculate_annual_generation()
         cost, _, _, _ = calculate_costs(self)
@@ -1128,8 +1124,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
-        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
-        #exit()
+        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
+        #exit() """
         return lcoe, pen_deficit
 
     def evaluate(self):

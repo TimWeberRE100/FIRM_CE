@@ -4,17 +4,51 @@ from firm_ce.system.costs import UnitCost
 from firm_ce.system.topology import Line
 
 class Fuel:
+    """
+    Represents a fuel type with associated cost and emissions.
+    """
+
     def __init__(self, id: int, fuel_dict: Dict[str, str]) -> None:
+        """
+        Initialize a Fuel object.
+
+        Parameters:
+        -------
+        id (int): Unique identifier for the fuel.
+        fuel_dict (Dict[str, str]): Dictionary containing 'name', 'cost', and 'emissions' keys.
+        """
+
         self.id = int(id)
         self.name = str(fuel_dict['name'])
-        self.cost = float(fuel_dict['cost'])
-        self.emissions = float(fuel_dict['emissions'])
+        self.cost = float(fuel_dict['cost']) # $/GJ
+        self.emissions = float(fuel_dict['emissions']) # kg/GJ
 
     def __repr__(self):
         return f"<Fuel object [{self.id}]{self.name}>"
 
 class Generator:
+    """
+    Represents a generator unit within the system.
+
+    Solar, wind and baseload generators require generation trace datafiles. Flexible 
+    generators require datafiles for annual generation limits. Datafiles must be stored in
+    the 'data' folder and referenced in 'config/datafiles.csv'.
+    """
+
     def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, line: Line) -> None:
+        """
+        Initialize a Generator object.
+
+        Parameters:
+        -------
+        id (int): Unique identifier for the generator.
+        generator_dict (Dict[str, str]): Dictionary containing generator attributes.
+        fuel (Fuel): The associated fuel object.
+        line (Line): The generic minor line defined to connect the generator to the transmission network.
+                        Minor lines should have empty node_start and node_end values. They do not form part
+                        of the network topology, but are used to estimate connection costs.
+        """
+
         self.id = id
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
@@ -29,14 +63,24 @@ class Generator:
                               vom=float(generator_dict['vom']),
                               lifetime=int(generator_dict['lifetime']),
                               discount_rate=float(generator_dict['discount_rate']),
-                              heat_rate_base=float(generator_dict['heat_rate_base']),
-                              heat_rate_incr=float(generator_dict['heat_rate_incr']),
+                              heat_rate_base=float(generator_dict['heat_rate_base']), # GJ/h
+                              heat_rate_incr=float(generator_dict['heat_rate_incr']), # GJ/MWh
                               fuel=fuel)
         
         self.data = None
         self.annual_limit = 0
     
     def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
+        """
+        Load generation trace or annual generation limit data for this generator.
+
+        Generation traces represent the interval capacity factor and annual generation 
+        limits should have units GWh/year.
+
+        Parameters:
+        -------
+        datafiles (Dict[str, DataFile]): A dictionary of named DataFile objects.
+        """
         for key in datafiles:
             if (datafiles[key].type != 'generation') and (datafiles[key].type != 'flexible_annual_limit'):
                 continue
@@ -49,7 +93,10 @@ class Generator:
                 self.annual_limit = list(datafiles[key].data[self.name])
                 break    
 
-    def unload_datafile(self) -> None:       
+    def unload_datafile(self) -> None:     
+        """
+        Unload any attached data to free memory.
+        """  
         self.data = None
         self.annual_limit = 0     
 
@@ -57,7 +104,22 @@ class Generator:
         return f"<Generator object [{self.id}]{self.name}>"
 
 class Storage:
+    """
+    Represents an energy storage system unit in the system.
+    """
     def __init__(self, id: int, storage_dict: Dict[str, str], line: Line) -> None:
+        """
+        Initialize a Storage object.
+
+        Parameters:
+        -------
+        id (int): Unique identifier for the storage unit.
+        storage_dict (Dict[str, str]): Dictionary containing storage attributes.
+        line (Line): The generic minor line defined to connect the generator to the transmission network.
+                        Minor lines should have empty node_start and node_end values. They do not form part
+                        of the network topology, but are used to estimate connection costs.
+        """
+
         self.id = id
         self.name = str(storage_dict['name'])
         self.node = str(storage_dict['node'])

@@ -1,8 +1,21 @@
 import logging
 import os
 from datetime import datetime
+from typing import Tuple
 
-def init_model_logger():
+def init_model_logger() -> Tuple[logging.Logger, str]:
+    """
+    Initialize a logger for the model run, configured to log both to console and a log file.
+
+    The logger writes:
+    - All messages (DEBUG and above) to a log file in a new `results/Model_<timestamp>` directory.
+    - INFO and higher messages to the console.
+
+    Returns:
+    -------
+    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results directory.
+    """
+    
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     results_dir = os.path.join("results", f"Model_{timestamp}")
     os.makedirs(results_dir, exist_ok=True)

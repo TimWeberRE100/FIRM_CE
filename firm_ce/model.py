@@ -156,7 +156,7 @@ class Model:
     def solve(self):
         for scenario in self.scenarios.values(): 
             scenario.load_datafiles()          
-            result_x = scenario.solve(self.config)
-            generate_result_files(result_x, scenario, self.config)
+            de_result = scenario.solve(self.config)
+            generate_result_files(de_result.x, de_result.population, de_result.population_energies, scenario, self.config)
             scenario.unload_datafiles()
             
