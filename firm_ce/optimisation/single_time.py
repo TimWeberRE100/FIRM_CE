@@ -2,10 +2,10 @@ import numpy as np
 from typing import List
 import time
 
-from firm_ce.network import get_transmission_flows_t
-from firm_ce.helpers.constants import JIT_ENABLED, EPSILON_FLOAT64
-from firm_ce.components.costs import calculate_costs
-import firm_ce.helpers.helpers as helpers
+from firm_ce.system.topology import get_transmission_flows_t
+from firm_ce.common.constants import JIT_ENABLED, EPSILON_FLOAT64
+from firm_ce.system.costs import calculate_costs
+import firm_ce.common.helpers as helpers
 
 if JIT_ENABLED:
     from numba import float64, int64, boolean, njit, prange

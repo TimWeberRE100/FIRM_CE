@@ -5,11 +5,11 @@ import numpy as np
 from datetime import datetime
 
 from firm_ce.optimisation.solver import Solver
-from firm_ce.components.costs import calculate_costs
+from firm_ce.system.costs import calculate_costs
 
 
 def generate_result_files(result_x, scenario, config):
-    dir_path = create_scenario_dir(scenario.name)
+    dir_path = create_scenario_dir(scenario.name, scenario.results_dir)
     header_gw, header_mw, header_summary = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
@@ -21,10 +21,9 @@ def generate_result_files(result_x, scenario, config):
     save_summary_costs(dir_path, solution, scenario)
 
 
-def create_scenario_dir(scenario_name):
+def create_scenario_dir(scenario_name, results_dir):
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', scenario_name)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    dir_path = os.path.join('results', f'{safe_name}_{timestamp}')
+    dir_path = os.path.join('results', f'{results_dir}/{safe_name}')
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
 

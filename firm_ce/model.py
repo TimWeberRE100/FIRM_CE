@@ -2,16 +2,18 @@ from typing import Dict, List
 import numpy as np
 import gc
 
-from firm_ce.helpers.helpers import parse_comma_separated
-from firm_ce.helpers.file_manager import import_datafiles, DataFile
-from firm_ce.components import Generator, Storage, Line, Node, Fuel
+from firm_ce.common.helpers import parse_comma_separated
+from firm_ce.io.file_manager import import_datafiles, DataFile
+from firm_ce.system import Generator, Storage, Line, Node, Fuel
 from firm_ce.optimisation import Solver
-from firm_ce.network import Network
+from firm_ce.system.topology import Network
 from firm_ce.optimisation.statistics import generate_result_files
-from firm_ce.helpers.validate import ModelData
+from firm_ce.io.validate import ModelData, validate_data
 
 class Scenario:
     def __init__(self, model_data: ModelData, scenario_id: int) -> None:
+        self.logger, self.results_dir = model_data.logger, model_data.results_dir
+
         scenario_data = model_data.scenarios.get(scenario_id) 
 
         self.id = scenario_id
@@ -41,6 +43,7 @@ class Scenario:
     
     def load_datafiles(self):
         all_datafiles = import_datafiles()
+        validate_data(all_datafiles, self.name, self.logger)
 
         datafiles = self._get_datafiles(all_datafiles)
 

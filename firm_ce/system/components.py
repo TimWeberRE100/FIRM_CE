@@ -1,7 +1,7 @@
 from typing import Dict
-from firm_ce.helpers.file_manager import DataFile 
-from firm_ce.components.costs import UnitCost
-from firm_ce.components.transmission import Line
+from firm_ce.io.file_manager import DataFile 
+from firm_ce.system.costs import UnitCost
+from firm_ce.system.topology import Line
 
 class Fuel:
     def __init__(self, id: int, fuel_dict: Dict[str, str]) -> None:
