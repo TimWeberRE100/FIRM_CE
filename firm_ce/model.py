@@ -157,6 +157,6 @@ class Model:
         for scenario in self.scenarios.values(): 
             scenario.load_datafiles()          
             de_result = scenario.solve(self.config)
-            generate_result_files(de_result.x, de_result.population, de_result.population_energies, scenario, self.config)
+            generate_result_files(de_result.x, scenario, self.config)
             scenario.unload_datafiles()
             

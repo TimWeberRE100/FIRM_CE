@@ -3,6 +3,8 @@ import os
 from datetime import datetime
 from typing import Tuple
 
+logging.getLogger('numba').setLevel(logging.WARNING)
+
 def init_model_logger() -> Tuple[logging.Logger, str]:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.

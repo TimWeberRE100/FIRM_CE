@@ -6,20 +6,23 @@ import shutil
 
 from firm_ce.optimisation.solver import Solver
 from firm_ce.system.costs import calculate_costs
+from firm_ce.common.constants import SAVE_POPULATION
 
-
-def generate_result_files(result_x, population, population_energies, scenario, config, copy_callback=True):
+def generate_result_files(result_x, scenario, config, copy_callback=True):
     dir_path = create_scenario_dir(scenario.name, scenario.results_dir)
 
     if copy_callback:
-        shutil.copy(os.path.join("results", "temp", "callback.csv"), os.path.join(dir_path, "callback.csv"))
+        temp_dir = os.path.join("results", "temp")
+        shutil.copy(os.path.join(temp_dir, "callback.csv"), os.path.join(dir_path, "callback.csv"))
+
+        if SAVE_POPULATION:
+            shutil.copy(os.path.join(temp_dir, "population.csv"), os.path.join(dir_path, "population.csv"))
+            shutil.copy(os.path.join(temp_dir, "population_energies.csv"), os.path.join(dir_path, "population_energies.csv"))
 
     header_gw, header_mw, header_summary = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
     save_csv(os.path.join(dir_path, 'x.csv'), result_x, [], decimals=None)
-    save_csv(os.path.join(dir_path, 'population.csv'), [], population, decimals=None)
-    save_csv(os.path.join(dir_path, 'population_energies.csv'), [], population_energies, decimals=None)
 
     save_capacity_results(dir_path, header_gw, solution)
     save_interval_results(dir_path, header_mw, solution)
@@ -29,7 +32,7 @@ def generate_result_files(result_x, population, population_energies, scenario, c
 
 def create_scenario_dir(scenario_name, results_dir):
     safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', scenario_name)
-    dir_path = os.path.join('results', f'{results_dir}/{safe_name}')
+    dir_path = os.path.join(results_dir, safe_name)
     os.makedirs(dir_path, exist_ok=True)
     return dir_path
 

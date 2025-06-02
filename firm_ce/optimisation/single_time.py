@@ -233,6 +233,7 @@ class Solution_SingleTime:
 
         self.Storage = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
         self.SPower = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
+        self.GDischarge = np.zeros((self.intervals,len(storage_ids)), dtype=np.float64)
         self._Charget_max = np.zeros(len(storage_ids), dtype=np.float64)
         self._Discharget_max = np.zeros(len(storage_ids), dtype=np.float64)
 

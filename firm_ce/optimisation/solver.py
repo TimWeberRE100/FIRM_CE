@@ -1,9 +1,10 @@
 import numpy as np
-from scipy.optimize import differential_evolution, NonlinearConstraint
+from scipy.optimize import differential_evolution, OptimizeResult
 from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
 import csv, os
 
 from firm_ce.io.validate import is_nan
+from firm_ce.common.constants import SAVE_POPULATION
 
 class Solver:
     def __init__(self, config, scenario) -> None:
@@ -277,7 +278,14 @@ class Solver:
         return scenario_arrays
     
     def _initialise_callback(self):
-        with open(os.path.join("results", "temp", "callback.csv"), 'w', newline='') as csvfile:
+        temp_dir = os.path.join("results", "temp")
+        with open(os.path.join(temp_dir, "callback.csv"), 'w', newline='') as csvfile:
+            csv.writer(csvfile)
+
+        with open(os.path.join(temp_dir, "population.csv"), 'w', newline='') as csvfile:
+            csv.writer(csvfile)
+
+        with open(os.path.join(temp_dir, "population_energies.csv"), 'w', newline='') as csvfile:
             csv.writer(csvfile)
 
     def _single_time(self):
@@ -416,9 +424,28 @@ class Solver:
         elif self.config.type == 'capacity_expansion':
             self._capacity_expansion()
 
-def callback(xk, convergence=None):
-    with open(os.path.join("results", "temp", "callback.csv"), 'a', newline='') as csvfile:
-        writer = csv.writer(csvfile)
-        writer.writerow(list(xk))
+def callback(intermediate_result: OptimizeResult) -> None:
+    results_dir = os.path.join("results", "temp")
+    os.makedirs(results_dir, exist_ok=True)
+
+    # Save best solution from last iteration
+    with open(os.path.join(results_dir, "callback.csv"), 'a', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(list(intermediate_result.x))
+
+    if SAVE_POPULATION:
+        # Save population from last iteration
+        if hasattr(intermediate_result, "population"):
+            with open(os.path.join(results_dir, "population.csv"), 'a', newline='') as f:
+                writer = csv.writer(f)
+                for individual in intermediate_result.population:
+                    writer.writerow(list(individual))
+
+        # Save population energies from last iteration
+        if hasattr(intermediate_result, "population_energies"):
+            with open(os.path.join(results_dir, "population_energies.csv"), 'a', newline='') as f:
+                writer = csv.writer(f)
+                for energy in intermediate_result.population_energies:
+                    writer.writerow([energy])
 
 
