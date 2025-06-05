@@ -1,2 +1,4 @@
 id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraints,type
-0,FIRM_ISP_WT,0.5,0.00002,2043,2052,"CNSW,NNSW,SNSW,SNW,CQ,GG,NQ,SQ,VIC,CSA,SESA,TAS","EnergyConnect,N-Q-MNSP1_and_NSW1-QLD1,V-S-MNSP1,V-SA,VIC1-NSW1,T-V-MNSP1_and_Marinus1-2,CNSW-NNSW,CNSW-SNW,CQ-GG,CQ-NQ,SESA-CSA,SNSW-CNSW,SQ-CQ",,single_time
+0,gas,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
+1,nem,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
+2,battery,1,0.00002,2010,2019,"QLD,NSW,SA,VIC,TAS","QLD-NSW,NSW-VIC,VIC-SA,VIC-TAS",,single_time
