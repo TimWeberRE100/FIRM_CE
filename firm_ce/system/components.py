@@ -53,6 +53,7 @@ class Generator:
         self.name = str(generator_dict['name'])
         self.node = str(generator_dict['node'])
         self.fuel = fuel
+        self.unit_size = float(generator_dict['unit_size']) # GW/unit
         self.max_build = float(generator_dict['max_build'])  # GW/year
         self.min_build = float(generator_dict['min_build'])  # GW/year
         self.capacity = float(generator_dict['initial_capacity'])  # GW
@@ -63,7 +64,7 @@ class Generator:
                               vom=float(generator_dict['vom']),
                               lifetime=int(generator_dict['lifetime']),
                               discount_rate=float(generator_dict['discount_rate']),
-                              heat_rate_base=float(generator_dict['heat_rate_base']), # GJ/h
+                              heat_rate_base=float(generator_dict['heat_rate_base']), # GJ/unit-h
                               heat_rate_incr=float(generator_dict['heat_rate_incr']), # GJ/MWh
                               fuel=fuel)
         

@@ -5,7 +5,7 @@ import numpy as np
 import shutil
 
 from firm_ce.optimisation.solver import Solver
-from firm_ce.system.costs import calculate_costs
+from firm_ce.system.costs import calculate_costs, calculate_cost_components
 from firm_ce.common.constants import SAVE_POPULATION
 
 def generate_result_files(result_x, scenario, config, copy_callback=True):
@@ -19,7 +19,7 @@ def generate_result_files(result_x, scenario, config, copy_callback=True):
             shutil.copy(os.path.join(temp_dir, "population.csv"), os.path.join(dir_path, "population.csv"))
             shutil.copy(os.path.join(temp_dir, "population_energies.csv"), os.path.join(dir_path, "population_energies.csv"))
 
-    header_gw, header_mw, header_summary = get_generator_details(scenario)
+    header_gw, header_mw, header_summary, header_costs = get_generator_details(scenario)
     solution = generate_solution(scenario, result_x, config)
 
     save_csv(os.path.join(dir_path, 'x.csv'), result_x, [], decimals=None)
@@ -28,6 +28,7 @@ def generate_result_files(result_x, scenario, config, copy_callback=True):
     save_interval_results(dir_path, header_mw, solution)
     save_summary_statistics(dir_path, header_summary, solution)
     save_summary_costs(dir_path, solution, scenario)
+    save_cost_components(dir_path, solution, scenario, header_costs)
 
 
 def create_scenario_dir(scenario_name, results_dir):
@@ -86,7 +87,12 @@ def get_generator_details(scenario):
         [f"{n.name} Average Annual Deficit [TWh]" for n in nodes]
     )
 
-    return header_gw, header_mw, header_summary
+    header_costs = np.array(
+        make_headers(generators, '') +
+        make_headers(storages, '')
+    )
+
+    return header_gw, header_mw, header_summary, header_costs
 
 
 def save_csv(path, header, rows, decimals=None):
@@ -111,7 +117,7 @@ def save_capacity_results(dir_path, header, solution):
 def save_interval_results(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad,
-        #solution.GBaseload,
+        solution.GBaseload,
         solution.GPV,
         solution.GWind,
         solution.GFlexible,
@@ -126,8 +132,7 @@ def save_interval_results(dir_path, header, solution):
 
     network_array = np.vstack([
         solution.MLoad.sum(axis=1),
-        #solution.GBaseload.sum(axis=1),
-        np.zeros_like(solution.MLoad.sum(axis=1), dtype=np.float64),
+        solution.GBaseload.sum(axis=1),
         solution.GPV.sum(axis=1),
         solution.GWind.sum(axis=1),
         solution.GFlexible.sum(axis=1),
@@ -146,7 +151,7 @@ def save_interval_results(dir_path, header, solution):
 def save_summary_statistics(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad.sum(axis=0),
-        #solution.GBaseload.sum(axis=0),
+        solution.GBaseload.sum(axis=0),
         solution.GPV.sum(axis=0),
         solution.GWind.sum(axis=0),
         solution.GFlexible.sum(axis=0),
@@ -211,6 +216,10 @@ def save_summary_costs(dir_path, solution, scenario):
 
     save_csv(os.path.join(dir_path, 'levelised_costs.csv'), headers, [cost_values], decimals=2)
 
+def save_cost_components(dir_path, solution, scenario, header_costs):
+    cost_matrix = calculate_cost_components(solution)
+
+    save_csv(os.path.join(dir_path, 'component_costs.csv'), header_costs, cost_matrix, decimals=None)
 
 if __name__ == '__main__':
     from firm_ce.model import Model

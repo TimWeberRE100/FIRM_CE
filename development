@@ -49,5 +49,4 @@ PLEXOS CHANGES
 FIRM_CE bugs
 - Existing capacity: FOM and VOM and Fuel, not LCOE - why are hydro costs so high compared to gas?
 - Can flexible gen be dispatched one at a time, so that cheapest is prioritised?
-- Statistics breaks if empty baseload or etc.
-- Output separate capex, vom, fom, fuel costs for each component as a solution    
+- Statistics breaks if empty baseload or etc.  

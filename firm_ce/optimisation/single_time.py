@@ -122,7 +122,8 @@ if JIT_ENABLED:
         ('line_cost_ids', int64[:]),
 
         ('generator_line_ids', int64[:]),
-        ('storage_line_ids', int64[:])
+        ('storage_line_ids', int64[:]),
+        ('generator_unit_size', float64[:])
     ]
 else:
     def jitclass(spec):
@@ -192,7 +193,8 @@ class Solution_SingleTime:
                 Flexible_Limits_Annual,
                 first_year,
                 generator_line_ids,
-                storage_line_ids) -> None:
+                storage_line_ids,
+                generator_unit_size) -> None:
 
         self.x = x  
         self.evaluated=False   
@@ -213,6 +215,7 @@ class Solution_SingleTime:
         # Generators
         self.generator_ids = generator_ids
         self.generator_line_ids = generator_line_ids
+        self.generator_unit_size = generator_unit_size
         self.generator_costs = generator_costs
 
         self.CBaseload = CBaseload + EPSILON_FLOAT64 # Prevent 0GW capacities from being excluded from statistics
@@ -323,7 +326,7 @@ class Solution_SingleTime:
         self.flexible_sorted_nodal = -1*np.ones((nodes,max(self.flexible_nodal_count)), dtype=np.int64)
 
         flexible_mask = helpers.isin_numba(np.arange(self.generator_costs.shape[1], dtype=np.int64), flexible_cost_ids)
-        F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask]) + self.generator_costs[7, flexible_mask] # SRMC of 1 MWh in 1 h
+        F_variable_costs = (self.generator_costs[3, flexible_mask] + self.generator_costs[6, flexible_mask])*1000*generator_unit_size[flexible_mask] + self.generator_costs[7, flexible_mask] # SRMC of 1 unit in 1 h
         self.flexible_sorted = np.argsort(F_variable_costs)
 
         for node in range(nodes):
@@ -946,8 +949,6 @@ class Solution_SingleTime:
         perform_precharge = False
 
         for t in range(start_t, end_t):
-            """ if t%100 == 0:
-                print(t) #### DEBUG """
             # Initialise time interval
             Storaget_p_lb = self.Storage[t-1] * self.storage_d_efficiencies / self.resolution 
             Storaget_p_ub = (self.CPHS - self.Storage[t-1]) / self.storage_c_efficiencies / self.resolution 
@@ -986,7 +987,21 @@ class Solution_SingleTime:
 
                 Netloadt -= self.Transmission[t].sum(axis=0)
 
-            self.Deficit_nodal[t] = np.maximum(Netloadt, 0)
+            # Balance with local storage and flexible generation
+            self.SPower_nodal[t] = (
+                    np.maximum(np.minimum(Netloadt, self._Discharget_max_nodal),0) +
+                    np.minimum(np.maximum(Netloadt, -self._Charget_max_nodal),0) 
+                    
+            ) 
+
+            self.GFlexible_nodal[t] = np.minimum(
+                    np.maximum(Netloadt - self.SPower_nodal[t], 0),
+                    self._Flexible_max_nodal
+            ) 
+
+            self.Deficit_nodal[t] = np.maximum(Netloadt - self.SPower_nodal[t] - self.GFlexible_nodal[t], 0)
+            """ self.Deficit_nodal[t] = np.maximum(Netloadt, 0) """
+
             if self.Deficit_nodal[t].sum() > 1e-6:
                 # Draw down from neighbours storage and flexible reserves                
                 self.Spillage_nodal[t] = (
@@ -1080,7 +1095,7 @@ class Solution_SingleTime:
                 perform_precharge = True
 
             if (perform_precharge and (self.Deficit_nodal[t].sum() < 1e-6)):       
-                self._precharge_storage(t, Netload)
+                #self._precharge_storage(t, Netload)
                 perform_precharge = False
 
     def _check_feasibility(self, Netload):
@@ -1125,8 +1140,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
-        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
-        #exit() """
+        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
+        #exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
@@ -1182,7 +1197,8 @@ def parallel_wrapper(xs,
                     Flexible_Limits_Annual,
                     first_year,
                     generator_line_ids,
-                    storage_line_ids):
+                    storage_line_ids,
+                    generator_unit_size):
     result = np.empty(xs.shape[1], dtype=np.float64)
     for i in prange(xs.shape[1]):
         result[i] = objective_st(xs[:,i], 
@@ -1232,7 +1248,8 @@ def parallel_wrapper(xs,
                                 Flexible_Limits_Annual,
                                 first_year,
                                 generator_line_ids,
-                                storage_line_ids)
+                                storage_line_ids,
+                                generator_unit_size)
     return result
 
 @njit
@@ -1283,7 +1300,8 @@ def objective_st(x,
                 Flexible_Limits_Annual,
                 first_year,
                 generator_line_ids,
-                storage_line_ids):
+                storage_line_ids,
+                generator_unit_size):
     solution = Solution_SingleTime(x,
                                 MLoad,
                                 TSPV,
@@ -1331,6 +1349,7 @@ def objective_st(x,
                                 Flexible_Limits_Annual,
                                 first_year,
                                 generator_line_ids,
-                                storage_line_ids)
+                                storage_line_ids,
+                                generator_unit_size)
     solution.evaluate()
     return solution.lcoe + solution.penalties
