@@ -3,13 +3,15 @@ from typing import List
 import time
 
 from firm_ce.system.topology import get_transmission_flows_t
-from firm_ce.common.constants import JIT_ENABLED, EPSILON_FLOAT64
+from firm_ce.common.constants import JIT_ENABLED, EPSILON_FLOAT64, NUM_THREADS
 from firm_ce.system.costs import calculate_costs
 import firm_ce.common.helpers as helpers
 
 if JIT_ENABLED:
-    from numba import float64, int64, boolean, njit, prange
+    from numba import float64, int64, boolean, njit, prange, set_num_threads
     from numba.experimental import jitclass
+
+    set_num_threads(int(NUM_THREADS))
 
     solution_spec = [
         ('x', float64[:]),
@@ -263,19 +265,6 @@ class Solution_SingleTime:
         for idx in range(len(storage_durations)):
             if storage_durations[idx] > 0:
                 self.CPHS[idx] = self.CPHP[idx] * storage_durations[idx]
-
-        """ print(pv_idx,wind_idx,flexible_p_idx,storage_p_idx,storage_e_idx,lines_idx)
-        print(self.CPV)
-        print(self.CWind)
-        print(self.CFlexible)
-        print(self.CPHP)
-        print(self.CPHS)
-        print(self.CTrans)
-        print(self.GBaseload)
-        print(self.years)
-        print(self.Flexible_Limits_Annual)
-        print(self.GFlexible_constraint)
-        print(self._Flexible_max) """
 
         # Transmission
         self.Transmission = np.zeros((self.intervals, len(self.CTrans), self.nodes), dtype = np.float64)
@@ -927,7 +916,7 @@ class Solution_SingleTime:
 
         return precharge_energy, flexible_reserves, flexible_trickling_mask
     
-    def _determine_precharge_storage(self, t_precharge_start, t_end_deficit):
+    def _determine_precharge_storage(self, t_precharge_start, t_end_deficit, Netload):
         for t in range(t_precharge_start, t_end_deficit):
             Storaget_p_lb = self.Storage[t-1] * self.storage_d_efficiencies / self.resolution 
             Storaget_p_ub = (self.CPHS - self.Storage[t-1]) / self.storage_c_efficiencies / self.resolution 
@@ -946,21 +935,123 @@ class Solution_SingleTime:
 
             self.SPower[t] = (
                     np.maximum(np.minimum(SPowert, self._Discharget_max),0) +
-                    np.minimum(np.maximum(SPowert, -self._Charget_max),0) 
-                    
-                )    
+                    np.minimum(np.maximum(SPowert, -self._Charget_max),0)                     
+                )   
             
-            # If (SPowert - self.SPower[t]).sum() > 1e-6:
-            # Reduce flexible gen at each relevant node
-            # Redo transmission if needed
-            self.GFlexible[t] = np.minimum(GFlexiblet, self._Flexible_max)
-            # If (GFlexiblet - self.GFlexible[t]).sum() > 1e-6:
-            # Reduce flexible gen at each relevant node
-            # Redo transmission if needed
+            if t == 4435:
+                print(self.SPower[t])
+            
+            # Re-calculate flexible if any storages are constrained
+            if sum(np.abs(SPowert - self.SPower[t])) > 1e-6:
+                Netloadt = Netload[t].copy()
+                self.Transmission[t] = np.zeros((len(self.CTrans), self.nodes), dtype = np.float64) # Reset the transmission
+                self._Flexible_max_nodal = self._fill_nodal_array_1d(self._Flexible_max, self.flexible_nodes)
+                self.SPower_nodal[t] = self._fill_nodal_array_1d(self.SPower[t], self.storage_nodes)        
 
-            ###### NEED THESE CONSTRAINT ENFORCEMENTS TO BE FIXED
-            if t>1185 and t<1195:
-                print(t,SPowert.sum(),self.SPower[t].sum(),GFlexiblet.sum(),self.GFlexible[t].sum())
+                # Fill deficits with neighbours surplus generation
+                self.Transmission[t] = get_transmission_flows_t(
+                    np.maximum(Netloadt - self.SPower_nodal[t], 0), -1 * np.minimum(0, Netloadt - self.SPower_nodal[t]), self.CTrans, self.network, self.networksteps,
+                    np.maximum(0, self.Transmission[t]), np.minimum(0, self.Transmission[t])
+                )
+
+                Netloadt = Netload[t] - self.Transmission[t].sum(axis=0)     
+
+                # Balance with local Flexible
+                self.GFlexible_nodal[t] = np.minimum(
+                    np.maximum(Netloadt - self.SPower_nodal[t], 0),
+                    self._Flexible_max_nodal
+                )       
+
+                self.Deficit_nodal[t] = np.maximum(Netloadt - self.SPower_nodal[t] - self.GFlexible_nodal[t], 0)
+
+                # Update flexible transmission
+                self.Spillage_nodal[t] = (
+                    self._Flexible_max_nodal
+                )
+
+                self.Transmission[t] = get_transmission_flows_t(
+                    self.Deficit_nodal[t], self.Spillage_nodal[t], self.CTrans, self.network, self.networksteps,
+                    np.maximum(0, self.Transmission[t]), np.minimum(0, self.Transmission[t])
+                )
+
+                Netloadt = Netload[t] - self.Transmission[t].sum(axis=0)
+
+                self.GFlexible_nodal[t] = np.minimum(
+                    np.maximum(Netloadt - self.SPower_nodal[t], 0),
+                    self._Flexible_max_nodal
+                )
+
+                for node in range(self.nodes):
+                    # Apportion flexible
+                    flexible_mask = self.flexible_nodes == node
+                    if np.any(flexible_mask):
+                        for idx in self.flexible_sorted_nodal[node,:]: 
+                            if idx == -1:
+                                break 
+                            self._clamp_and_assign(t, node, self.flexible_order[flexible_mask][idx], True) 
+
+            else:
+                self.GFlexible[t] = np.minimum(GFlexiblet, self._Flexible_max)
+                GFlexiblet_reduction = GFlexiblet - self.GFlexible[t]  
+                ####################### BROKEN BELOW
+                if sum(GFlexiblet_reduction) > 1e-6:
+                    Netloadt = Netload[t].copy()
+                    self._Discharget_max_nodal = self._fill_nodal_array_1d(self._Discharget_max, self.storage_nodes)
+                    self._Charget_max_nodal = self._fill_nodal_array_1d(self._Charget_max, self.storage_nodes)                               
+
+                    # Reduce local charging based on constrained amount of flexible
+                    for node in range(self.nodes):
+                        # Apportion storage
+                        storage_mask = self.storage_nodes == node
+                        if np.any(storage_mask):
+                            for idx in self.storage_sorted_nodal[node,::-1]: # Reduce charging of longer duration first
+                                if idx == -1:
+                                    break
+
+                                sidx = self.storage_order[storage_mask][idx]
+                                change_power = min(self._Discharget_max[sidx] - self.SPower[t,sidx], GFlexiblet_reduction[node])
+                                self.SPower[t,sidx] += change_power
+                                GFlexiblet_reduction[node] -= change_power
+
+                                if t == 4435:
+                                    print("local", t, node, sidx, Netloadt[node], self._Discharget_max[sidx] - self.SPower[t,sidx]+change_power, self.SPower[t,sidx], change_power)
+
+                    self.GFlexible_nodal[t] = self._fill_nodal_array_1d(self.GFlexible[t], self.flexible_nodes)   
+                    self.SPower_nodal[t] = self._fill_nodal_array_1d(self.SPower[t], self.storage_nodes) 
+                            
+                    # Adjust neighbouring charging based on available flexible
+                    if sum(GFlexiblet_reduction) > 1e-6:
+                        self.Transmission[t] = np.zeros((len(self.CTrans), self.nodes), dtype = np.float64) # Reset the transmission
+                        Fillt = np.maximum(Netload[t] - np.minimum(self.SPower_nodal[t],0) - self.GFlexible_nodal[t], 0)
+                        Surplust_i = self._Discharget_max - self.SPower[t] 
+                        Surplust = self._fill_nodal_array_1d(Surplust_i, self.storage_nodes)      
+
+                        # Fill with spillage first
+                        self.Transmission[t] = get_transmission_flows_t(
+                            Fillt, -1*np.minimum(Netload[t] - self.GFlexible_nodal[t] - np.maximum(self.SPower_nodal[t],0), 0), self.CTrans, self.network, self.networksteps,
+                            np.maximum(0, self.Transmission[t]), np.minimum(0, self.Transmission[t])
+                        )
+
+                        Fillt = np.maximum(Fillt-self.Transmission[t].sum(axis=0),0) 
+                        Transmissiont_pre = self.Transmission[t].sum(axis=0) 
+
+                        # Then fill with remaining discharge capacity
+                        self.Transmission[t] = get_transmission_flows_t(
+                            Fillt, Surplust, self.CTrans, self.network, self.networksteps,
+                            np.maximum(0, self.Transmission[t]), np.minimum(0, self.Transmission[t])
+                        )
+
+                        Netloadt = Transmissiont_pre - self.Transmission[t].sum(axis=0)
+
+                        for i in range(len(self.storage_nodes)):
+                            node = self.storage_nodes[i]
+                            
+                            change_power = max(min(Netloadt[node], Surplust_i[i]), -self._Charget_max[i])
+                            self.SPower[t,i] += change_power
+                            Netloadt[node] -= change_power  
+
+                            if t == 4435:
+                                print("trans", t, node, i, Netloadt[node], Surplust_i[i], self.SPower[t,i], change_power)
 
             self.Storage[t] = self._update_storage(t, self.Storage[t-1])
             if t in self.year_first_t:
@@ -976,7 +1067,7 @@ class Solution_SingleTime:
 
         t_precharge_start = self._determine_precharge_powers(trickling_reserves, precharge_energy, flexible_reserves, t_deficit_start, Netload)
 
-        self._determine_precharge_storage(t_precharge_start, t+1)
+        self._determine_precharge_storage(t_precharge_start, t+1, Netload)
 
         return
     
