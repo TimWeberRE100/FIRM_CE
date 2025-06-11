@@ -92,6 +92,10 @@ class Solver:
             dtype=np.int64
         )
 
+        scenario_arrays['generator_unit_size'] = np.zeros(
+            (max(self.scenario.generators)+1), dtype=np.float64
+        )
+
         scenario_arrays['generator_costs'] = np.zeros(
             (8, max(self.scenario.generators)+1), dtype=np.float64
         )
@@ -245,6 +249,7 @@ class Solver:
             scenario_arrays['generator_costs'][5, gen_idx] = g.cost.discount_rate
             scenario_arrays['generator_costs'][6, gen_idx] = g.cost.fuel_cost_mwh
             scenario_arrays['generator_costs'][7, gen_idx] = g.cost.fuel_cost_h
+            scenario_arrays['generator_unit_size'][gen_idx] = g.unit_size
 
         for i, idx in enumerate(self.scenario.storages):
             s = self.scenario.storages[idx]
@@ -342,7 +347,8 @@ class Solver:
                     scenario_arrays['Flexible_Limits_Annual'],
                     self.scenario.first_year,
                     scenario_arrays['generator_line_ids'],
-                    scenario_arrays['storage_line_ids']
+                    scenario_arrays['storage_line_ids'],
+                    scenario_arrays['generator_unit_size']
             ),
             tol=0,
             maxiter=self.config.iterations, 
@@ -409,7 +415,8 @@ class Solver:
                     scenario_arrays['Flexible_Limits_Annual'],
                     self.scenario.first_year,
                     scenario_arrays['generator_line_ids'],
-                    scenario_arrays['storage_line_ids']
+                    scenario_arrays['storage_line_ids'],
+                    scenario_arrays['generator_unit_size']
                     )
         solution.evaluate()
 
