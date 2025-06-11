@@ -214,10 +214,11 @@ class Solution_SingleTime:
         self.year_first_t = self._get_year_t_arr(first_year)
         self.energy = self.MLoad.sum() * self.resolution / self.years
         self.allowance = allowance*self.energy
-        leap_years = sum(
-            1 for y in range(first_year, first_year + years)
-            if (y % 4 == 0 and (y % 100 != 0 or y % 400 == 0))
-        )
+        
+        leap_years = 0
+        for y in range(first_year, first_year + years):
+            if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):
+                leap_years += 1
         self.fom_scalar = (years+leap_years/365)/years # Scale average annual fom to account for leap days for PLEXOS consistency
         
         # Generators
