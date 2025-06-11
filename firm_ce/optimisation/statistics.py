@@ -56,8 +56,10 @@ def get_generator_details(scenario):
     lines = [scenario.lines[idx] for idx in scenario.lines]
     nodes = [scenario.nodes[idx] for idx in scenario.nodes]
 
-    def make_headers(generators, unit):
-        return [f"{g.name} [{unit}]" for g in generators]
+    def make_headers(generators, unit=None):
+        if unit:
+            return [f"{g.name} [{unit}]" for g in generators]
+        return [f"{g.name}" for g in generators]
 
     header_gw = np.array(
         make_headers(generators, 'GW') +
@@ -88,8 +90,9 @@ def get_generator_details(scenario):
     )
 
     header_costs = np.array(
-        make_headers(generators, '') +
-        make_headers(storages, '')
+        ["Cost Type"] +
+        make_headers(generators) +
+        make_headers(storages)
     )
 
     return header_gw, header_mw, header_summary, header_costs
@@ -113,33 +116,35 @@ def save_capacity_results(dir_path, header, solution):
     path = os.path.join(dir_path, 'capacities.csv')
     save_csv(path, header, [capacities], decimals=3)
 
+def safe_array(arr, num_rows):
+    return arr if arr.size > 0 else np.zeros((num_rows, 0), dtype=np.float64)
 
 def save_interval_results(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad,
-        solution.GBaseload,
-        solution.GPV,
-        solution.GWind,
-        solution.GFlexible,
-        solution.SPower,
-        solution.Storage,
-        -solution.Spillage_nodal,
-        solution.Deficit_nodal,
-        solution.TFlows
+        safe_array(solution.GBaseload, solution.intervals),
+        safe_array(solution.GPV, solution.intervals),
+        safe_array(solution.GWind, solution.intervals),
+        safe_array(solution.GFlexible, solution.intervals),
+        safe_array(solution.SPower, solution.intervals),
+        safe_array(solution.Storage, solution.intervals),
+        -solution.Spillage_nodal, 
+        solution.Deficit_nodal, 
+        safe_array(solution.TFlows, solution.intervals)
     ]) * 1000
 
     save_csv(os.path.join(dir_path, 'energy_balance.csv'), header, interval_array, decimals=0)
 
     network_array = np.vstack([
         solution.MLoad.sum(axis=1),
-        solution.GBaseload.sum(axis=1),
-        solution.GPV.sum(axis=1),
-        solution.GWind.sum(axis=1),
-        solution.GFlexible.sum(axis=1),
-        solution.SPower.sum(axis=1),
+        safe_array(solution.GBaseload, solution.intervals).sum(axis=1),
+        safe_array(solution.GPV, solution.intervals).sum(axis=1), 
+        safe_array(solution.GWind, solution.intervals).sum(axis=1), 
+        safe_array(solution.GFlexible, solution.intervals).sum(axis=1), 
+        safe_array(solution.SPower, solution.intervals).sum(axis=1), 
         -solution.Spillage_nodal.sum(axis=1),
         solution.Deficit_nodal.sum(axis=1),
-        solution.Storage.sum(axis=1)
+        safe_array(solution.Storage, solution.intervals).sum(axis=1)
     ]) * 1000
 
     network_header = ['Demand [MW]', 'Baseload [MW]', 'Solar PV [MW]', 'Wind [MW]', 'Flexible [MW]',
@@ -151,11 +156,11 @@ def save_interval_results(dir_path, header, solution):
 def save_summary_statistics(dir_path, header, solution):
     interval_array = np.hstack([
         solution.MLoad.sum(axis=0),
-        solution.GBaseload.sum(axis=0),
-        solution.GPV.sum(axis=0),
-        solution.GWind.sum(axis=0),
-        solution.GFlexible.sum(axis=0),
-        solution.GDischarge.sum(axis=0),
+        safe_array(solution.GBaseload, solution.intervals).sum(axis=0), 
+        safe_array(solution.GPV, solution.intervals).sum(axis=0), 
+        safe_array(solution.GWind, solution.intervals).sum(axis=0), 
+        safe_array(solution.GFlexible, solution.intervals).sum(axis=0), 
+        safe_array(solution.GDischarge, solution.intervals).sum(axis=0), 
         -solution.Spillage_nodal.sum(axis=0),
         solution.Deficit_nodal.sum(axis=0)
     ]) * solution.resolution / solution.years / 1000
@@ -218,8 +223,10 @@ def save_summary_costs(dir_path, solution, scenario):
 
 def save_cost_components(dir_path, solution, scenario, header_costs):
     cost_matrix = calculate_cost_components(solution)
+    row_labels = ["Annualised Build Cost [$]","Fixed Cost [$]","Variable Cost [$]","Fuel Cost [$]"]
+    cost_matrix_with_labels = np.column_stack([row_labels, cost_matrix])
 
-    save_csv(os.path.join(dir_path, 'component_costs.csv'), header_costs, cost_matrix, decimals=None)
+    save_csv(os.path.join(dir_path, 'component_costs.csv'), header_costs, cost_matrix_with_labels, decimals=None)
 
 if __name__ == '__main__':
     from firm_ce.model import Model

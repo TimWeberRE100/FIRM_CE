@@ -93,6 +93,7 @@ def annualisation_component(power_capacity: np.float64,
                             fuel_h: np.float64, 
                             annual_hours: np.float64,
                             generator_unit_size: np.float64,
+                            leap_year_scalar: np.float64,
                             ) -> np.float64:
     """
     Compute the annualised cost of a generator or storage unit.
@@ -112,6 +113,7 @@ def annualisation_component(power_capacity: np.float64,
     fuel_h (np.float64): Fuel cost per hour (based upon heat_rate_base)
     annual_hours (np.float64): Hours operated annually
     generator_unit_size (np.float64): Capacity of a single unit (GW/unit)
+    leap_year_scalar (np.float64): Adjusts average annual FOM to account for leap days in planning period
 
     Returns:
     -------
@@ -122,13 +124,13 @@ def annualisation_component(power_capacity: np.float64,
     if present_value > 0.001:
         annualised_cost = (
             annualised_build_cost(present_value, power_capacity, energy_capacity, capex_p, capex_e)
-            + fom_annual(power_capacity, fom)
+            + fom_annual(power_capacity, fom, leap_year_scalar)
             + vom_annual(annual_generation, vom)
             + fuel_annual(annual_generation, power_capacity, generator_unit_size, fuel_mwh, annual_hours, fuel_h)
         )
     else:
         annualised_cost = (
-            fom_annual(power_capacity, fom)
+            fom_annual(power_capacity, fom, leap_year_scalar)
             + vom_annual(annual_generation, vom)
             + fuel_annual(annual_generation, power_capacity, generator_unit_size, fuel_mwh, annual_hours, fuel_h)
         )
@@ -143,7 +145,8 @@ def annualisation_transmission(power_capacity: np.float64,
                                lifetime: np.float64, 
                                discount_rate: np.float64, 
                                transformer_capex: np.float64, 
-                               length: np.float64
+                               length: np.float64,
+                                leap_year_scalar: np.float64,
                                ) -> np.float64:
     """
     Compute annualised cost for a transmission line.
@@ -159,6 +162,7 @@ def annualisation_transmission(power_capacity: np.float64,
     discount_rate (np.float64): Decimal in range [0,1]
     transformer_capex (np.float64): $/MW capital cost of transformers
     length (np.float64): Line length in km
+    leap_year_scalar (np.float64): Adjusts average annual FOM to account for leap days in planning period
 
     Returns:
     -------
@@ -167,15 +171,15 @@ def annualisation_transmission(power_capacity: np.float64,
 
     present_value = get_present_value(discount_rate, lifetime)
 
-    return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom + annual_energy_flows * pow(10,3) * vom 
+    return (power_capacity * pow(10,3) * length * capex_p + power_capacity * pow(10,3) * transformer_capex) / present_value + power_capacity * pow(10,3) * length * fom * leap_year_scalar + annual_energy_flows * pow(10,3) * vom 
 
 @njit
 def annualised_build_cost(present_value, power_capacity, energy_capacity, capex_p, capex_e):
     return (energy_capacity * 1e6 * capex_e + power_capacity * 1e6 * capex_p) / present_value
 
 @njit
-def fom_annual(power_capacity, fom):
-    return power_capacity * 1e6 * fom
+def fom_annual(power_capacity, fom, leap_year_scalar):
+    return power_capacity * 1e6 * fom * leap_year_scalar
 
 @njit 
 def vom_annual(annual_generation, vom):
@@ -276,7 +280,8 @@ def calculate_costs(solution) -> Tuple[np.float64,
             solution.generator_costs[6,idx],
             solution.generator_costs[7,idx],
             generator_annual_hours[idx],
-            solution.generator_unit_size[idx]
+            solution.generator_unit_size[idx],
+            solution.fom_scalar,
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
         ], dtype=np.float64)
@@ -296,6 +301,7 @@ def calculate_costs(solution) -> Tuple[np.float64,
             0,
             0,
             1,
+            solution.fom_scalar,
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
         ], dtype=np.float64)
@@ -310,7 +316,8 @@ def calculate_costs(solution) -> Tuple[np.float64,
             solution.line_costs[4,idx],
             solution.line_costs[5,idx],
             solution.line_costs[6,idx],
-            line_lengths[idx]
+            line_lengths[idx],
+            solution.fom_scalar,
         ) for idx in range(0,len(line_capacities))
         if line_capacities[idx] > 0
         ], dtype=np.float64)
@@ -412,6 +419,7 @@ def calculate_cost_components(solution) -> Tuple[np.float64,
         fom_annual(                              
             generator_capacities[idx],
             solution.generator_costs[2,idx],
+            solution.fom_scalar,
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
         ], dtype=np.float64)
@@ -420,6 +428,7 @@ def calculate_cost_components(solution) -> Tuple[np.float64,
         fom_annual(                              
             storage_p_capacities[idx],
             solution.storage_costs[2,idx],
+            solution.fom_scalar,
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
         ], dtype=np.float64)
@@ -433,7 +442,7 @@ def calculate_cost_components(solution) -> Tuple[np.float64,
         ], dtype=np.float64)
 
     storage_vom = np.array([
-        fom_annual(                              
+        vom_annual(                              
             storage_annual_discharge[idx],
             solution.storage_costs[3,idx],
         ) for idx in range(0,len(storage_p_capacities))

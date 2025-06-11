@@ -1,6 +1,8 @@
 from typing import Dict, List
 import numpy as np
 import gc
+import time
+from datetime import datetime
 
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.io.file_manager import import_datafiles, DataFile
@@ -155,8 +157,27 @@ class Model:
 
     def solve(self):
         for scenario in self.scenarios.values(): 
-            scenario.load_datafiles()          
+            start_time = time.time()
+            start_time_str = datetime.fromtimestamp(start_time).strftime('%d/%m/%Y %H:%M:%S')
+            scenario.logger.info(f'Started scenario {scenario.name} at {start_time_str}.')
+
+            scenario.load_datafiles()     
+            datafile_loadtime = time.time()   
+            datafile_loadtime_str = datetime.fromtimestamp(datafile_loadtime).strftime('%d/%m/%Y %H:%M:%S')
+            scenario.logger.info(f'Datafiles loaded at {datafile_loadtime_str} ({datafile_loadtime - start_time:.4f} seconds).')
+
             de_result = scenario.solve(self.config)
+            solve_time = time.time()   
+            solve_time_str = datetime.fromtimestamp(solve_time).strftime('%d/%m/%Y %H:%M:%S')
+            scenario.logger.info(f'Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours).')
+
             generate_result_files(de_result.x, scenario, self.config)
+            results_time = time.time() 
+            results_time_str = datetime.fromtimestamp(results_time).strftime('%d/%m/%Y %H:%M:%S')
+            scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).')
+
             scenario.unload_datafiles()
+            end_time = time.time()
+            end_time_str = datetime.fromtimestamp(end_time).strftime('%d/%m/%Y %H:%M:%S')
+            scenario.logger.info(f'Scenario completed at {end_time_str} (Total time taken: {(end_time - start_time)/(60*60):.4f} hours).')
             
