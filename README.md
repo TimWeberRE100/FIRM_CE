@@ -7,3 +7,5 @@
 - Basic configuration instructions
 
 - Basic FIRM overview
+
+- Broad optimum test
