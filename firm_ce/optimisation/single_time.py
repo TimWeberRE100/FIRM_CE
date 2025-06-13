@@ -474,13 +474,13 @@ class Solution_SingleTime:
             self._Charget_max = np.minimum(self.CPHP, Storaget_p_lb_rev) # Reversed energy constraint in reverse time
             self._Charget_max_nodal = self._fill_nodal_array_1d(self._Charget_max, self.storage_nodes)
 
-            if t-1 in self.year_first_t:
+            if t in self.year_first_t:
                 for i in range(len(self.year_first_t)):
-                    if t-1 == self.year_first_t[i]:
+                    if t == self.year_first_t[i]:
                         Flexiblet_p_lb = (self.Flexible_Limits_Annual[i]) / self.resolution
             else:
                 for i in range(len(self.year_first_t)):
-                    if t-1 > self.year_first_t[i]:
+                    if t > self.year_first_t[i]:
                         Flexiblet_p_lb = (self.Flexible_Limits_Annual[i] - Flexible_Limit_reversed) / self.resolution
 
             self._Flexible_max = np.minimum(self.CFlexible, Flexiblet_p_lb)# Reversed energy constraint in reverse time
