@@ -357,7 +357,7 @@ class Solution_SingleTime:
             first_t = i * (8760 // self.resolution)
 
             leap_days = 0
-            for y in range(first_year, year + 1):
+            for y in range(first_year, year):
                 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):
                     leap_days += 1
 
@@ -459,7 +459,7 @@ class Solution_SingleTime:
         Flexible_Limit_reversed = self.GFlexible_constraint[t-1].copy()
         Flexible_Limit_reversed2 = Flexible_Limit_reversed.copy()
         local_min = Storaget_1_reversed.copy() 
-        local_max = Storaget_1_reversed.copy()      
+        local_max = Storaget_1_reversed.copy()     
         
         while True:
             t -= 1
