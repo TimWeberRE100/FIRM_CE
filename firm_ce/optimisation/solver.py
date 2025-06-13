@@ -191,6 +191,12 @@ class Solver:
             dtype=np.int64
         )
 
+        minor_line_ids = np.array(
+            [self.scenario.lines[idx].id for idx in self.scenario.lines
+            if (is_nan(self.scenario.lines[idx].node_start) or is_nan(self.scenario.lines[idx].node_end))],
+            dtype=np.int64
+        )
+
         scenario_arrays['line_lengths'] = np.array(
             [self.scenario.lines[idx].length for idx in self.scenario.lines],
             dtype=np.float64
@@ -276,8 +282,8 @@ class Solver:
         scenario_arrays['flexible_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['flexible'])]
         scenario_arrays['baseload_cost_ids'] = scenario_arrays['generator_ids'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])]
         scenario_arrays['storage_cost_ids'] = scenario_arrays['storage_ids']
-        scenario_arrays['line_cost_ids'] = scenario_arrays['line_ids'][~np.isin(scenario_arrays['line_ids'], scenario_arrays['generator_line_ids'])&~np.isin(scenario_arrays['line_ids'], scenario_arrays['storage_line_ids'])]
-
+        scenario_arrays['line_cost_ids'] = scenario_arrays['line_ids'][~np.isin(scenario_arrays['line_ids'], minor_line_ids)]
+        
         scenario_arrays['CBaseload'] = scenario_arrays['generator_capacities'][np.where(scenario_arrays['generator_unit_types'] == scenario_arrays['generator_unit_types_setting']['baseload'])[0]]
 
         return scenario_arrays
