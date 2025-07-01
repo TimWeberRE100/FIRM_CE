@@ -87,7 +87,8 @@ class Line:
         self.min_build = float(line_dict['min_build'])  # GW/year
         self.capacity = float(line_dict['initial_capacity'])  # GW
         self.unit_type = str(line_dict['unit_type'])
-
+        self.near_opt = str(line_dict.get('near_optimum','')).lower() in ('true','1','yes')
+        self.group    = line_dict.get('range_group','')
         self.cost = UnitCost(float(line_dict['capex']),
                               float(line_dict['fom']),
                               float(line_dict['vom']),

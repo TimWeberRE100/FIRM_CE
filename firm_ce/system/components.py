@@ -59,6 +59,9 @@ class Generator:
         self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])
+        self.near_opt = str(generator_dict.get('near_optimum','')).lower() in ('true','1','yes')
+        self.group = generator_dict.get('range_group','')
+        
         self.cost = UnitCost(capex_p=float(generator_dict['capex']),
                               fom=float(generator_dict['fom']),
                               vom=float(generator_dict['vom']),
@@ -135,6 +138,8 @@ class Storage:
         self.min_build_e = float(storage_dict['min_build_e'])  # GWh/year
         self.line = line
         self.unit_type = str(storage_dict['unit_type'])
+        self.near_opt = str(storage_dict.get('near_optimum','')).lower() in ('true','1','yes')
+        self.group = storage_dict.get('range_group','')
 
         self.cost = UnitCost(capex_p=float(storage_dict['capex_p']),
                               fom=float(storage_dict['fom']),
