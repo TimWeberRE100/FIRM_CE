@@ -1,7 +1,9 @@
 id,name,value
 0,mutation,0.5
-1,iterations,20
+1,iterations,1000
 2,population,10
 3,recombination,0.3
 4,type,single_time
 5,model_name,Validation
+6,near_optimal_enabled,TRUE
+7,near_optimal_tol,0.1

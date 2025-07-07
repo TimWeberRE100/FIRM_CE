@@ -56,7 +56,9 @@ def validate_model_config(config_dict, model_logger):
         'iterations': validate_positive_int,
         'population': validate_positive_int,
         'recombination': lambda v: validate_range(v, 0, 1),
-        'type': lambda v: validate_enum(v, ['single_time', 'capacity_expansion'])
+        'type': lambda v: validate_enum(v, ['single_time', 'capacity_expansion'],),
+        'near_optimal_enabled': lambda v: str(v).lower() in ('true','false','0','1'),
+        'near_optimal_tol': lambda v: validate_range(v, 0, 1)
     }
 
     for item in config_dict.values():

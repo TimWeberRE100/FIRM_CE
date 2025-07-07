@@ -142,6 +142,8 @@ class ModelConfig:
         self.population = int(config_dict['population'])
         self.mutation = float(config_dict['mutation'])
         self.recombination = float(config_dict['recombination'])
+        self.near_optimal_enabled = str(config_dict.get('near_optimal_enabled','false')).lower() in ('true','1','yes')
+        self.near_optimal_tol = float(config_dict.get('near_optimal_tol', 0.0))
         self.settings = ModelSettings(settings_dict)
 
 class Model:

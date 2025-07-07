@@ -357,7 +357,7 @@ class Solution_SingleTime:
             first_t = i * (8760 // self.resolution)
 
             leap_days = 0
-            for y in range(first_year, year + 1):
+            for y in range(first_year, year):
                 if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0):
                     leap_days += 1
 
@@ -459,7 +459,7 @@ class Solution_SingleTime:
         Flexible_Limit_reversed = self.GFlexible_constraint[t-1].copy()
         Flexible_Limit_reversed2 = Flexible_Limit_reversed.copy()
         local_min = Storaget_1_reversed.copy() 
-        local_max = Storaget_1_reversed.copy()      
+        local_max = Storaget_1_reversed.copy()     
         
         while True:
             t -= 1
@@ -1361,6 +1361,118 @@ def parallel_wrapper(xs,
                                 generator_line_ids,
                                 storage_line_ids,
                                 generator_unit_size)
+    return result
+
+@njit(parallel=True)
+def parallel_wrapper_lp(xs,
+                        MLoad,
+                        TSPV,
+                        TSWind,
+                        TSBaseload,
+                        network,
+                        transmission_mask,
+                        intervals,
+                        nodes,
+                        lines,
+                        years,
+                        resolution,
+                        allowance,
+                        generator_ids,
+                        generator_costs,
+                        storage_ids,
+                        storage_nodes,
+                        flexible_ids,
+                        storage_durations,
+                        storage_costs,
+                        line_ids,
+                        line_lengths,
+                        line_costs,
+                        TLoss,
+                        pv_idx,
+                        wind_idx,
+                        flexible_p_idx,
+                        storage_p_idx,
+                        storage_e_idx,
+                        lines_idx,
+                        solar_nodes,
+                        wind_nodes,
+                        flexible_nodes,
+                        baseload_nodes,
+                        CBaseload,
+                        pv_cost_ids,
+                        wind_cost_ids,
+                        flexible_cost_ids,
+                        baseload_cost_ids,
+                        storage_cost_ids,
+                        line_cost_ids,
+                        networksteps,
+                        storage_d_efficiencies,
+                        storage_c_efficiencies,
+                        Flexible_Limits_Annual,
+                        first_year,
+                        generator_line_ids,
+                        storage_line_ids,
+                        generator_unit_size):
+    """
+    parallel_wrapper, but also returns LCOE and penalty seperately
+    """
+    n_points = xs.shape[1]
+    result = np.zeros((3, n_points), dtype=np.float64)
+    for j in prange(n_points):
+        xj = xs[:, j]
+        sol = Solution_SingleTime(xj,
+                                  MLoad,
+                                  TSPV,
+                                  TSWind,
+                                  TSBaseload,
+                                  network,
+                                  transmission_mask,
+                                  intervals,
+                                  nodes,
+                                  lines,
+                                  years,
+                                  resolution,
+                                  allowance,
+                                  generator_ids,
+                                  generator_costs,
+                                  storage_ids,
+                                  storage_nodes,
+                                  flexible_ids,
+                                  storage_durations,
+                                  storage_costs,
+                                  line_ids,
+                                  line_lengths,
+                                  line_costs,
+                                  TLoss,
+                                  pv_idx,
+                                  wind_idx,
+                                  flexible_p_idx,
+                                  storage_p_idx,
+                                  storage_e_idx,
+                                  lines_idx,
+                                  solar_nodes,
+                                  wind_nodes,
+                                  flexible_nodes,
+                                  baseload_nodes,
+                                  CBaseload,
+                                  pv_cost_ids,
+                                  wind_cost_ids,
+                                  flexible_cost_ids,
+                                  baseload_cost_ids,
+                                  storage_cost_ids,
+                                  line_cost_ids,
+                                  networksteps,
+                                  storage_d_efficiencies,
+                                  storage_c_efficiencies,
+                                  Flexible_Limits_Annual,
+                                  first_year,
+                                  generator_line_ids,
+                                  storage_line_ids,
+                                  generator_unit_size)
+        sol.evaluate()
+        result[0, j] = sol.lcoe + sol.penalties
+        result[1, j] = sol.lcoe
+        result[2, j] = sol.penalties
     return result
 
 @njit
