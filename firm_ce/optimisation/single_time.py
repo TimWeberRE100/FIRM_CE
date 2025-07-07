@@ -403,7 +403,7 @@ class Solution_SingleTime:
         flexible_hours = np.zeros(len(self.flexible_order), dtype=np.float64)
         for i in range(self.intervals):
             for f in self.flexible_order:
-                flexible_hours[f] += self.resolution*np.ceil(self.GFlexible[i,f] / self.generator_unit_size[self.flexible_cost_ids][f], dtype=np.float64)
+                flexible_hours[f] += self.resolution*np.ceil(self.GFlexible[i,f] / self.generator_unit_size[self.flexible_cost_ids][f])
         return flexible_hours
 
     def _calculate_annual_generation(self):
