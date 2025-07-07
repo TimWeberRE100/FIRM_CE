@@ -92,7 +92,6 @@ def annualisation_component(power_capacity: np.float64,
                             fuel_mwh: np.float64, 
                             fuel_h: np.float64, 
                             annual_hours: np.float64,
-                            generator_unit_size: np.float64,
                             leap_year_scalar: np.float64,
                             ) -> np.float64:
     """
@@ -112,7 +111,6 @@ def annualisation_component(power_capacity: np.float64,
     fuel_mwh (np.float64): Fuel cost per MWh (based upon heat_rate_incr)
     fuel_h (np.float64): Fuel cost per hour (based upon heat_rate_base)
     annual_hours (np.float64): Hours operated annually
-    generator_unit_size (np.float64): Capacity of a single unit (GW/unit)
     leap_year_scalar (np.float64): Adjusts average annual FOM to account for leap days in planning period
 
     Returns:
@@ -126,13 +124,13 @@ def annualisation_component(power_capacity: np.float64,
             annualised_build_cost(present_value, power_capacity, energy_capacity, capex_p, capex_e)
             + fom_annual(power_capacity, fom, leap_year_scalar)
             + vom_annual(annual_generation, vom)
-            + fuel_annual(annual_generation, power_capacity, generator_unit_size, fuel_mwh, annual_hours, fuel_h)
+            + fuel_annual(annual_generation, fuel_mwh, annual_hours, fuel_h)
         )
     else:
         annualised_cost = (
             fom_annual(power_capacity, fom, leap_year_scalar)
             + vom_annual(annual_generation, vom)
-            + fuel_annual(annual_generation, power_capacity, generator_unit_size, fuel_mwh, annual_hours, fuel_h)
+            + fuel_annual(annual_generation, fuel_mwh, annual_hours, fuel_h)
         )
     return annualised_cost
 
@@ -186,8 +184,8 @@ def vom_annual(annual_generation, vom):
     return annual_generation * 1e3 * vom
 
 @njit
-def fuel_annual(annual_generation, power_capacity, generator_unit_size, fuel_mwh, annual_hours, fuel_h):
-    return annual_generation * 1e3 * fuel_mwh + annual_hours * fuel_h * (power_capacity/generator_unit_size)
+def fuel_annual(annual_generation, fuel_mwh, annual_hours, fuel_h):
+    return annual_generation * 1e3 * fuel_mwh + annual_hours * fuel_h
 
 @njit
 def calculate_costs(solution) -> Tuple[np.float64, 
@@ -280,7 +278,6 @@ def calculate_costs(solution) -> Tuple[np.float64,
             solution.generator_costs[6,idx],
             solution.generator_costs[7,idx],
             generator_annual_hours[idx],
-            solution.generator_unit_size[idx],
             solution.fom_scalar,
         ) for idx in range(0,len(generator_capacities))
         if generator_capacities[idx] > 0
@@ -300,7 +297,6 @@ def calculate_costs(solution) -> Tuple[np.float64,
             0,
             0,
             0,
-            1,
             solution.fom_scalar,
         ) for idx in range(0,len(storage_p_capacities))
         if storage_p_capacities[idx] > 0
@@ -452,8 +448,6 @@ def calculate_cost_components(solution) -> Tuple[np.float64,
     generator_fuel = np.array([
         fuel_annual(                              
             generator_annual_generations[idx],
-            generator_capacities[idx],
-            solution.generator_unit_size[idx],
             solution.generator_costs[6,idx],
             generator_annual_hours[idx],
             solution.generator_costs[7,idx],

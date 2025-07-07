@@ -403,9 +403,7 @@ class Solution_SingleTime:
         flexible_hours = np.zeros(len(self.flexible_order), dtype=np.float64)
         for i in range(self.intervals):
             for f in self.flexible_order:
-                if self.GFlexible[i,f] > 1e-6:
-                    flexible_hours[f] += self.resolution
-
+                flexible_hours[f] += self.resolution*np.ceil(self.GFlexible[i,f] / self.generator_unit_size[self.flexible_cost_ids][f], dtype=np.float64)
         return flexible_hours
 
     def _calculate_annual_generation(self):
@@ -413,7 +411,7 @@ class Solution_SingleTime:
         self.GWind_annual = self.GWind.sum(axis=0) * self.resolution / self.years
         self.GDischarge_annual = self.GDischarge.sum(axis=0) * self.resolution / self.years
         self.GFlexible_annual = self.GFlexible.sum(axis=0) * self.resolution / self.years
-        self.Flexible_hours_annual = self._get_flexible_hours() * self.resolution / self.years
+        self.Flexible_hours_annual = self._get_flexible_hours() / self.years
         self.GBaseload_annual = self.GBaseload.sum(axis=0) * self.resolution / self.years
         self.TFlowsAbs_annual = self.TFlowsAbs.sum(axis=0) * self.resolution / self.years
 
