@@ -88,7 +88,8 @@ class Line:
         self.capacity = float(line_dict['initial_capacity'])  # GW
         self.unit_type = str(line_dict['unit_type'])
         self.near_opt = str(line_dict.get('near_optimum','')).lower() in ('true','1','yes')
-        self.group    = line_dict.get('range_group','')
+        raw_group = line_dict.get('range_group','')
+        self.group = self.name if (raw_group is None or (isinstance(raw_group,float) and np.isnan(raw_group)) or str(raw_group).strip()=='') else str(raw_group).strip()
         self.cost = UnitCost(float(line_dict['capex']),
                               float(line_dict['fom']),
                               float(line_dict['vom']),
