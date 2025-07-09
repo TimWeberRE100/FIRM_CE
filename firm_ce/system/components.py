@@ -2,6 +2,7 @@ from typing import Dict
 from firm_ce.io.file_manager import DataFile 
 from firm_ce.system.costs import UnitCost
 from firm_ce.system.topology import Line
+import numpy as np
 
 class Fuel:
     """
@@ -60,8 +61,13 @@ class Generator:
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])
         self.near_opt = str(generator_dict.get('near_optimum','')).lower() in ('true','1','yes')
-        self.group = generator_dict.get('range_group','')
         
+        raw_group = generator_dict.get('range_group', '')
+        if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':
+            self.group = self.name  
+        else:
+            self.group = str(raw_group).strip()
+            
         self.cost = UnitCost(capex_p=float(generator_dict['capex']),
                               fom=float(generator_dict['fom']),
                               vom=float(generator_dict['vom']),
@@ -139,8 +145,13 @@ class Storage:
         self.line = line
         self.unit_type = str(storage_dict['unit_type'])
         self.near_opt = str(storage_dict.get('near_optimum','')).lower() in ('true','1','yes')
-        self.group = storage_dict.get('range_group','')
-
+        
+        raw_group = storage_dict.get('range_group', '')
+        if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':
+            self.group = self.name  
+        else:
+            self.group = str(raw_group).strip()
+            
         self.cost = UnitCost(capex_p=float(storage_dict['capex_p']),
                               fom=float(storage_dict['fom']),
                               vom=float(storage_dict['vom']),
