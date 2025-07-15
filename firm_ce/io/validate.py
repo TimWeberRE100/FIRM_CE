@@ -1,13 +1,13 @@
 import numpy as np
 import os
 
-from firm_ce.io.file_manager import import_csv_data
+from firm_ce.io.file_manager import import_config_csvs
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.logging import init_model_logger
 
 class ModelData:
     def __init__(self) -> None:
-        objects = import_csv_data()
+        objects = import_config_csvs()
         self.logger, self.results_dir = init_model_logger()
 
         self.scenarios = objects.get('scenarios')
@@ -17,7 +17,7 @@ class ModelData:
         self.storages = objects.get('storages')
         self.config = objects.get('config')
         self.x0s = objects.get('initial_guess')
-        self.settings = objects.get('settings')
+        self.datafiles = objects.get('datafiles')
 
     def validate(self):
         return validate_config(self)
@@ -41,10 +41,8 @@ def validate_positive_int(val):
 def validate_enum(val, options):
     return val in options
 
-
 def parse_list(val):
     return parse_comma_separated(val) if not is_nan(val) else []
-
 
 def is_nan(val):
     return isinstance(val, float) and np.isnan(val)

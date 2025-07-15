@@ -6,6 +6,20 @@ from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba import njit
+    from numba.core.types import float64, int64, string, boolean, DictType, UniTuple
+    from numba.experimental import jitclass
+
+    unitcost_spec = [
+        ('capex_p', float64),
+        ('capex_e', float64),
+        ('fom', float64),
+        ('vom', float64),
+        ('lifetime', int64),
+        ('discount_rate', float64),
+        ('heat_rate_base', float64),
+        ('heat_rate_incr', float64),
+        ('transformer_capex', float64),
+    ]
 else:
     def njit(func=None, **kwargs):
         if func is not None:
@@ -13,7 +27,15 @@ else:
         def wrapper(f):
             return f
         return wrapper
+    
+    def jitclass(spec):
+        def decorator(cls):
+            return cls
+        return decorator
+    
+    unitcost_spec = []
 
+@jitclass(unitcost_spec)
 class UnitCost:
     """
     Represents cost parameters for a generator, storage, or line object.

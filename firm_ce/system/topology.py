@@ -2,21 +2,28 @@ from typing import Dict
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.common.constants import TRIANGULAR, JIT_ENABLED
+from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.io.file_manager import DataFile 
 from firm_ce.system.costs import UnitCost
 from firm_ce.io.validate import is_nan
+from firm_ce.common.helpers import array_min, array_max_2d_axis1, array_sum_2d_axis0, zero_safe_division
 
 if JIT_ENABLED:
-    from numba import njit
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+    from numba.core.types import float64, int64, string, boolean, DictType, UniTuple
+    from numba.experimental import jitclass
 
+    node_spec = [
+        ('id',int64),
+        ('name',string),
+    ]
+else:
+    def jitclass(spec):
+        def decorator(cls):
+            return cls
+        return decorator
+    node_spec = []
+
+@jitclass(node_spec)
 class Node:
     """
     Represents a node (bus) in the network. All nodes require a demand trace
@@ -34,7 +41,6 @@ class Node:
         """
         self.id = int(id)
         self.name = str(name)
-        self.demand_data = None
 
     def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
         """
@@ -47,10 +53,14 @@ class Node:
         datafiles (Dict[str, DataFile]): A dictionary of DataFile objects.
         """
 
-        for key in datafiles:
-            if datafiles[key].type != 'demand':
-                continue
-            self.demand_data = list(datafiles[key].data[self.name])
+        for key, datafile in datafiles.items():
+            match datafile.type:
+                case 'demand':
+                    self.demand_data = np.array(datafile.data[self.name], dtype=np.float64)
+                    break
+                case _:
+                    continue
+        return None
 
     def unload_datafile(self) -> None:   
         """Unload any attached data to free memory."""    
@@ -59,6 +69,26 @@ class Node:
     def __repr__(self):
         return f"<Node object [{self.id}]{self.name}>"
 
+if JIT_ENABLED:
+    line_spec = [
+        ('id', int64),
+        ('name', string),
+        ('length', float64),
+        ('node_start', Node.class_type.instance_type),
+        ('node_end', Node.class_type.instance_type),
+        ('loss_factor', float64),
+        ('max_build', float64),
+        ('min_build', float64),
+        ('capacity', float64),
+        ('unit_type', string),
+        ('near_optimum_check', bool_),
+        ('group', string),
+        ('cost', UnitCost.class_type.instance_type),
+    ]
+else:
+    line_spec = []
+
+@jitclass(line_spec)
 class Line:
     """
     Represents a transmission line connecting two nodes within the network.
@@ -100,7 +130,18 @@ class Line:
 
     def __repr__(self):
         return f"<Line object [{self.id}]{self.name}>"
-    
+
+if JIT_ENABLED:
+    network_spec = [
+        ('network',int64[:,:]),
+        ('network_mask',boolean[:]),
+        ('transmission_mask',boolean[:]),
+        ('cache_0_donors',DictType(int64, int64[:, :])),
+        ('cache_n_donors',DictType(UniTuple(int64, 2), int64[:, :, :])),
+    ]
+else:
+    network_spec = []
+
 class Network:
     """
     Constructs the network topology for transmission modeling using lines and nodes.
@@ -108,7 +149,7 @@ class Network:
     required for transmission business rules in the unit commitment problem.
     """
 
-    def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node]) -> None:
+    def __init__(self, lines: Dict[int,Line], nodes: Dict[int,Node], networksteps_max: int) -> None:
         """
         Initialize the Network topology and build all relevant matrices and masks.
 
@@ -116,20 +157,17 @@ class Network:
         -------
         lines (Dict[int, Line]): Dictionary of transmission lines.
         nodes (Dict[int, Node]): Dictionary of nodes in the system.
+        networksteps_max (int): Maximum number of legs along which transmission can occur.
         """
 
         lines = self._remove_minor_lines(lines)
         self.topology = self._get_topology(lines, nodes)
         self.node_count = len(nodes)
-        self.transmission_mask = self._get_transmission_mask()
+        self.network, self.network_mask, self.transmission_mask = self._build_base_network()
         self.direct_connections = self._get_direct_connections()
-        self.topologies_nd = self._get_topologies_nd()
-        self.max_connections = max([self.count_lines(topology) for topology in self.topologies_nd])
-        self.network = self._get_network()
-        self.networksteps = self._get_network_steps()
-
-        self.direct_connections = self.direct_connections[:-1, :-1]
-
+        self.cache_0_donors = self._build_0_donor_cache()
+        self.cache_n_donors = self._build_n_donor_cache(networksteps_max)
+        
     @staticmethod
     def _remove_minor_lines(lines: Dict[str,Line]) -> Dict[int, Line]:
         """
@@ -145,23 +183,11 @@ class Network:
         Dict[int, Line]: Cleaned line dictionary with minor lines removed.
         """
 
-        cleaned_lines = {}
-        for key in lines:
-            if not (is_nan(lines[key].node_start) or is_nan(lines[key].node_end)):
-                cleaned_lines[key] = lines[key]
-        return cleaned_lines
+        return {k: v for k, v in lines.items() if not (is_nan(v.node_start) or is_nan(v.node_end))}
 
-    def _get_network_steps(self) -> int:
-        """
-        Returns the number of network steps (primary, secondary, ...) available.
-
-        Returns:
-        -------
-        int: Index of the final valid TRIANGULAR number.
-        """
-        return np.where(TRIANGULAR == self.network.shape[2])[0][0]
-
-    def _get_topology(self, lines: Dict[str,Line], nodes: Dict[str,Node]) -> NDArray[np.int64]:
+    
+    @staticmethod
+    def _get_topology(lines: Dict[str,Line], nodes: Dict[str,Node]) -> NDArray[np.int64]:
         """
         Constructs the base topology matrix mapping each line to its start/end nodes.
 
@@ -172,195 +198,239 @@ class Network:
                             the node_end id.
         """
 
-        num_lines = len(lines)
-        topology = np.full((num_lines, 2), -1, dtype=np.int64)
-        node_names = {nodes[idx].name : nodes[idx].id for idx in nodes}
-        
-        l = 0
-        n = 0
-        line_order = {}
-        node_order = {}
-        for key in lines:
-            line_order[key] = l
-            l += 1
-        for key in nodes:
-            node_order[key] = n
-            n += 1
+        node_ids = {node.name: node.id for node in nodes.values()}
+        node_order = {node_id: idx for idx, node_id in enumerate(nodes.keys())}
+        line_order = {line.id: idx for idx, line in enumerate(lines.values())}
 
-        l = 0
-        n = 0
-        line_order = {}
-        node_order = {}
-        for key in lines:
-            line_order[key] = l
-            l += 1
-        for key in nodes:
-            node_order[key] = n
-            n += 1
-
-        for key in lines:
-            line = lines[key]
-            line_id = line.id
-            start_node_id = node_names[line.node_start]
-            end_node_id = node_names[line.node_end]
-            topology[line_order[line_id]] = [node_order[start_node_id], node_order[end_node_id]]
-
+        topology = np.full((len(lines), 2), -1, dtype=np.int64)
+        for key, line in lines.items():
+            start = node_order[node_ids[line.node_start]]
+            end = node_order[node_ids[line.node_end]]
+            topology[line_order[line.id]] = [start, end]
         return topology
-    
-    def _get_transmission_mask(self) -> NDArray[np.bool_]:
-        """
-        Generate the transmission mask which is applied to the 3D Transmission matrix
-        to select elements necessary for calculating transmission flows over the
-        timeseries.
 
-        Returns:
-        -------
-        NDArray[np.bool_]: Array of shape (1, num_lines, num_nodes).
-        """
-        transmission_mask = np.zeros((self.node_count, len(self.topology)), dtype=np.bool_)
-        for n, row in enumerate(self.topology):
-            transmission_mask[row[0], n] = True
-        
-        return np.atleast_3d(transmission_mask).T
-    
+    def _build_base_network(self):
+        node_range = range(self.node_count)
+        mask = np.array([(self.topology == j).sum(axis=1).astype(bool) for j in node_range]).sum(axis=0) == 2
+        network = self.topology[mask]
+        node_map = {node_id: idx for idx, node_id in enumerate(node_range)}
+        network = np.vectorize(node_map.get)(network)
+
+        transmission_mask = np.zeros((self.node_count, network.shape[0]), dtype=bool)
+        for line_id, (start, _) in enumerate(network):
+            transmission_mask[start, line_id] = True
+
+        return network, mask, transmission_mask
+
     def _get_direct_connections(self) -> NDArray[np.int64]:
-        """
-        Generate a direct connection matrix of line indices between node pairs.
+        conn = -1 * np.ones((self.node_count + 1, self.node_count + 1), dtype=np.int64)
+        for idx, (i, j) in enumerate(self.network):
+            conn[i, j] = idx
+            conn[j, i] = idx
+        return conn
 
-        Returns:
-        -------
-        NDArray[np.int64]: Square matrix of shape (node_count + 1, node_count + 1).
-        """
-        direct_connections = np.full((self.node_count+1, self.node_count+1), -1, dtype=np.int64)
-        for n, row in enumerate(self.topology):
-            i, j = row
-            direct_connections[i, j] = n
-            direct_connections[j,i] = n
-        return direct_connections
+    def _network_neighbours(self, node: int) -> NDArray[np.int64]:
+        return np.where(self.direct_connections[node] != -1)[0]
+
+    def _build_0_donor_cache(self) -> Dict[int, NDArray[np.int64]]:
+        cache = {}
+        for n in range(self.node_count):
+            neighbors = self._network_neighbours(n)
+            lines = self.direct_connections[n, neighbors]
+            cache[n] = np.stack((neighbors, lines))
+        return cache
+
+    def _build_n_donor_cache(self, max_steps: int) -> Dict[tuple[int, int], NDArray[np.int64]]:
+        cache = {}
+        paths = self.network.copy()
+
+        for step in range(1, max_steps):
+            paths = self._nth_order_paths(paths)
+            for n in range(self.node_count):
+                forward = paths[paths[:, 0] == n]
+                reverse = paths[paths[:, -1] == n]
+                combined = np.vstack((forward[:, 1:], reverse[:, :-1][:, ::-1]))
+
+                lines = np.empty_like(combined)
+                for i in range(combined.shape[0]):
+                    lines[i, 0] = self.direct_connections[n, combined[i, 0]]
+                    for j in range(1, combined.shape[1]):
+                        lines[i, j] = self.direct_connections[combined[i, j - 1], combined[i, j]]
+
+                cache[(n, step)] = np.dstack((combined, lines)).T
+        return cache
+
+    def _nth_order_paths(self, paths: NDArray[np.int64]) -> NDArray[np.int64]:
+        candidates = []
+        for path in paths:
+            new_paths = self._extend_path(path)
+            candidates.extend(new_paths)
+
+        deduped = self._deduplicate_paths(np.array(candidates, dtype=np.int64))
+        return deduped
+
+    def _extend_path(self, path: NDArray[np.int64]) -> list[NDArray[np.int64]]:
+        start_neighbors = [n for n in self._network_neighbours(path[0]) if n not in path]
+        end_neighbors = [n for n in self._network_neighbours(path[-1]) if n not in path]
+        new_paths = []
+
+        for n in start_neighbors:
+            new_paths.append(np.insert(path, 0, n))
+        for n in end_neighbors:
+            new_paths.append(np.append(path, n))
+
+        return new_paths
+
+    def _deduplicate_paths(self, paths: NDArray[np.int64]) -> NDArray[np.int64]:
+        def canonical(row):
+            return row if tuple(row) < tuple(row[::-1]) else row[::-1]
+
+        canonical_paths = np.array([canonical(row) for row in paths])
+        _, idx = np.unique(canonical_paths, axis=0, return_index=True)
+        return canonical_paths[np.sort(idx)]
     
-    def network_neighbours(self, n: int) -> NDArray[np.int64]:
-        """
-        Find all node connections that include the given node.
-
-        Parameters:
-        -------
-        node (int): Node index.
-
-        Returns:
-        -------
-        NDArray[np.int64]: Array of connected node indices.
-        """
-        isn_mask = np.isin(self.topology, n)
-        hasn_mask = isn_mask.sum(axis=1).astype(bool)
-        joins_n = self.topology[hasn_mask][~isn_mask[hasn_mask]]
-        return joins_n
+@njit
+def get_transmission_flows_t2(solution, 
+                             Fillt: NDArray[np.float64], 
+                             Surplust: NDArray[np.float64], 
+                             Importt: NDArray[np.float64], 
+                             Exportt: NDArray[np.float64]
+                             ) -> NDArray[np.float64]:
     
-    def nthary_network(self, network_1: NDArray[np.int64]) -> NDArray[np.int64]:
-        """
-        Generate the next-order network (2nd, 3rd, etc.) from existing paths.
+    # The primary connections are simpler (and faster) to model than the general
+    #   nthary connection
+    # Since many if not most calls of this function only require primary transmission
+    #   I have split it out from general nthary transmission to improve speed
+    _transmission = np.zeros(solution.nodes, np.float64)
+    leg = 0
+    # loop through nodes with deficits
+    for n in range(solution.nodes):
+        if Fillt[n] < 1e-6:
+            continue
+        # appropriate slice of network array
+        # pdonors is equivalent to donors later on but has different ndim so needs to
+        #   be a different variable name for static typing
+        pdonors, pdonor_lines = solution.cache_0_donors[n]
+        _usage = 0.0 # badly named by avoids creating more variables
+        for d in pdonors: 
+            _usage += Surplust[d]
 
-        Parameters:
-        -------
-        network_1 (NDArray[np.int64]): Existing n-th order network path of shape (paths, steps).
+        if _usage < 1e-6:
+            # continue if no surplus to be traded
+            continue
 
-        Returns:
-        -------
-        NDArray[np.int64]: New n+1 order network with extended paths.
-        """
-        networkn = -1*np.ones((1,network_1.shape[1]+1), dtype=np.int64)
-        for row in network_1:
-            _networkn = -1*np.ones((1,network_1.shape[1]+1), dtype=np.int64)
-            joins_start = self.network_neighbours(row[0])
-            joins_end = self.network_neighbours(row[-1])
-            for n in joins_start:
-                if n not in row:
-                    _networkn = np.vstack((_networkn, np.insert(row, 0, n)))
-            for n in joins_end:
-                if n not in row:
-                    _networkn = np.vstack((_networkn, np.append(row, n)))
-            _networkn=_networkn[1:,:]
-            dup=[]
-            # find rows which are already in network
-            for i, r in enumerate(_networkn): 
-                for s in networkn:
-                    if np.setdiff1d(r, s).size==0:
-                        dup.append(i)
-            # find duplicated rows within n3
-            for i, r in enumerate(_networkn):
-                for j, s in enumerate(_networkn):
-                    if i==j:
+        for d, l in zip(pdonors, pdonor_lines):
+            _usage = 0.0
+            for m in range(solution.nodes):
+                _usage += Importt[m, l]
+            # maximum exportable
+            _transmission[d] = min(
+                Surplust[d],  # power resource constraint
+                solution.GHvi[l] - _usage, # line capacity constraint
+            )  
+
+        # scale down to fill requirement
+        _usage = 0.0
+        for m in range(solution.nodes):
+            _usage += _transmission[m] 
+        if _usage > Fillt[n]:
+            _scale = Fillt[n] / _usage
+            _transmission *= _scale
+            _usage *= _scale
+        if _usage < 1e-6:
+            continue
+
+        # for d, l in zip(pdonors, pdonor_lines):  #  print(d,l)
+        for i in range(len(pdonors)):
+            # record transmission
+            Importt[n, pdonor_lines[i]] += _transmission[pdonors[i]]
+            Exportt[pdonors[i], pdonor_lines[i]] -= _transmission[pdonors[i]]
+            # adjust deficit/surpluses
+            Surplust[pdonors[i]] -= _transmission[pdonors[i]]
+            _transmission[pdonors[i]] = 0
+ 
+        Fillt[n] -= _usage
+
+    # Continue with nthary transmission
+    # Note: This code block works for primary transmission too, but is slower
+    if (Fillt.sum() > 1e-6) and (Surplust.sum() > 1e-6):
+            _import = np.zeros(Importt.shape, np.float64)
+            _capacity = np.zeros(solution.nhvi, np.float64)
+            # loop through secondary, tertiary, ..., nthary connections
+            for leg in range(1, solution.networksteps):
+                # loop through nodes with deficits
+                for n in range(solution.nodes):
+                    if Fillt[n] < 1e-6:
                         continue
-                    if np.setdiff1d(r, s).size==0:
-                        dup.append(i)
-            _networkn = np.delete(_networkn, np.unique(np.array(dup, dtype=np.int64)), axis=0)
-            if _networkn.size>0:
-                networkn = np.vstack((networkn, _networkn))
-        networkn = networkn[1:,:]
-        return networkn
-    
-    def _get_topologies_nd(self) -> list[NDArray[np.int64]]:
-        """
-        Iteratively build higher-order network topologies.
+                    
+                    donors, donor_lines = solution.cache_n_donors[(n, leg)]
 
-        Returns:
-        -------
-        List[NDArray[np.int64]]: List of arrays, each representing a hop level.
-        """
-        topologies_nd = [self.topology]
+                    if donors.shape[1] == 0:
+                        break  # break if no valid donors
+                        
+                    _usage = 0.0 # badly named variable but avoids extra variables
+                    for d in donors[-1]:
+                        _usage += Surplust[d]
 
-        while True:
-            n = self.nthary_network(topologies_nd[-1])
-            if n.size > 0:
-                topologies_nd.append(n)
-            else: 
-                break
-        return topologies_nd
+                    if _usage < 1e-6:
+                        continue
 
-    def count_lines(self, network: NDArray[np.int64]) -> int:
-        """
-        Count the maximum number of concurrent connections at any node.
+                    _capacity[:] = solution.GHvi - array_sum_2d_axis0(Importt)
+                    for d, dl in zip(donors[-1], donor_lines.T): # print(d,dl)
+                        # power use of each line, clipped to maximum capacity of lowest leg
+                        _import[d, dl] = min(array_min(_capacity[dl]), Surplust[d])
+                    
+                    for l in range(solution.nhvi):
+                        # total usage of the line across all import paths
+                        _usage=0.0
+                        for m in range(solution.nodes):
+                            _usage += _import[m, l]
+                        # if usage exceeds capacity
+                        if _usage > _capacity[l]:
+                            # unclear why this raises zero division error from time to time
+                            _scale = zero_safe_division(_capacity[l], _usage)
+                            for m in range(solution.nodes):
+                                # clip all legs
+                                if _import[m, l] > 1e-6:
+                                    for o in range(solution.nhvi):
+                                        _import[m, o] *= _scale
+                        
+                    # intermediate calculation array
+                    _transmission = array_max_2d_axis1(_import)
+                    
+                    # scale down to fill requirement
+                    _usage = 0.0
+                    for m in range(solution.nodes):
+                        _usage += _transmission[m] 
+                    if _usage > Fillt[n]:
+                        _scale = Fillt[n] / _usage
+                        _transmission *= _scale
+                        _usage *= _scale
+                    if _usage < 1e-6:
+                        continue
 
-        Parameters:
-        -------
-        network (NDArray[np.int64]): Network array.
+                    for nd, d, dl in zip(range(donors.shape[1]), donors[-1], donor_lines.T): # print(nd, d, dl)
+                        Importt[n, dl[0]] += _transmission[d]
+                        Exportt[donors[0, nd], dl[0]] -= _transmission[d]
+                        for step in range(leg):
+                            Importt[donors[step, nd], dl[step+1]] += _transmission[d]
+                            Exportt[donors[step+1, nd], dl[step+1]] -= _transmission[d]
 
-        Returns:
-        -------
-        int: Max number of connections.
-        """
-        _, counts = np.unique(network[:, np.array([0,-1])], return_counts=True)
-        if counts.size > 0:
-            return counts.max()
-        return 0
-    
-    def _get_network(self) -> NDArray[np.int64]:
-        """
-        Build a 4D network array encoding all paths along lines between nodes.
+                    # Adjust fill and surplus
+                    Fillt[n] -= _usage
+                    Surplust -= _transmission
+                    
+                    _import[:] = 0.0
+                    _capacity[:] = 0.0
+                    
+                    if (Surplust.sum() < 1e-6) or (Fillt.sum() < 1e-6):
+                        break
 
-        Returns:
-        -------
-        NDArray[np.int64]: Shape (2, node_count, TRIANGULAR, max_connections).
-        """
+                if (Surplust.sum() < 1e-6) or (Fillt.sum() < 1e-6):
+                    break
 
-        network = -1*np.ones((2, self.node_count, TRIANGULAR[len(self.topologies_nd)], self.max_connections), dtype=np.int64)
-        for i, net in enumerate(self.topologies_nd):
-            conns = np.zeros(self.node_count, int)
-            for j, row in enumerate(net):
-                network[0, row[0], TRIANGULAR[i]:TRIANGULAR[i+1], conns[row[0]]] = row[1:]
-                network[0, row[-1], TRIANGULAR[i]:TRIANGULAR[i+1], conns[row[-1]]] = row[:-1][::-1]
-                conns[row[0]]+=1
-                conns[row[-1]]+=1
-                
-        for i in range(network.shape[1]):
-            for j in range(network.shape[2]):
-                for k in range(network.shape[3]):
-                    if j in TRIANGULAR:
-                        start=i
-                    else: 
-                        start=network[0, i, j-1, k]
-                    network[1, i, j, k] = self.direct_connections[start, network[0, i, j, k]]
-        return network
-    
+    return Importt, Exportt
+
 @njit
 def get_transmission_flows_t(Fillt: NDArray[np.float64], 
                              Surplust: NDArray[np.float64], 

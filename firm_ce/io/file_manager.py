@@ -1,6 +1,8 @@
 from pathlib import Path
 import pandas as pd
 from typing import List, Dict, Any
+import numpy as np
+from numpy.typing import NDArray
 
 class ImportCSV:
     """
@@ -17,6 +19,14 @@ class ImportCSV:
         """
 
         self.repository = Path(repository)
+        self.config_filenames = ('scenarios',
+                                'generators',
+                                'fuels',
+                                'lines',
+                                'storages',
+                                'config',
+                                'initial_guess',
+                                'datafiles',)
 
         if not self.repository.is_dir():
             raise FileNotFoundError(f"Repository {repository} does not exist.")
@@ -39,48 +49,12 @@ class ImportCSV:
             raise FileNotFoundError(f"File {filepath} does not exist.")
         return pd.read_csv(filepath, index_col="id").to_dict(orient='index')
     
-    def get_scenarios(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("scenarios.csv")
-    
-    def get_generators(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("generators.csv")  
-    
-    def get_fuels(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("fuels.csv")  
-    
-    def get_lines(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("lines.csv")
-    
-    def get_storages(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("storages.csv")
-    
-    def get_datafiles(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("datafiles.csv")
-    
-    def get_config(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("config.csv")
-    
-    def get_initial_guess(self) -> Dict[str, Dict[str, Any]]:
-        return self.get_data("initial_guess.csv")
-
-    def get_setting(self, setting_filename: str) -> Dict[str, Dict[str, Any]]:
-        """
-        Load a specified settings CSV file. Settings should NOT be edited by user.
-
-        Parameters:
-        -------
-        setting_filename (str): Name of the settings CSV file.
-
-        Returns:
-        -------
-        Dict[str, Dict[str, Any]]: Dictionary of settings keyed by ID.
-        """
-
-        return self.get_data(setting_filename)
+    def get_config_dict(self) -> Dict[str, Dict[str, Any]]:
+        return {fn : self.get_data(fn+'.csv') for fn in self.config_filenames}
         
 class ImportDatafile:
     """
-    Class for importing a single CSV datafile into a dictionary of lists.
+    Class for importing a single CSV datafile into a dictionary of NDArrays.
     """
 
     def __init__(self, repository: Path, filename: str) -> None:
@@ -99,20 +73,20 @@ class ImportDatafile:
         if not self.repository.is_dir():
             raise FileNotFoundError(f"Repository {repository} does not exist.")
 
-    def get_data(self) -> Dict[str, List[Any]]:
+    def get_data(self) -> Dict[str, NDArray]:
         """
-        Load the CSV data into a dictionary of column-wise lists.
+        Load the CSV data into a dictionary of column-wise NumPy arrays.
 
         Returns:
         -------
-        Dict[str, List[Any]]: Dictionary where keys are column names and values are column data.
+        Dict[str, NDArray]: Dictionary where keys are column names and values are NumPy arrays.
         """
-
         filepath = self.repository.joinpath(self.filename)
         if not filepath.is_file():
             raise FileNotFoundError(f"File {filepath} does not exist.")
+
         df = pd.read_csv(filepath)
-        return df.to_dict(orient='list')
+        return {col: df[col].to_numpy() for col in df.columns}
 
 class DataFile:
     """
@@ -135,7 +109,7 @@ class DataFile:
     def __repr__(self) -> str:
         return f"{self.name} ({self.type})"
 
-def import_csv_data() -> Dict[str, Any]:
+def import_config_csvs() -> Dict[str, Any]:
     """
     Load all model configuration CSVs into a single dictionary.
 
@@ -145,34 +119,6 @@ def import_csv_data() -> Dict[str, Any]:
     """
 
     csv_importer = ImportCSV("firm_ce/config")
-    data = {
-        'scenarios': csv_importer.get_scenarios(),
-        'generators': csv_importer.get_generators(),
-        'fuels': csv_importer.get_fuels(),
-        'lines': csv_importer.get_lines(),
-        'storages': csv_importer.get_storages(),
-        'config': csv_importer.get_config(),
-        'initial_guess': csv_importer.get_initial_guess(),
-    }
-
-    csv_importer = ImportCSV("firm_ce/settings")
-    settings = csv_importer.get_setting('settings.csv')
-    data['settings'] = {}
-    for idx in range(len(settings)):
-        data['settings'][settings[idx]['name']] = csv_importer.get_setting(settings[idx]['filename'])
-
-    return data
-
-def import_datafiles() -> Dict[str, Dict[str, Any]]:
-    """
-    Load the datafiles.csv model configuration into a dictionary.
-
-    Returns:
-    -------
-    Dict[str, Dict[str, Any]]: Dictionary of datafiles keyed by their ID.
-    """
-
-    csv_importer = ImportCSV("firm_ce/config")
-    data = csv_importer.get_datafiles()
+    data = csv_importer.get_config_dict()
 
     return data

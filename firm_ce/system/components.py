@@ -1,9 +1,29 @@
 from typing import Dict
-from firm_ce.io.file_manager import DataFile 
-from firm_ce.system.costs import UnitCost
-from firm_ce.system.topology import Line
 import numpy as np
 
+from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.io.file_manager import DataFile 
+from firm_ce.system.costs import UnitCost
+from firm_ce.system.topology import Line, Node
+
+if JIT_ENABLED:
+    from numba.core.types import float64, int64, string, boolean
+    from numba.experimental import jitclass
+
+    fuel_spec = [
+        ('id',int64),
+        ('name',string),
+        ('cost',float64),
+        ('emissions',float64),
+    ]
+else:
+    def jitclass(spec):
+        def decorator(cls):
+            return cls
+        return decorator    
+    fuel_spec = []
+
+@jitclass(fuel_spec)
 class Fuel:
     """
     Represents a fuel type with associated cost and emissions.
@@ -27,6 +47,26 @@ class Fuel:
     def __repr__(self):
         return f"<Fuel object [{self.id}]{self.name}>"
 
+if JIT_ENABLED:
+    generator_spec = [
+        ('id',int64),
+        ('name',string),
+        ('node',Node.class_type.instance_type),
+        ('fuel',Fuel.class_type.instance_type),
+        ('unit_size',float64),
+        ('max_build',float64),
+        ('min_build',float64),
+        ('capacity',float64),
+        ('line',Line.class_type.instance_type),
+        ('unit_type',string),
+        ('near_optimum_check',boolean),
+        ('group',string),
+        ('cost',UnitCost.class_type.instance_type),
+    ]
+else:
+    generator_spec = []
+
+@jitclass(generator_spec)
 class Generator:
     """
     Represents a generator unit within the system.
@@ -60,7 +100,7 @@ class Generator:
         self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
         self.unit_type = str(generator_dict['unit_type'])
-        self.near_opt = str(generator_dict.get('near_optimum','')).lower() in ('true','1','yes')
+        self.near_optimum_check = str(generator_dict.get('near_optimum','')).lower() in ('true','1','yes')
         
         raw_group = generator_dict.get('range_group', '')
         if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':
@@ -77,7 +117,7 @@ class Generator:
                               heat_rate_incr=float(generator_dict['heat_rate_incr']), # GJ/MWh
                               fuel=fuel)
         
-        self.data = None
+        self.generation_trace = None
         self.annual_limit = 0
     
     def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
@@ -91,28 +131,52 @@ class Generator:
         -------
         datafiles (Dict[str, DataFile]): A dictionary of named DataFile objects.
         """
-        for key in datafiles:
-            if (datafiles[key].type != 'generation') and (datafiles[key].type != 'flexible_annual_limit'):
+        for key, datafile in datafiles.items():
+            if self.name not in datafile.data:
                 continue
-            if self.name not in datafiles[key].data.keys():
-                continue
-            if datafiles[key].type == 'generation':
-                self.data = list(datafiles[key].data[self.name])
-                break
-            elif datafiles[key].type == 'flexible_annual_limit':
-                self.annual_limit = list(datafiles[key].data[self.name])
-                break    
+
+            match datafile.type:
+                case 'generation':
+                    self.generation_trace = np.array(datafile.data[self.name], dtype=np.float64)
+                    break
+                case 'flexible_annual_limit':
+                    self.annual_limit = np.array(datafile.data[self.name], dtype=np.float64)
+                    break
+                case _:
+                    continue    
+        return None
 
     def unload_datafile(self) -> None:     
         """
         Unload any attached data to free memory.
         """  
-        self.data = None
+        self.generation_trace = None
         self.annual_limit = 0     
 
     def __repr__(self):
         return f"<Generator object [{self.id}]{self.name}>"
 
+if JIT_ENABLED:
+    storage_spec = [
+        ('id',int64),
+        ('name',string),
+        ('node',Node.class_type.instance_type),
+        ('power_capacity',float64),
+        ('energy_capacity',float64),
+        ('max_build_p',float64),
+        ('max_build_e',float64),
+        ('min_build_p',float64),
+        ('min_build_e',float64),        
+        ('line',Line.class_type.instance_type),
+        ('unit_type',string),
+        ('near_optimum_check',boolean),
+        ('group',string),
+        ('cost',UnitCost.class_type.instance_type),
+    ]
+else:
+    storage_spec = []
+
+@jitclass(storage_spec)
 class Storage:
     """
     Represents an energy storage system unit in the system.
@@ -144,7 +208,7 @@ class Storage:
         self.min_build_e = float(storage_dict['min_build_e'])  # GWh/year
         self.line = line
         self.unit_type = str(storage_dict['unit_type'])
-        self.near_opt = str(storage_dict.get('near_optimum','')).lower() in ('true','1','yes')
+        self.near_optimum_check = str(storage_dict.get('near_optimum','')).lower() in ('true','1','yes')
         
         raw_group = storage_dict.get('range_group', '')
         if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':

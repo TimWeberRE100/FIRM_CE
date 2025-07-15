@@ -433,6 +433,39 @@ class Solution_SingleTime:
                 + np.maximum(self.SPower[t], 0) / self.storage_d_efficiencies * self.resolution
                 + np.minimum(self.SPower[t], 0) * self.storage_c_efficiencies * self.resolution
             )
+        
+    def _apportion_nodal_storage(self):
+        self.Storage[-1] = 0.5 * self.CPHS
+        for t in range(self.intervals):
+            Storaget_p_lb = self.Storage[t-1] * self.storage_d_efficiencies / self.resolution 
+            Storaget_p_ub = (self.CPHS - self.Storage[t-1]) / self.storage_c_efficiencies / self.resolution 
+            self._Discharget_max = np.minimum(self.CPHP, Storaget_p_lb)
+            self._Charget_max = np.minimum(self.CPHP, Storaget_p_ub)
+            for node in range(self.nodes):
+                storage_mask = self.storage_nodes == node
+                if np.any(storage_mask):
+                    for idx in self.storage_sorted_nodal[node,:]:
+                        if idx == -1:
+                            break
+                        self.SPower[t,idx] = max(min(self.SPower_nodal[t,node],self._Discharget_max[idx]),
+                                                 self._Charget_max[idx])
+                        self.SPower_nodal[t,node] -= self.SPower[t,idx]
+                        
+                        if self.SPower_nodal[t,node] < 1e6:
+                            break
+                        
+                    #### Need to catch intra-node precharging
+                    if self.SPower_nodal[t,node] >= 1e6:
+                        print(t, self.SPower_nodal[t,node])
+
+        ######## WILL HAVE TO ADD NEW ENERGY STORAGE CONSTRAINT TO NODAL SECTION - ASSUME ENERGY CAPACITY CAN BE SPLIT EVENLY ACROSS ALL STORAGE AT NODE?
+
+        return None
+    
+    def _apportion_nodal_flexible(self):
+        # Iterate through each node
+        # Attempt to apportion flexible from least to most expensive
+        return
     
     def _clamp_and_assign(self, t, node, idx, is_flexible=False, lower_bound=None, upper_bound=None):
         if is_flexible:
@@ -1235,13 +1268,17 @@ class Solution_SingleTime:
         return self.Deficit_nodal, np.abs(self.TFlows)
 
     def _objective(self) -> List[float]:
-        """ start_time = time.time() """
+        start_time = time.time()
 
         deficit, TFlowsAbs = self._transmission_balancing()
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
 
-        """ end_time = time.time()
-        print(f"Transmission time: {end_time-start_time:.4f} seconds") """
+        end_time = time.time()
+        print(f"Transmission time: {end_time-start_time:.4f} seconds")
+
+        self._apportion_nodal_storage()
+        end_time2 = time.time()
+        print(f"Storage apportion time: {end_time2-end_time:.4f} seconds")
 
         self._calculate_annual_generation()
         cost, _, _, _ = calculate_costs(self)
@@ -1251,8 +1288,8 @@ class Solution_SingleTime:
 
         lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
-        """ print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
-        #exit() """
+        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
+        exit()
         return lcoe, pen_deficit
 
     def evaluate(self):
