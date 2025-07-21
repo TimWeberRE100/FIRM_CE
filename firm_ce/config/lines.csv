@@ -1,8 +1,8 @@
 id,name,length,capex,transformer_capex,fom,vom,lifetime,discount_rate,node_start,node_end,loss_factor,initial_capacity,max_build,min_build,unit_type,scenarios
 0,KH-TH,550,308.7,11000,2.24,0,60,0.05,KH,TH,0.07,0,15,0,hvac,"mekong,mekong_imports,mekong_gas"
 1,KH-VS,350,131.3,112000,3.36,0,60,0.05,KH,VS,0.03,0,15,0,hvdc,"mekong,mekong_imports,mekong_gas"
-2,LAN-TH,640,131.3,112000,3.36,0,60,0.05,LAN,TH,0.03,0,20,0,hvdc,"mekong,mekong_imports,mekong_gas"
-3,LAS-TH,760,308.7,11000,2.24,0,60,0.05,LAS,TH,0.07,0,20,0,hvac,"mekong,mekong_imports,mekong_gas"
+2,LAN-TH,640,131.3,112000,3.36,0,60,0.05,LAN,TH,0.03,0,20,0,hvdc,"mekong,mekong_imports,mekong_gas,TH_LA_RE,TH_LA_gas"
+3,LAS-TH,760,308.7,11000,2.24,0,60,0.05,LAS,TH,0.07,0,20,0,hvac,"mekong,mekong_imports,mekong_gas,TH_LA_RE,TH_LA_gas"
 4,KH-LAS,460,131.3,112000,3.36,0,60,0.05,KH,LAS,0.03,0,15,0,hvdc,"mekong,mekong_imports,mekong_gas"
 5,VS-LAS,670,308.7,11000,2.24,0,60,0.05,VS,LAS,0.07,0,20,0,hvac,"mekong,mekong_imports,mekong_gas"
 6,LAN-VH,520,308.7,11000,2.24,0,60,0.05,LAN,VH,0.07,0,20,0,hvac,"mekong,mekong_imports,mekong_gas"
@@ -23,9 +23,9 @@ id,name,length,capex,transformer_capex,fom,vom,lifetime,discount_rate,node_start
 21,CACE-KH_I,520,308.7,11000,2.24,0,60,0.05,CACE,KH_I,0.07,0,10,0,hvac,thailand_imports
 22,NEC-LAS_I,320,308.7,11000,2.24,0,60,0.05,NEC,LAS_I,0.07,0,10,0,hvac,thailand_imports
 23,NAC-LAN_I,370,131.3,112000,3.36,0,60,0.05,NAC,LAN_I,0.03,0,10,0,hvdc,thailand_imports
-24,pv_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
-25,onshore_wind_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
+24,pv_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas,ThaiNode,ThaiRE,TH_LA_RE,TH_LA_gas"
+25,onshore_wind_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas,ThaiNode,ThaiRE,TH_LA_RE,TH_LA_gas"
 26,offshore_wind_connection,100,2800,0,28,0,30,0.05,nan,nan,0,0,0,0,submarine,"mekong,mekong_imports,mekong_gas"
-27,phes_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
-28,battery_connection,5,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
-29,other_generators,0,0,0,0,0,1,1,nan,nan,0,0,0,0,0,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas"
+27,phes_connection,20,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas,ThaiNode,ThaiRE,TH_LA_RE,TH_LA_gas"
+28,battery_connection,5,308.7,11000,2.24,0,60,0.05,nan,nan,0,0,0,0,hvac,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas,ThaiNode,ThaiRE,TH_LA_RE,TH_LA_gas"
+29,other_generators,0,0,0,0,0,1,1,nan,nan,0,0,0,0,0,"thailand,thailand_imports,thailand_gas,mekong,mekong_imports,mekong_gas,ThaiNode,ThaiRE,TH_LA_RE,TH_LA_gas"
