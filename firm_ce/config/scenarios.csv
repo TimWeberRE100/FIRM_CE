@@ -1,5 +1,5 @@
 id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraints,type
-0,TH_LA_gas,1,0.00002,2010,2019,"TH,LAN,LAS","LAN-TH,LAS-TH",,single_time
+0,thailand_min_imports,1,0.00002,2010,2019,"SAC,CACW,MAC,CACE,CACN,NAC,NEC,LAS,LAN","SAC-CACW,CACW-MAC,MAC-CACE,MAC-CACN,CACN-NAC,CACN-NEC,NAC-NEC,NEC-LAS,NAC-LAN",,single_time
 1,TH_LA_RE,1,0.00002,2010,2019,"TH,LAN,LAS","LAN-TH,LAS-TH",,single_time
 2,ThaiNode,1,0.00002,2010,2019,"TH","",,single_time
 3,ThaiRE,1,0.00002,2010,2019,"TH","",,single_time
@@ -9,3 +9,4 @@ id,scenario_name,resolution,allowance,firstyear,finalyear,nodes,lines,constraint
 7,thailand,1,0.00002,2010,2019,"SAC,CACW,MAC,CACE,CACN,NAC,NEC","SAC-CACW,CACW-MAC,MAC-CACE,MAC-CACN,CACN-NAC,CACN-NEC,NAC-NEC",,single_time
 8,thailand_gas,1,0.00002,2010,2019,"SAC,CACW,MAC,CACE,CACN,NAC,NEC,MY_I,MM_I,KH_I,LAS_I,LAN_I","SAC-CACW,CACW-MAC,MAC-CACE,MAC-CACN,CACN-NAC,CACN-NEC,NAC-NEC,SAC-MY_I,NAC-MM_I,CACE-KH_I,NEC-LAS_I,NAC-LAN_I",,single_time
 9,thailand_imports,1,0.00002,2010,2019,"SAC,CACW,MAC,CACE,CACN,NAC,NEC,MY_I,MM_I,KH_I,LAS_I,LAN_I","SAC-CACW,CACW-MAC,MAC-CACE,MAC-CACN,CACN-NAC,CACN-NEC,NAC-NEC,SAC-MY_I,NAC-MM_I,CACE-KH_I,NEC-LAS_I,NAC-LAN_I",,single_time
+10,TH_LA_gas,1,0.00002,2010,2019,"TH,LAN,LAS","LAN-TH,LAS-TH",,single_time
