@@ -1,15 +1,16 @@
 import numpy as np
-from typing import List
 import time
 
-from firm_ce.system.topology import get_transmission_flows_t
-from firm_ce.common.constants import JIT_ENABLED, EPSILON_FLOAT64, NUM_THREADS
+#from firm_ce.system.topology import get_transmission_flows_t
+from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS
 from firm_ce.system.costs import calculate_costs
-from firm_ce.optimisation.numba_classes import *
+from firm_ce.system.components import Fleet
+from firm_ce.system.topology import Network
+from firm_ce.system.energybalance import ScenarioParameters, EnergyBalance
 import firm_ce.common.helpers as helpers
 
 if JIT_ENABLED:
-    from numba import float64, int64, boolean, njit, prange, set_num_threads
+    from numba import float64, boolean, njit, prange, set_num_threads
     from numba.experimental import jitclass
 
     set_num_threads(int(NUM_THREADS))
@@ -20,10 +21,10 @@ if JIT_ENABLED:
         ('lcoe', float64),
         ('penalties', float64),
 
-        ('scenario', Scenario_JIT.class_type.instance_type),
-        ('fleet', Fleet_JIT.class_type.instance_type),
-        ('buses', Buses_JIT.class_type.instance_type),
-        ('network', Network_JIT.class_type.instance_type),
+        ('static', ScenarioParameters.class_type.instance_type),
+        ('fleet', Fleet.class_type.instance_type),
+        ('network', Network.class_type.instance_type),
+        ('energy_balance', EnergyBalance.class_type.instance_type),
     ]
 else:
     def jitclass(spec):
@@ -44,34 +45,40 @@ else:
     solution_spec = []
 
 @jitclass(solution_spec)
-class Solution_SingleTime:
+class Solution:
     def __init__(self, 
                 x, 
-                scenario,
+                static,
                 fleet,
-                buses,
-                network) -> None:
+                network,
+                energy_balance) -> None:
         
         self.x = x  
         self.evaluated=False   
         self.lcoe = 0.0
         self.penalties = 0.0
 
-        self.scenario = scenario
+        self.static = static
         self.fleet = fleet
-        self.buses = buses
         self.network = network
+        self.energy_balance = energy_balance
         
-        self._initialise_capacities(x)
-        self._update_traces() # Multiply availability by capacity
+        self.fleet.build_capacities(x)  
+        for generator in self.fleet.generators.values():
+            generator.availability_to_generation()
 
-    def _initialise_capacities(self, x):
-        # Iterate through fleet capacities
-        # Iterate through line capacities
-        return None
+        self.energy_balance.load_data(self.fleet, len(self.network.nodes))
 
-    def _objective(self):
-        start_time = time.time()
+    def objective(self):
+        lcoe = 10
+        pen_deficit = 30
+
+        self.energy_balance.calculate_residual_load(
+            self.fleet.generators,
+            self.network.nodes,
+            self.static.intervals_count,
+        )
+        """ start_time = time.time()
 
         deficit, TFlowsAbs = self._transmission_balancing()
         pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
@@ -92,20 +99,20 @@ class Solution_SingleTime:
         lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
         
         print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
-        exit()
-        return lcoe, pen_deficit
+        exit() """
+        return lcoe, pen_deficit 
 
     def evaluate(self):
-        self.lcoe, self.penalties = self._objective()
+        self.lcoe, self.penalties = self.objective()
         self.evaluated=True 
         return self
 
 @njit(parallel=True)
-def parallel_wrapper(xs,
-                     scenario,
-                     fleet,
-                     buses,
-                     network):
+def parallel_wrapper(xs, 
+                    static,
+                    fleet,
+                    network,
+                    energy_balance):
     """
     parallel_wrapper, but also returns LCOE and penalty seperately
     """
@@ -113,11 +120,11 @@ def parallel_wrapper(xs,
     result = np.zeros((3, n_points), dtype=np.float64)
     for j in prange(n_points):
         xj = xs[:, j]
-        sol = Solution_SingleTime(xj,
-                                  scenario,
-                                  fleet,
-                                  buses,
-                                  network)
+        sol = Solution(xj, 
+                                 static,
+                                 fleet,
+                                 network,
+                                 energy_balance)
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
         result[1, j] = sol.lcoe
@@ -125,17 +132,14 @@ def parallel_wrapper(xs,
     return result
 
 @njit
-def initialise_single_time(xs,
-                            scenario,
-                            fleet,
-                            buses,
-                            network):
-    
-
+def evaluate_vectorised_xs(xs,
+                           static,
+                           fleet,
+                           network,
+                           energy_balance):
     result = parallel_wrapper(xs,
-                            scenario,
-                            fleet,
-                            buses,
-                            network)
-    
+                             static,
+                             fleet,
+                             network,
+                             energy_balance)    
     return result[0,:]

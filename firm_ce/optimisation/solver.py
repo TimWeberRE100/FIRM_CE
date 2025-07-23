@@ -3,10 +3,8 @@ from itertools import chain
 from scipy.optimize import differential_evolution, OptimizeResult
 import csv, os
 
-#from firm_ce.optimisation.single_time import parallel_wrapper, Solution_SingleTime
-from firm_ce.io.validate import is_nan
+from firm_ce.optimisation.single_time import evaluate_vectorised_xs
 from firm_ce.common.constants import SAVE_POPULATION
-from typing import Dict, List
 
 def fixed_path(root: str, scenario_name: str):
     base = os.path.join("results", root, scenario_name)
@@ -18,17 +16,103 @@ class Solver:
         self.config = config
         self.scenario = scenario
         self.decision_x0 = scenario.x0 if len(scenario.x0) > 0 else None
-        self.lower_bounds, self.upper_bounds = self._get_bounds()
-        self._build_var_info()
+        self.lower_bounds, self.upper_bounds = self.get_bounds()
+        #self._build_var_info()
         self.result = None
+
+    def get_bounds(self):
+        def power_capacity_bounds(asset_list, initial_cap, build_cap_constraint):
+            return [
+                getattr(asset, initial_cap) + getattr(asset, build_cap_constraint)
+                for asset in asset_list
+            ]
+
+        def energy_capacity_bounds(storage_list, initial_cap, build_cap_constraint, duration_check=False):
+            return [
+                getattr(s, initial_cap) + getattr(s, build_cap_constraint)
+                if s.duration == 0
+                else 0.0
+                for s in storage_list
+            ]
         
+        generators = list(self.scenario.fleet.generators.values())
+        storages = list(self.scenario.fleet.storages.values())
+        lines = list(self.scenario.network.major_lines.values())
+
+        solar_generators = [g for g in generators if g.unit_type == "solar"]
+        wind_generators = [g for g in generators if g.unit_type == "wind"]
+        flexible_generators = [g for g in generators if g.unit_type == "flexible"]
+
+        lower_bounds = np.array(list(chain(
+            power_capacity_bounds(solar_generators, "capacity", "min_build"),
+            power_capacity_bounds(wind_generators, "capacity", "min_build"),
+            power_capacity_bounds(flexible_generators, "capacity", "min_build"),
+            power_capacity_bounds(storages, "power_capacity", "min_build_p"),
+            energy_capacity_bounds(storages, "energy_capacity", "min_build_e"),
+            power_capacity_bounds(lines, "capacity", "min_build"),
+        )))
+
+        upper_bounds = np.array(list(chain(
+            power_capacity_bounds(solar_generators, "capacity", "max_build"),
+            power_capacity_bounds(wind_generators, "capacity", "max_build"),
+            power_capacity_bounds(flexible_generators, "capacity", "max_build"),
+            power_capacity_bounds(storages, "power_capacity", "max_build_p"),
+            energy_capacity_bounds(storages, "energy_capacity", "max_build_e"),
+            power_capacity_bounds(lines, "capacity", "max_build"),
+        )))
+
+        return lower_bounds, upper_bounds
+
+    def initialise_callback(self):
+        temp_dir = os.path.join("results", "temp")
+        os.makedirs(temp_dir, exist_ok=True)
+        with open(os.path.join(temp_dir, "callback.csv"), 'w', newline='') as csvfile:
+            csv.writer(csvfile)
+
+        with open(os.path.join(temp_dir, "population.csv"), 'w', newline='') as csvfile:
+            csv.writer(csvfile)
+
+        with open(os.path.join(temp_dir, "population_energies.csv"), 'w', newline='') as csvfile:
+            csv.writer(csvfile)
+
+    def get_de_args(self):
+        args = (
+            self.scenario.static,
+            self.scenario.fleet,
+            self.scenario.network,
+            self.scenario.energy_balance_nodes
+        )
+        return args
+
+    def _single_time(self):
+        self.initialise_callback()
+
+        self.result = differential_evolution(
+            x0=self.decision_x0,
+            func=evaluate_vectorised_xs,
+            bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
+            args = self.get_de_args(),
+            tol=0,
+            maxiter=self.config.iterations, 
+            popsize=self.config.population, 
+            mutation=(0.2,self.config.mutation), 
+            recombination=self.config.recombination,
+            disp=True, 
+            polish=False, 
+            updating='deferred',
+            callback=callback, 
+            workers=1,
+            vectorized=True,
+        )
+        
+    """ 
     def _build_var_info(self):
-        """
+        
         create a list of dicts mapping each decision variable index to:
           - its name
           - near_optimum on or off
           - its group key (to aggregate)
-        """
+       
         self.var_info = []
         idx = 0
     
@@ -94,96 +178,7 @@ class Solver:
                 })
                 idx += 1
 
-    def _get_bounds(self):
-        def is_valid_line(line):
-            return not (is_nan(line.node_start) or is_nan(line.node_end))
-
-        def power_capacity_bounds(asset_list, initial_cap, build_cap_constraint):
-            return [
-                getattr(asset, initial_cap) + getattr(asset, build_cap_constraint)
-                for asset in asset_list
-            ]
-
-        def energy_capacity_bounds(storage_list, initial_cap, build_cap_constraint, duration_check=False):
-            return [
-                getattr(s, initial_cap) + getattr(s, build_cap_constraint)
-                if s.duration == 0
-                else 0.0
-                for s in storage_list
-            ]
-        
-        generators = list(self.scenario.generators.values())
-        storages = list(self.scenario.storages.values())
-        lines = [l for l in self.scenario.lines.values() if is_valid_line(l)]
-
-        solar_generators = [g for g in generators if g.unit_type == "solar"]
-        wind_generators = [g for g in generators if g.unit_type == "wind"]
-        flexible_generators = [g for g in generators if g.unit_type == "flexible"]
-
-        lower_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "capacity", "min_build"),
-            power_capacity_bounds(wind_generators, "capacity", "min_build"),
-            power_capacity_bounds(flexible_generators, "capacity", "min_build"),
-            power_capacity_bounds(storages, "power_capacity", "min_build_p"),
-            energy_capacity_bounds(storages, "energy_capacity", "min_build_e"),
-            power_capacity_bounds(lines, "capacity", "min_build"),
-        )))
-
-        upper_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "capacity", "max_build"),
-            power_capacity_bounds(wind_generators, "capacity", "max_build"),
-            power_capacity_bounds(flexible_generators, "capacity", "max_build"),
-            power_capacity_bounds(storages, "power_capacity", "max_build_p"),
-            energy_capacity_bounds(storages, "energy_capacity", "max_build_e"),
-            power_capacity_bounds(lines, "capacity", "max_build"),
-        )))
-
-        return lower_bounds, upper_bounds
-
-    def _construct_numba_classes(self):
-        scenario = construct_scenario_class(self.scenario)
-        fleet = construct_fleet_class(self.scenario)
-
-        return scenario, fleet
-
-    def _initialise_callback(self):
-        temp_dir = os.path.join("results", "temp")
-        os.makedirs(temp_dir, exist_ok=True)
-        with open(os.path.join(temp_dir, "callback.csv"), 'w', newline='') as csvfile:
-            csv.writer(csvfile)
-
-        with open(os.path.join(temp_dir, "population.csv"), 'w', newline='') as csvfile:
-            csv.writer(csvfile)
-
-        with open(os.path.join(temp_dir, "population_energies.csv"), 'w', newline='') as csvfile:
-            csv.writer(csvfile)
-
-    def _single_time(self):
-        de_args = self._construct_numba_classes()
-        print(de_args)
-        self._initialise_callback()
-
-        exit() ######### DEBUG
-
-        """ self.result = differential_evolution(
-            x0=self.decision_x0,
-            func=parallel_wrapper, 
-            bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
-            args=de_args,
-            tol=0,
-            maxiter=self.config.iterations, 
-            popsize=self.config.population, 
-            mutation=(0.2,self.config.mutation), 
-            recombination=self.config.recombination,
-            disp=True, 
-            polish=False, 
-            updating='deferred',
-            callback=callback, 
-            workers=1,
-            vectorized=True,
-            ) """
-        
-    """ def find_near_optimal_band(self):
+    def find_near_optimal_band(self):
     
         base_lcoe = self.optimal_lcoe
         tol       = self.config.near_optimal_tol

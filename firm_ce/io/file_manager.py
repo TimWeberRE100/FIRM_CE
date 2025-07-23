@@ -47,7 +47,10 @@ class ImportCSV:
         filepath = self.repository.joinpath(filename)
         if not filepath.is_file():
             raise FileNotFoundError(f"File {filepath} does not exist.")
-        return pd.read_csv(filepath, index_col="id").to_dict(orient='index')
+        imported_dict = pd.read_csv(filepath, index_col="id").to_dict(orient='index')
+        for idx in imported_dict:
+            imported_dict[idx]['id'] = idx
+        return imported_dict
     
     def get_config_dict(self) -> Dict[str, Dict[str, Any]]:
         return {fn : self.get_data(fn+'.csv') for fn in self.config_filenames}
@@ -72,6 +75,9 @@ class ImportDatafile:
 
         if not self.repository.is_dir():
             raise FileNotFoundError(f"Repository {repository} does not exist.")
+        
+    def __repr__(self) -> str:
+        return f"ImportDatafile ({self.filename!r})"
 
     def get_data(self) -> Dict[str, NDArray]:
         """
@@ -107,7 +113,7 @@ class DataFile:
         self.data = ImportDatafile("firm_ce/data", filename).get_data()
 
     def __repr__(self) -> str:
-        return f"{self.name} ({self.type})"
+        return f"DataFile ({self.name!r}, {self.type!r}, {self.data!r})"
 
 def import_config_csvs() -> Dict[str, Any]:
     """

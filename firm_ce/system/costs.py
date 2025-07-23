@@ -11,13 +11,13 @@ if JIT_ENABLED:
 
     unitcost_spec = [
         ('capex_p', float64),
-        ('capex_e', float64),
         ('fom', float64),
         ('vom', float64),
         ('lifetime', int64),
         ('discount_rate', float64),
-        ('heat_rate_base', float64),
-        ('heat_rate_incr', float64),
+        ('fuel_cost_mwh', float64),
+        ('fuel_cost_h', float64),
+        ('capex_e', float64),
         ('transformer_capex', float64),
     ]
 else:
@@ -41,17 +41,15 @@ class UnitCost:
     Represents cost parameters for a generator, storage, or line object.
     """
     def __init__(self, 
-                 capex_p: float,
-                 fom: float,
-                 vom: float,
-                 lifetime: int,
-                 discount_rate: float,
-                 heat_rate_base: float = 0.0,
-                 heat_rate_incr: float = 0.0,
-                 fuel: Optional[object] = None,
-                 capex_e: float = 0.0,
-                 transformer_capex: float = 0.0,
-                 length: float = 0.0
+                 capex_p,
+                 fom,
+                 vom,
+                 lifetime,
+                 discount_rate,
+                 fuel_cost_mwh,
+                 fuel_cost_h,
+                 capex_e,
+                 transformer_capex,
                  ) -> None:
         """
         Initialize cost attributes for a Generator, Storage or Line object.
@@ -78,12 +76,10 @@ class UnitCost:
         self.lifetime = lifetime # years
         self.discount_rate = discount_rate # [0,1]
 
-        if fuel:
-            self.fuel_cost_mwh = fuel.cost * heat_rate_incr # $/MWh = $/GJ * GJ/MWh
-            self.fuel_cost_h = fuel.cost * heat_rate_base # $/h = $/GJ * GJ/h
+        self.fuel_cost_mwh = fuel_cost_mwh # $/MWh = $/GJ * GJ/MWh
+        self.fuel_cost_h = fuel_cost_h # $/h = $/GJ * GJ/h
         
         self.transformer_capex = transformer_capex # $/kW, non-zero for lines
-        self.length = length # km, non-zero for lines
 
 @njit
 def get_present_value(discount_rate: np.float64, lifetime: np.float64) -> np.float64:

@@ -8,7 +8,17 @@ from firm_ce.common.logging import init_model_logger
 class ModelData:
     def __init__(self) -> None:
         objects = import_config_csvs()
-        self.logger, self.results_dir = init_model_logger()
+
+        try:
+            config_dict = objects.get('config')
+            for v in config_dict.values():
+                if v.get('name') == 'model_name':
+                    model_name = v.get('value')
+                    break
+        except:
+            model_name = 'Model'
+
+        self.logger, self.results_dir = init_model_logger(model_name)
 
         self.scenarios = objects.get('scenarios')
         self.generators = objects.get('generators')
@@ -55,9 +65,10 @@ def validate_model_config(config_dict, model_logger):
         'population': validate_positive_int,
         'recombination': lambda v: validate_range(v, 0, 1),
         'type': lambda v: validate_enum(v, ['single_time', 'capacity_expansion', 'near_optimum', 'midpoint_explore'],),
+        'model_name': None,
         'global_optimal_lcoe': lambda v: validate_range(v, 0),
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
-        'midpoint_count': validate_positive_int
+        'midpoint_count': validate_positive_int,
     }
 
     for item in config_dict.values():
@@ -66,6 +77,9 @@ def validate_model_config(config_dict, model_logger):
 
         if name not in validators:
             model_logger.warning(f"Unknown configuration name '%s'", name)
+            continue
+        
+        if not validators[name]:
             continue
 
         try:
