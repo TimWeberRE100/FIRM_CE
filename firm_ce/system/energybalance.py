@@ -100,11 +100,16 @@ if JIT_ENABLED:
     fleetcapacities_spec = [
         ('static_instance',boolean),
         ('generator_power', float64[:]),
+        ('generator_newbuild_power', float64[:]),
         ('storage_power', float64[:]),
         ('storage_energy', float64[:]),
 
         ('flexible_sorted_order', int64[:,:]),
         ('storage_sorted_order', int64[:,:]),
+
+        ('generator_power_nodal', float64[:]),
+        ('storage_power_nodal', float64[:]),
+        ('storage_energy_nodal', float64[:]),
     ]
 else:
     fleetcapacities_spec = []
@@ -114,25 +119,37 @@ class FleetCapacities:
     def __init__(self, static_instance):
         self.static_instance = static_instance
         self.generator_power = np.empty(0, dtype=np.float64)
+        self.generator_newbuild_power = np.empty(0, dtype=np.float64)
         self.storage_power = np.empty(0, dtype=np.float64)
         self.storage_energy = np.empty(0, dtype=np.float64)
 
         self.flexible_sorted_order = np.empty((0,0),  dtype=np.int64)
         self.storage_sorted_order = np.empty((0,0),  dtype=np.int64)
 
+        self.generator_power_nodal = np.empty(0, dtype=np.float64)
+        self.storage_power_nodal = np.empty(0, dtype=np.float64)
+        self.storage_energy_nodal = np.empty(0, dtype=np.float64)
+
     def allocate_memory(self, 
                         node_count: int,
+                        generator_count: int,
+                        storage_count: int,
                         flexible_nodal_count_max: int,
                         storage_nodal_count_max: int,) -> None:
         if self.static_instance:
             raise_static_modification_error()
-        self.generator_power = np.zeros(node_count, dtype=np.float64)
-        self.storage_power = np.zeros(node_count, dtype=np.float64)
-        self.storage_energy = np.zeros(node_count, dtype=np.float64)
+        self.generator_power = np.zeros(generator_count, dtype=np.float64)
+        self.generator_newbuild_power = np.zeros(generator_count, dtype=np.float64)
+        self.storage_power = np.zeros(storage_count, dtype=np.float64)
+        self.storage_energy = np.zeros(storage_count, dtype=np.float64)
 
         self.flexible_sorted_order = np.full((node_count,flexible_nodal_count_max), -1,  dtype=np.int64)
         self.storage_sorted_order = np.full((node_count,storage_nodal_count_max), -1, dtype=np.int64)
         
+        self.generator_power_nodal = np.zeros(node_count, dtype=np.float64)
+        self.storage_power_nodal = np.zeros(node_count, dtype=np.float64)
+        self.storage_energy_nodal = np.zeros(node_count, dtype=np.float64)
+
         return None
     
     def build_capacities(self, fleet, new_build_capacities_x):
@@ -140,19 +157,31 @@ class FleetCapacities:
             raise_static_modification_error()
 
         for order, index in enumerate(fleet.generator_x_indices):
-            self.generator_power[fleet.generators[order].node.order] += new_build_capacities_x[index]
+            self.generator_power[order] += new_build_capacities_x[index]
+            self.generator_newbuild_power[order] += new_build_capacities_x[index]
+            self.generator_power_nodal[fleet.generators[order].node.order] += new_build_capacities_x[index]
 
         for order, index in enumerate(fleet.storage_power_x_indices):
-            self.storage_power[fleet.storages[order].node.order] += new_build_capacities_x[index]
+            self.storage_power[order] += new_build_capacities_x[index]
+            self.storage_power_nodal[fleet.storages[order].node.order] += new_build_capacities_x[index]
+
+            if fleet.storages[order].duration > 0:
+                self.storage_energy[order] += new_build_capacities_x[index] * fleet.storages[order].duration
+                self.storage_energy_nodal[fleet.storages[order].node.order] += new_build_capacities_x[index] * fleet.storages[order].duration
 
         for order, index in enumerate(fleet.storage_energy_x_indices):
-            self.storage_energy[fleet.storages[order].node.order] += new_build_capacities_x[index]
+            if fleet.storages[order].duration == 0:
+                self.storage_energy[order] += new_build_capacities_x[index]
+                self.storage_energy_nodal[fleet.storages[order].node.order] += new_build_capacities_x[index]
+    
         return None
 
     def load_data(self, 
                   fleet: Fleet.class_type.instance_type, 
                   node_count: int) -> None:
         self.allocate_memory(node_count,
+                             len(fleet.generators),
+                             len(fleet.storages),
                              max(fleet.get_generator_nodal_counts(node_count, "flexible")),
                              max(fleet.get_storage_nodal_counts(node_count))
                              )
@@ -185,27 +214,49 @@ else:
 
 @jitclass(energybalance_spec)
 class EnergyBalance:
-    def __init__(self, static_instance, node_count, intervals_count):
+    def __init__(self, static_instance):
         
         self.static_instance = static_instance
+        self.imports = np.empty((0, 0), dtype=np.float64)
+        self.exports = np.empty((0, 0), dtype=np.float64)
+        self.residual_load = np.empty((0, 0), dtype=np.float64)
+        self.deficits = np.empty((0, 0), dtype=np.float64)
+        self.spillage = np.empty((0, 0), dtype=np.float64)
+        self.flexible_power_nodal = np.empty((0, 0), dtype=np.float64)
+        self.storage_power_nodal = np.empty((0, 0), dtype=np.float64)
+        self.flexible_energy_nodal = np.empty((0, 0), dtype=np.float64)
+        self.storage_energy_nodal = np.empty((0, 0), dtype=np.float64)
+
+    def create_dynamic_copy(self):
+        return EnergyBalance(False)
+
+    def allocate_memory(self, node_count, intervals_count):
         self.imports = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.exports = np.zeros((intervals_count, node_count), dtype=np.float64)
-        self.residual_load = np.zeros((intervals_count, node_count), dtype=np.float64)
+
         self.deficits = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.spillage = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.flexible_power_nodal = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.storage_power_nodal = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.flexible_energy_nodal = np.zeros((intervals_count, node_count), dtype=np.float64)
         self.storage_energy_nodal = np.zeros((intervals_count, node_count), dtype=np.float64)
-
-    def calculate_residual_load(self, 
-                                generators_typed_dict,
-                                nodes_typed_dict,
-                                intervals_count,
-                                generator_capacities,):
-        if self.static_instance:
-            raise_static_modification_error()
-
+        return None
+    
+    def unload_data(self):
+        self.imports = np.empty((0, 0), dtype=np.float64)
+        self.exports = np.empty((0, 0), dtype=np.float64)
+        self.residual_load = np.empty((0, 0), dtype=np.float64)
+        self.deficits = np.empty((0, 0), dtype=np.float64)
+        self.spillage = np.empty((0, 0), dtype=np.float64)
+        self.flexible_power_nodal = np.empty((0, 0), dtype=np.float64)
+        self.storage_power_nodal = np.empty((0, 0), dtype=np.float64)
+        self.flexible_energy_nodal = np.empty((0, 0), dtype=np.float64)
+        self.storage_energy_nodal = np.empty((0, 0), dtype=np.float64)
+    
+    def initialise_residual_load(self,
+                                 generators_typed_dict,
+                                 nodes_typed_dict,
+                                 intervals_count,):
         self.residual_load = np.zeros((intervals_count,len(nodes_typed_dict)), dtype=np.float64)
         
         # For-loops are faster with Numba than Numpy array operations
@@ -214,7 +265,20 @@ class EnergyBalance:
                 self.residual_load[interval, node.order] = node.data[interval]
 
         for generator in generators_typed_dict.values():
-            if generator.data.shape[0] > 0:
+            if (generator.data.shape[0] > 0) and (generator.max_build > 0):
                 for interval in range(intervals_count):
-                    self.residual_load[interval, generator.node.order] -= generator.data[interval] * generator_capacities[generator.order]
+                    self.residual_load[interval, generator.node.order] -= generator.data[interval] * generator.capacity
+        return None
+
+    def update_residual_load(self, 
+                            generators_typed_dict,
+                            intervals_count,
+                            generator_newbuild_power,):
+        if self.static_instance:
+            raise_static_modification_error()
+
+        for generator in generators_typed_dict.values():
+            if (generator.data.shape[0] > 0) and (generator.max_build > 0):
+                for interval in range(intervals_count):
+                    self.residual_load[interval, generator.node.order] -= generator.data[interval] * generator_newbuild_power[generator.order]
         return None

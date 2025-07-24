@@ -21,15 +21,15 @@ class Solver:
         self.result = None
 
     def get_bounds(self):
-        def power_capacity_bounds(asset_list, initial_cap, build_cap_constraint):
+        def power_capacity_bounds(asset_list, build_cap_constraint):
             return [
-                getattr(asset, initial_cap) + getattr(asset, build_cap_constraint)
+                getattr(asset, build_cap_constraint)
                 for asset in asset_list
             ]
 
-        def energy_capacity_bounds(storage_list, initial_cap, build_cap_constraint, duration_check=False):
+        def energy_capacity_bounds(storage_list, build_cap_constraint):
             return [
-                getattr(s, initial_cap) + getattr(s, build_cap_constraint)
+                getattr(s, build_cap_constraint)
                 if s.duration == 0
                 else 0.0
                 for s in storage_list
@@ -44,21 +44,21 @@ class Solver:
         flexible_generators = [g for g in generators if g.unit_type == "flexible"]
 
         lower_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "capacity", "min_build"),
-            power_capacity_bounds(wind_generators, "capacity", "min_build"),
-            power_capacity_bounds(flexible_generators, "capacity", "min_build"),
-            power_capacity_bounds(storages, "power_capacity", "min_build_p"),
-            energy_capacity_bounds(storages, "energy_capacity", "min_build_e"),
-            power_capacity_bounds(lines, "capacity", "min_build"),
+            power_capacity_bounds(solar_generators, "min_build"),
+            power_capacity_bounds(wind_generators, "min_build"),
+            power_capacity_bounds(flexible_generators, "min_build"),
+            power_capacity_bounds(storages, "min_build_p"),
+            energy_capacity_bounds(storages, "min_build_e"),
+            power_capacity_bounds(lines, "min_build"),
         )))
 
         upper_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "capacity", "max_build"),
-            power_capacity_bounds(wind_generators, "capacity", "max_build"),
-            power_capacity_bounds(flexible_generators, "capacity", "max_build"),
-            power_capacity_bounds(storages, "power_capacity", "max_build_p"),
-            energy_capacity_bounds(storages, "energy_capacity", "max_build_e"),
-            power_capacity_bounds(lines, "capacity", "max_build"),
+            power_capacity_bounds(solar_generators, "max_build"),
+            power_capacity_bounds(wind_generators, "max_build"),
+            power_capacity_bounds(flexible_generators, "max_build"),
+            power_capacity_bounds(storages, "max_build_p"),
+            energy_capacity_bounds(storages, "max_build_e"),
+            power_capacity_bounds(lines, "max_build"),
         )))
 
         return lower_bounds, upper_bounds
@@ -79,7 +79,8 @@ class Solver:
         args = (
             self.scenario.static,
             self.scenario.fleet,
-            self.scenario.network
+            self.scenario.network,
+            self.scenario.energy_balance_static,
         )
         return args
 

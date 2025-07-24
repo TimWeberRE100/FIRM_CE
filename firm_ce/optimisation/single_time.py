@@ -55,7 +55,8 @@ class Solution:
                 x, 
                 static,
                 fleet,
-                network) -> None:
+                network,
+                energy_balance) -> None:
         # INITIALISING CURRENTLY TAKES A LOT OF TIME - PERHAPS DUE TO PRANGE OR COMPILING?
         self.x = x  
         self.evaluated=False   
@@ -70,7 +71,9 @@ class Solution:
 
         # These are dynamic jitclass instances. They are safe to modify
         # within a worker process of the optimiser
-        self.energy_balance = EnergyBalance(False, self.static.node_count, self.static.intervals_count)
+        self.energy_balance = energy_balance.create_dynamic_copy()
+        self.energy_balance.allocate_memory(self.static.node_count, self.static.intervals_count)
+        
         self.fleet_capacities = FleetCapacities(False)
         self.interval_memory = IntervalMemory(False, self.static.node_count)
 
@@ -79,11 +82,10 @@ class Solution:
         self.fleet_capacities.build_capacities(self.fleet, x)
         
     def objective(self):
-        self.energy_balance.calculate_residual_load(
+        self.energy_balance.update_residual_load(
             self.fleet.generators,
-            self.network.nodes,
             self.static.intervals_count,
-            self.fleet_capacities.generator_power,
+            self.fleet_capacities.generator_newbuild_power,
         )
 
         # self.balance_residual_load()
@@ -108,11 +110,12 @@ class Solution:
         self.evaluated=True 
         return self
 
-@njit(parallel=True)
+@njit(parallel=True) # ADD FASTMATH FLAG AND TEST?
 def parallel_wrapper(xs, 
                     static,
                     fleet,
-                    network):
+                    network,
+                    energy_balance):
     """
     parallel_wrapper, but also returns LCOE and penalty seperately
     """
@@ -123,7 +126,8 @@ def parallel_wrapper(xs,
         sol = Solution(xj, 
                        static,
                        fleet,
-                       network)
+                       network,
+                       energy_balance)
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
         result[1, j] = sol.lcoe
@@ -134,12 +138,14 @@ def parallel_wrapper(xs,
 def evaluate_vectorised_xs(xs,
                            static,
                            fleet,
-                           network):
+                           network,
+                           energy_balance):
     start_time = time.time()
     result = parallel_wrapper(xs,
                              static,
                              fleet,
-                             network)  
+                             network,
+                             energy_balance)  
     end_time = time.time()  
     print(f"Objective time: {(end_time-start_time)/xs.shape[1]:.4f} seconds")
     print(f"Iteration time: {(end_time-start_time):.4f} seconds")

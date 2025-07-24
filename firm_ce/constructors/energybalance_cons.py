@@ -8,6 +8,13 @@ from firm_ce.system.energybalance import (
     FleetCapacities,
     EnergyBalance,
 )
+from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.system.topology import Node
+from firm_ce.system.components import Generator
+
+if JIT_ENABLED:
+    from numba.typed.typeddict import Dict as TypedDict
+    from numba.core.types import DictType, int64
 
 def determine_interval_parameters(
         first_year: int,
@@ -71,11 +78,4 @@ def construct_FleetCapacities_object() -> FleetCapacities.class_type.instance_ty
     return FleetCapacities(True)
 
 def construct_EnergyBalance_object() -> EnergyBalance.class_type.instance_type:
-    interval_memory = construct_IntervalMemory_object()
-    fleet_capacities = construct_FleetCapacities_object()
-    
-    return EnergyBalance(
-         True,
-         interval_memory,
-         fleet_capacities,
-    )
+    return EnergyBalance(True)
