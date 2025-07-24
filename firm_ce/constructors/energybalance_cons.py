@@ -38,7 +38,8 @@ def determine_interval_parameters(
     return leap_days, year_first_t, intervals_count
 
 def construct_ScenarioParameters_object(
-        scenario_data_dict: Dict[str, str]
+        scenario_data_dict: Dict[str, str],
+        node_count: int,
         ) -> ScenarioParameters.class_type.instance_type:
     resolution = float(scenario_data_dict.get('resolution', 0.0))
     allowance = float(scenario_data_dict.get('allowance', 0.0))
@@ -60,32 +61,21 @@ def construct_ScenarioParameters_object(
         leap_year_count, 
         year_first_t,
         intervals_count, 
+        node_count,
     )
 
 def construct_IntervalMemory_object() -> IntervalMemory.class_type.instance_type:
-    return IntervalMemory()
+    return IntervalMemory(True)
 
 def construct_FleetCapacities_object() -> FleetCapacities.class_type.instance_type:
-    return FleetCapacities()
+    return FleetCapacities(True)
 
 def construct_EnergyBalance_object() -> EnergyBalance.class_type.instance_type:
     interval_memory = construct_IntervalMemory_object()
     fleet_capacities = construct_FleetCapacities_object()
-    imports, exports, residual_load, deficits, spillage, flexible_power_nodal, storage_power_nodal, flexible_energy_nodal, storage_energy_nodal = tuple(np.empty((0, 0), dtype=np.float64) for i in range(9))
-    flexible_sorted_order, storage_sorted_order = tuple(np.empty((0,0),  dtype=np.int64) for i in range(2))
-
+    
     return EnergyBalance(
+         True,
          interval_memory,
          fleet_capacities,
-         imports, 
-         exports, 
-         residual_load, 
-         deficits, 
-         spillage, 
-         flexible_power_nodal, 
-         storage_power_nodal,
-         flexible_energy_nodal,
-         storage_energy_nodal,
-         flexible_sorted_order,
-         storage_sorted_order,
     )

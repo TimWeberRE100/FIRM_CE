@@ -10,9 +10,10 @@ from firm_ce.constructors import (
     construct_ScenarioParameters_object, 
     construct_Fleet_object, 
     construct_Network_object,
-    construct_EnergyBalance_object,
     load_datafiles_to_generators,
     load_datafiles_to_network,
+    unload_data_from_generators,
+    unload_data_from_network,
     )
 
 class Scenario:
@@ -26,35 +27,25 @@ class Scenario:
         self.type = scenario_data.get('type', '')
         self.x0 = self._get_x0(model_data.x0s)
 
-        self.static = construct_ScenarioParameters_object(scenario_data)
         self.network = construct_Network_object(
             scenario_data.get('nodes', '').split(','), 
             self._get_scenario_dicts(model_data.lines), 
             scenario_data.get('networksteps_max', 0)
             )
+        self.static = construct_ScenarioParameters_object(scenario_data, len(self.network.nodes))
         self.fleet = construct_Fleet_object(
             self._get_scenario_dicts(model_data.generators), 
             self._get_scenario_dicts(model_data.storages), 
             self._get_scenario_dicts(model_data.fuels), 
             self.network.minor_lines, 
             self.network.nodes,
-            )
-        self.energy_balance_nodes = construct_EnergyBalance_object()         
+            )       
 
-        """ self.node_names = {self.nodes[idx].name : self.nodes[idx].id for idx in self.nodes}
-        self.nodes_with_balancing = set([self.node_names[self.storages[idx].node] for idx in self.storages] 
-                                        + [self.node_names[self.generators[idx].node] for idx in self.generators if self.generators[idx].unit_type == 'flexible']) """
-    
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
     
     def load_datafiles(self, all_datafiles: Dict[str, DataFile]) -> None:      
         datafiles = self._get_datafiles(all_datafiles)
-
-        self.fleet.traces.allocate_memory(
-            len([gen for gen in self.fleet.generators.values() if gen.unit_type == "flexible"]),
-            len(self.fleet.storages),
-            self.static.intervals_count,)
 
         load_datafiles_to_generators(self.fleet, datafiles)
         
@@ -63,9 +54,9 @@ class Scenario:
         return None
 
     def unload_datafiles(self) -> None:
-        self.fleet.traces.unload_data()
+        unload_data_from_generators(self.fleet)
         
-        self.network.unload_data()
+        unload_data_from_network(self.network)
 
         gc.collect()
 

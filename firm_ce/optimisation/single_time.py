@@ -6,7 +6,7 @@ from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS
 from firm_ce.system.costs import calculate_costs
 from firm_ce.system.components import Fleet
 from firm_ce.system.topology import Network
-from firm_ce.system.energybalance import ScenarioParameters, EnergyBalance
+from firm_ce.system.energybalance import ScenarioParameters, EnergyBalance, FleetCapacities, IntervalMemory
 import firm_ce.common.helpers as helpers
 
 if JIT_ENABLED:
@@ -21,10 +21,15 @@ if JIT_ENABLED:
         ('lcoe', float64),
         ('penalties', float64),
 
+        # Static jitclass instances
         ('static', ScenarioParameters.class_type.instance_type),
         ('fleet', Fleet.class_type.instance_type),
         ('network', Network.class_type.instance_type),
-        ('energy_balance', EnergyBalance.class_type.instance_type),
+
+        # Dynamic jitclass instances
+        ('energy_balance',EnergyBalance.class_type.instance_type),
+        ('fleet_capacities',FleetCapacities.class_type.instance_type),
+        ('interval_memory',IntervalMemory.class_type.instance_type),
     ]
 else:
     def jitclass(spec):
@@ -50,56 +55,52 @@ class Solution:
                 x, 
                 static,
                 fleet,
-                network,
-                energy_balance) -> None:
-        
+                network) -> None:
+        # INITIALISING CURRENTLY TAKES A LOT OF TIME - PERHAPS DUE TO PRANGE OR COMPILING?
         self.x = x  
         self.evaluated=False   
         self.lcoe = 0.0
         self.penalties = 0.0
 
-        self.static = static
+        # These are static jitclass instances. It is unsafe to modify these
+        # within a worker process of the optimiser
+        self.static = static 
         self.fleet = fleet
         self.network = network
-        self.energy_balance = energy_balance
+
+        # These are dynamic jitclass instances. They are safe to modify
+        # within a worker process of the optimiser
+        self.energy_balance = EnergyBalance(False, self.static.node_count, self.static.intervals_count)
+        self.fleet_capacities = FleetCapacities(False)
+        self.interval_memory = IntervalMemory(False, self.static.node_count)
+
+        # Initialise the dynamic jitclass instances
+        self.fleet_capacities.load_data(self.fleet, self.static.node_count) # ADD SORTED ORDER LOADING TO METHOD?
+        self.fleet_capacities.build_capacities(self.fleet, x)
         
-        self.fleet.build_capacities(x)  
-        for generator in self.fleet.generators.values():
-            generator.availability_to_generation()
-
-        self.energy_balance.load_data(self.fleet, len(self.network.nodes))
-
     def objective(self):
-        lcoe = 10
-        pen_deficit = 30
-
         self.energy_balance.calculate_residual_load(
             self.fleet.generators,
             self.network.nodes,
             self.static.intervals_count,
+            self.fleet_capacities.generator_power,
         )
-        """ start_time = time.time()
 
-        deficit, TFlowsAbs = self._transmission_balancing()
-        pen_deficit = np.maximum(0., deficit.sum() * self.resolution / self.years - self.allowance) * 1000000
+        # self.balance_residual_load()
+        # self.apportion_nodal_storage() # Add traces2d to fleet_capacities?
+        # self.calculate_annual_generation()
+        # cost, _, _, _ = calculate_costs()
 
-        end_time = time.time()
-        print(f"Transmission time: {end_time-start_time:.4f} seconds")
+        # line_losses = self.network.transmission_flows_abs.sum(axis=0) 
+        # for order, line in self.network.lines.items():
+        #   line_losses[order] *= line.loss_factor
+        # total_losses = loss.sum() * self.resolution / self.years
 
-        self._apportion_nodal_storage()
-        end_time2 = time.time()
-        print(f"Storage apportion time: {end_time2-end_time:.4f} seconds")
+        # lcoe = cost / np.abs(self.static.energy - total_losses) / 1000 # $/MWh
 
-        self._calculate_annual_generation()
-        cost, _, _, _ = calculate_costs(self)
-
-        loss = TFlowsAbs.sum(axis=0) * self.TLoss
-        self.loss = loss.sum() * self.resolution / self.years
-
-        lcoe = cost / np.abs(self.energy - self.loss) / 1000 # $/MWh
+        lcoe = sum(self.x) #### DEBUG
+        pen_deficit = lcoe*10000 - 400 #### DEBUG
         
-        print("LCOE: ", lcoe, pen_deficit, deficit.sum() / self.MLoad.sum(), self.GFlexible_annual)
-        exit() """
         return lcoe, pen_deficit 
 
     def evaluate(self):
@@ -111,8 +112,7 @@ class Solution:
 def parallel_wrapper(xs, 
                     static,
                     fleet,
-                    network,
-                    energy_balance):
+                    network):
     """
     parallel_wrapper, but also returns LCOE and penalty seperately
     """
@@ -121,25 +121,26 @@ def parallel_wrapper(xs,
     for j in prange(n_points):
         xj = xs[:, j]
         sol = Solution(xj, 
-                                 static,
-                                 fleet,
-                                 network,
-                                 energy_balance)
+                       static,
+                       fleet,
+                       network)
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
         result[1, j] = sol.lcoe
         result[2, j] = sol.penalties
     return result
 
-@njit
+#@njit
 def evaluate_vectorised_xs(xs,
                            static,
                            fleet,
-                           network,
-                           energy_balance):
+                           network):
+    start_time = time.time()
     result = parallel_wrapper(xs,
                              static,
                              fleet,
-                             network,
-                             energy_balance)    
+                             network)  
+    end_time = time.time()  
+    print(f"Objective time: {(end_time-start_time)/xs.shape[1]:.4f} seconds")
+    print(f"Iteration time: {(end_time-start_time):.4f} seconds")
     return result[0,:]

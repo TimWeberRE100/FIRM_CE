@@ -79,8 +79,7 @@ class Solver:
         args = (
             self.scenario.static,
             self.scenario.fleet,
-            self.scenario.network,
-            self.scenario.energy_balance_nodes
+            self.scenario.network
         )
         return args
 

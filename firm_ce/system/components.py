@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 
 from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.system.costs import UnitCost
 from firm_ce.system.topology import Line, Node
 from firm_ce.system.traces import Traces2d
@@ -11,6 +12,7 @@ if JIT_ENABLED:
     from numba.experimental import jitclass
 
     fuel_spec = [
+        ('static_instance',boolean),
         ('id',int64),
         ('name',string),
         ('cost',float64),
@@ -29,7 +31,7 @@ class Fuel:
     Represents a fuel type with associated cost and emissions.
     """
 
-    def __init__(self, idx, name, cost, emissions) -> None:
+    def __init__(self, static_instance, idx, name, cost, emissions) -> None:
         """
         Initialize a Fuel object.
 
@@ -38,7 +40,8 @@ class Fuel:
         id (int): Unique identifier for the fuel.
         fuel_dict (Dict[str, str]): Dictionary containing 'name', 'cost', and 'emissions' keys.
         """
-
+        
+        self.static_instance = static_instance
         self.id = idx
         self.name = name
         self.cost = cost # $/GJ
@@ -46,6 +49,7 @@ class Fuel:
 
 if JIT_ENABLED:
     generator_spec = [
+        ('static_instance',boolean),
         ('id',int64),
         ('order', int64),
         ('name',string),
@@ -78,6 +82,7 @@ class Generator:
     """
 
     def __init__(self, 
+                 static_instance,
                  idx, 
                  order,
                  name,
@@ -105,7 +110,7 @@ class Generator:
                         Minor lines should have empty node_start and node_end values. They do not form part
                         of the network topology, but are used to estimate connection costs.
         """
-
+        self.static_instance = static_instance
         self.id = idx
         self.order = order # id specific to scenario
         self.name = name
@@ -126,7 +131,9 @@ class Generator:
         self.annual_constraints_data = np.empty((0,), dtype=np.float64)
 
     def build_capacity(self, new_build_power_capacity):
-        self.capacity += new_build_power_capacity
+        if self.static_instance:
+            raise_static_modification_error()     
+        self.capacity += new_build_power_capacity            
         return None
     
     def load_data(self, generation_trace, annual_constraints):
@@ -143,6 +150,8 @@ class Generator:
         return None
     
     def availability_to_generation(self):
+        if self.static_instance:
+            raise_static_modification_error()
         self.data_status = "generation"
         if self.data.shape[0] > 0:
             self.data *= self.capacity
@@ -150,6 +159,7 @@ class Generator:
 
 if JIT_ENABLED:
     storage_spec = [
+        ('static_instance',boolean),
         ('id',int64),
         ('order',int64),
         ('name',string),
@@ -178,6 +188,7 @@ class Storage:
     Represents an energy storage system unit in the system.
     """
     def __init__(self, 
+                 static_instance,
                  idx,
                  order,
                  name,
@@ -208,6 +219,7 @@ class Storage:
                         of the network topology, but are used to estimate connection costs.
         """
 
+        self.static_instance = static_instance
         self.id = idx
         self.order = order # id specific to scenario
         self.name = name
@@ -228,6 +240,8 @@ class Storage:
         self.cost = cost
 
     def build_capacity(self, new_build_capacity, capacity_type):
+        if self.static_instance:
+            raise_static_modification_error()
         if capacity_type == "power":
             self.power_capacity += new_build_capacity
         if capacity_type == "energy":
@@ -236,6 +250,7 @@ class Storage:
 
 if JIT_ENABLED:
     fleet_spec = [
+        ('static_instance',boolean),
         ('generators', DictType(int64, Generator.class_type.instance_type)),
         ('storages', DictType(int64, Storage.class_type.instance_type)),
         ('traces', Traces2d.class_type.instance_type),
@@ -249,9 +264,11 @@ else:
 @jitclass(fleet_spec)
 class Fleet:
     def __init__(self,
+                 static_instance,
                  generators,
                  storages,
                  traces,):
+        self.static_instance = static_instance
         self.generators = generators
         self.storages = storages
         self.traces = traces
@@ -269,6 +286,9 @@ class Fleet:
         return None
 
     def build_capacities(self, decision_x) -> None:
+        if self.static_instance:
+            raise_static_modification_error()
+            
         for order, index in enumerate(self.generator_x_indices):
             self.generators[order].build_capacity(decision_x[index])
 
@@ -278,3 +298,16 @@ class Fleet:
         for order, index in enumerate(self.storage_energy_x_indices):
             self.storages[order].build_capacity(decision_x[index], "energy")
         return None
+    
+    def get_generator_nodal_counts(self, node_count, unit_type):
+        count_arr = np.zeros(node_count, dtype=np.int64)
+        for generator in self.generators.values():
+            if generator.unit_type == unit_type:
+                count_arr[generator.node.order] += 1
+        return count_arr
+    
+    def get_storage_nodal_counts(self, node_count):
+        count_arr = np.zeros(node_count, dtype=np.int64)
+        for storage in self.storages.values():
+            count_arr[storage.node.order] += 1
+        return count_arr

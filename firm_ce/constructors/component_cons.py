@@ -16,7 +16,8 @@ def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel.class_type.instance_
     name = str(fuel_dict['name'])
     cost = float(fuel_dict['cost'])
     emissions = float(fuel_dict['emissions'])
-    return Fuel(idx,
+    return Fuel(True,
+                idx,
                 name,
                 cost,
                 emissions)
@@ -71,6 +72,7 @@ def construct_Generator_object(
     )
 
     return Generator(
+        True,
         idx,
         order,
         name,
@@ -132,6 +134,7 @@ def construct_Storage_object(
         capex_e=float(storage_dict['capex_e']),
     )
     return Storage(
+        True,
         idx,
         order,
         name,
@@ -186,6 +189,7 @@ def construct_Fleet_object(
                         ) 
         
     traces = construct_Traces2d_object()
-    return Fleet(generators,
+    return Fleet(True,
+                 generators,
                  storages,
                  traces,)

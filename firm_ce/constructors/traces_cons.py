@@ -47,3 +47,13 @@ def load_datafiles_to_network(network: Network.class_type.instance_type,
             select_datafile('demand', node.name, datafiles_imported_dict),
         )
     return None
+
+def unload_data_from_generators(fleet):
+    for generator in fleet.generators.values():
+        generator.unload_data()
+    return None
+
+def unload_data_from_network(network):
+    for node in network.nodes.values():
+        node.unload_data()
+    return None

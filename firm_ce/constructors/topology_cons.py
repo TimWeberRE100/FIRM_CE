@@ -10,12 +10,9 @@ from firm_ce.common.constants import JIT_ENABLED
 if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
     from numba.core.types import DictType, int64, UniTuple
-""" else:
-    TypedDict = Dict
-    int64 = int """
 
 def construct_Node_object(idx: int, order: int, node_name: str) -> Node.class_type.instance_type:
-    return Node(idx, order, node_name)
+    return Node(True, idx, order, node_name)
 
 def construct_Line_object(line_dict: Dict[str, str], nodes_object_dict: TypedDict[int64,Node], order: int) -> Line.class_type.instance_type:
     idx = int(line_dict['id'])
@@ -60,6 +57,7 @@ def construct_Line_object(line_dict: Dict[str, str], nodes_object_dict: TypedDic
     )
     
     return Line(
+        True,
         idx,
         order,
         name,
@@ -210,6 +208,7 @@ def construct_Network_object(
     transmission_capacities_initial = np.array([line.capacity for line in major_lines.values()], dtype=np.float64)
 
     return Network(
+        True,
         nodes,
         major_lines,
         minor_lines,

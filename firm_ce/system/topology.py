@@ -1,6 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
+from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.costs import UnitCost
 from firm_ce.common.helpers import array_min, array_max_2d_axis1, array_sum_2d_axis0, zero_safe_division
@@ -10,6 +11,7 @@ if JIT_ENABLED:
     from numba.experimental import jitclass
 
     node_spec = [
+        ('static_instance',boolean),
         ('id',int64),
         ('order',int64),
         ('name',string),
@@ -30,7 +32,7 @@ class Node:
     stored in a datafile within 'data' and referenced in 'config/datafiles.csv'. 
     """
 
-    def __init__(self, idx, order, name) -> None:
+    def __init__(self, static_instance, idx, order, name) -> None:
         """
         Initialize a Node.
 
@@ -39,6 +41,7 @@ class Node:
         id (int): Unique identifier for the node.
         name (str): Name of the node.
         """
+        self.static_instance = static_instance
         self.id = idx
         self.order = order # id specific to scenario
         self.name = name
@@ -57,6 +60,7 @@ class Node:
 
 if JIT_ENABLED:
     line_spec = [
+        ('static_instance',boolean),
         ('id', int64),
         ('order', int64),
         ('name', string),
@@ -84,25 +88,26 @@ class Line:
     minor line that instead connects a generator or storage object to the
     transmission network.
     """
-
     def __init__(self, 
-                idx,
-                order,
-                name,
-                length,
-                node_start,
-                node_end,
-                loss_factor,
-                max_build,
-                min_build,
-                capacity,
-                unit_type,
-                near_optimum_check,
-                group,
-                cost,) -> None:
+                 static_instance,
+                 idx,
+                 order,
+                 name,
+                 length,
+                 node_start,
+                 node_end,
+                 loss_factor,
+                 max_build,
+                 min_build,
+                 capacity,
+                 unit_type,
+                 near_optimum_check,
+                 group,
+                 cost,) -> None:
         """
         Initialize a Line object.
         """
+        self.static_instance = static_instance
         self.id = idx
         self.order = order # id specific to scenario
         self.name = name
@@ -122,11 +127,14 @@ class Line:
         return self.id == -1
     
     def build_capacity(self, new_build_power_capacity):
+        if self.static_instance:
+            raise_static_modification_error()
         self.capacity += new_build_power_capacity
         return None
 
 if JIT_ENABLED:
     network_spec = [
+        ('static_instance',boolean),
         ('nodes',DictType(int64,Node.class_type.instance_type)),
         ('major_lines',DictType(int64,Line.class_type.instance_type)),
         ('minor_lines',DictType(int64,Line.class_type.instance_type)),        
@@ -150,6 +158,7 @@ class Network:
     """
 
     def __init__(self, 
+                 static_instance,
                  nodes,
                  major_lines,
                  minor_lines,
@@ -168,6 +177,7 @@ class Network:
         nodes (Dict[int, Node]): Dictionary of nodes in the system.
         networksteps_max (int): Maximum number of legs along which transmission can occur.
         """
+        self.static_instance = static_instance
         self.nodes = nodes
         self.major_lines = major_lines
         self.minor_lines = minor_lines
@@ -184,10 +194,18 @@ class Network:
         return None
 
     def build_capacity(self, decision_x) -> None:
+        if self.static_instance:
+            raise_static_modification_error()
         for order, index in enumerate(self.line_x_indices):
             self.lines[order].capacity += decision_x[index]
         return None
-        
+    
+    def unload_data(self):
+        for node in self.nodes.values():
+            node.unload_data()
+        return None
+    
+    #### THIS NEEDS TO BE MOVED OUT OF STATIC INSTANCE
     def get_transmission_flows_t(self,
                                 Fillt: NDArray[np.float64], 
                                 Surplust: NDArray[np.float64], 
