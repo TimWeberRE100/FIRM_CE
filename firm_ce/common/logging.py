@@ -8,6 +8,7 @@ logging.getLogger('numba').setLevel(logging.WARNING)
 def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.
+    Logger does not work within JIT compiled code.
 
     The logger writes:
     - All messages (DEBUG and above) to a log file in a new `results/Model_<timestamp>` directory.

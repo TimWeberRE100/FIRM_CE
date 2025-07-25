@@ -1,17 +1,21 @@
 import numpy as np
 from typing import Dict
 
-from firm_ce.system.components import Generator, Storage, Fuel, Fleet
-from firm_ce.system.topology import Node, Line
+from firm_ce.system.components import (
+    Generator, Storage, Fuel, Fleet,
+    Generator_InstanceType, Storage_InstanceType,
+    Fuel_InstanceType, Fleet_InstanceType,
+)
+from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
+
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
-from firm_ce.constructors.traces_cons import construct_Traces2d_object
 from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
     from numba.core.types import DictType, int64
 
-def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel.class_type.instance_type:
+def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel_InstanceType:
     idx = int(fuel_dict['id'])
     name = str(fuel_dict['name'])
     cost = float(fuel_dict['cost'])
@@ -25,10 +29,10 @@ def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel.class_type.instance_
 def construct_Generator_object(
         generator_dict: Dict[str,str], 
         fuels_imported_dict: Dict[str, Dict[str, str]],
-        nodes_object_dict: TypedDict[int64, Node.class_type.instance_type], 
-        lines_object_dict: TypedDict[int64, Line.class_type.instance_type],
+        nodes_object_dict: TypedDict[int64, Node_InstanceType], 
+        lines_object_dict: TypedDict[int64, Line_InstanceType],
         order,
-        ) -> Generator.class_type.instance_type:
+        ) -> Generator_InstanceType:
     idx = int(generator_dict['id'])
     name = str(generator_dict['name'])
     unit_size = float(generator_dict['unit_size']) 
@@ -91,10 +95,10 @@ def construct_Generator_object(
 
 def construct_Storage_object(
         storage_dict: Dict[str, str], 
-        nodes_object_dict: TypedDict[int64, Node.class_type.instance_type], 
-        lines_object_dict: TypedDict[int64, Line.class_type.instance_type],
+        nodes_object_dict: TypedDict[int64, Node_InstanceType], 
+        lines_object_dict: TypedDict[int64, Line_InstanceType],
         order,
-        ) -> Storage.class_type.instance_type:
+        ) -> Storage_InstanceType:
     idx = int(storage_dict['id'])
     name = str(storage_dict['name'])
     power_capacity = float(storage_dict['initial_power_capacity'])  
@@ -165,13 +169,13 @@ def construct_Fleet_object(
         generators_imported_dict: Dict[str, Dict[str, str]], 
         storages_imported_dict: Dict[str, Dict[str, str]], 
         fuels_imported_dict: Dict[str, Dict[str, str]], 
-        lines_object_dict: TypedDict[int64, Line.class_type.instance_type], 
-        nodes_object_dict: TypedDict[int64, Node.class_type.instance_type],
-    ) -> Fleet.class_type.instance_type:
+        lines_object_dict: TypedDict[int64, Line_InstanceType], 
+        nodes_object_dict: TypedDict[int64, Node_InstanceType],
+    ) -> Fleet_InstanceType:
 
     generators = TypedDict.empty(
         key_type=int64,
-        value_type=Generator.class_type.instance_type
+        value_type=Generator_InstanceType
     )
     for order, idx in enumerate(generators_imported_dict):
         generators[order] = construct_Generator_object(
@@ -184,7 +188,7 @@ def construct_Fleet_object(
     
     storages = TypedDict.empty(
         key_type=int64,
-        value_type=Storage.class_type.instance_type
+        value_type=Storage_InstanceType
     )
     for order, idx in enumerate(storages_imported_dict):
         storages[order] = construct_Storage_object(
@@ -194,8 +198,6 @@ def construct_Fleet_object(
                             order,
                         ) 
         
-    traces = construct_Traces2d_object()
     return Fleet(True,
                  generators,
-                 storages,
-                 traces,)
+                 storages,)

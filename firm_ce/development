@@ -1,2 +1,2 @@
-Need to fix generator, storage, line and node objects to have a idx_adj (idx specific to the scenario)
+Delete the IntervalMemory and FleetCapacities objects
 Fix all docstrings

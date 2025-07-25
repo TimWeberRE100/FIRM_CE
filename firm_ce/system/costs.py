@@ -81,6 +81,8 @@ class UnitCost:
         
         self.transformer_capex = transformer_capex # $/kW, non-zero for lines
 
+UnitCost_InstanceType = UnitCost.class_type.instance_type
+
 @njit
 def get_present_value(discount_rate: np.float64, lifetime: np.float64) -> np.float64:
     """

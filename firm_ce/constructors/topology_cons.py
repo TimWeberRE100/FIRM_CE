@@ -2,7 +2,10 @@ from typing import Dict, List, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.system.topology import Node, Line, Network
+from firm_ce.system.topology import (
+    Node, Line, Network,
+    Node_InstanceType, Line_InstanceType, Network_InstanceType,
+    )
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.io.validate import is_nan
 from firm_ce.common.constants import JIT_ENABLED
@@ -11,10 +14,12 @@ if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
     from numba.core.types import DictType, int64, UniTuple
 
-def construct_Node_object(idx: int, order: int, node_name: str) -> Node.class_type.instance_type:
+def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:
     return Node(True, idx, order, node_name)
 
-def construct_Line_object(line_dict: Dict[str, str], nodes_object_dict: TypedDict[int64,Node], order: int) -> Line.class_type.instance_type:
+def construct_Line_object(line_dict: Dict[str, str], 
+                          nodes_object_dict: TypedDict[int64,Node_InstanceType], 
+                          order: int) -> Line_InstanceType:
     idx = int(line_dict['id'])
     name = str(line_dict['name'])
     length = int(line_dict['length']) 
@@ -74,13 +79,15 @@ def construct_Line_object(line_dict: Dict[str, str], nodes_object_dict: TypedDic
         cost,
     )
 
-def get_topology(major_lines_object_dict: TypedDict[int64,Line],) -> NDArray[np.int64]:
+def get_topology(major_lines_object_dict: TypedDict[int64,Line_InstanceType],) -> NDArray[np.int64]:
     topology = np.full((len(major_lines_object_dict), 2), -1, dtype=np.int64)
     for order, line in major_lines_object_dict.items():
         topology[order] = [line.node_start.order, line.node_end.order]
     return topology
 
-def build_scenario_network(topology: NDArray[np.int64], node_object_dict: TypedDict[int64, Node]) -> Tuple[NDArray[np.int64], NDArray[np.bool_]]:
+def build_scenario_network(topology: NDArray[np.int64], 
+                           node_object_dict: TypedDict[int64, Node_InstanceType]
+                           ) -> Tuple[NDArray[np.int64], NDArray[np.bool_]]:
     # Not strictly necessary as things are, but will be if nodes are defined as model-level objects 
     # with distinct idx and order down the track
     network_mask = np.array([(topology == order).sum(axis=1).astype(bool) for order in node_object_dict]).sum(axis=0) == 2 
@@ -100,7 +107,9 @@ def get_direct_connections(node_count: int, network: NDArray[np.int64]) -> NDArr
 def network_neighbours(node_idx: int, direct_connections: NDArray[np.int64]) -> NDArray[np.int64]:
     return np.where(direct_connections[node_idx] != -1)[0]
 
-def build_0_donor_cache(nodes_object_dict: TypedDict[int64, Node], direct_connections: NDArray[np.int64]) -> TypedDict[int64, NDArray[np.int64]]:
+def build_0_donor_cache(nodes_object_dict: TypedDict[int64, Node], 
+                        direct_connections: NDArray[np.int64]
+                        ) -> TypedDict[int64, NDArray[np.int64]]:
     cache_0_donors = TypedDict.empty(
         key_type=int64,
         value_type=int64[:, :]
@@ -111,7 +120,9 @@ def build_0_donor_cache(nodes_object_dict: TypedDict[int64, Node], direct_connec
         cache_0_donors[order] = np.stack((neighboring_node_orders, line_orders))
     return cache_0_donors
 
-def extend_route(route: NDArray[np.int64], direct_connections: NDArray[np.int64]) -> list[NDArray[np.int64]]:
+def extend_route(route: NDArray[np.int64], 
+                 direct_connections: NDArray[np.int64]
+                 ) -> list[NDArray[np.int64]]:
     start_neighbors = [node_order for node_order in network_neighbours(route[0], direct_connections) if node_order not in route]
     end_neighbors = [node_order for node_order in network_neighbours(route[-1], direct_connections) if node_order not in route]
     new_routes = []
@@ -131,7 +142,9 @@ def deduplicate_routes(routes: NDArray[np.int64]) -> NDArray[np.int64]:
     _, idx = np.unique(canonical_routes, axis=0, return_index=True)
     return canonical_routes[np.sort(idx)]
 
-def nth_order_routes(routes: NDArray[np.int64], direct_connections: NDArray[np.int64]) -> NDArray[np.int64]:
+def nth_order_routes(routes: NDArray[np.int64], 
+                     direct_connections: NDArray[np.int64]
+                     ) -> NDArray[np.int64]:
     candidate_routes = []
     for route in routes:
         new_routes = extend_route(route, direct_connections)
@@ -173,22 +186,22 @@ def construct_Network_object(
         nodes_imported_list: List[str],
         lines_imported_dict: Dict[str, Dict[str,str]],
         networksteps_max: int,
-        ) -> Network.class_type.instance_type:
+        ) -> Network_InstanceType:
     
     nodes = TypedDict.empty(
         key_type=int64,
-        value_type=Node.class_type.instance_type
+        value_type=Node_InstanceType
     )
     for idx in range(len(nodes_imported_list)):
         nodes[idx] = construct_Node_object(idx, idx, nodes_imported_list[idx]) # Separate idx from order in fture version for consistency? 
     
     major_lines = TypedDict.empty(
         key_type=int64,
-        value_type=Line.class_type.instance_type
+        value_type=Line_InstanceType
     )
     minor_lines = TypedDict.empty(
         key_type=int64,
-        value_type=Line.class_type.instance_type
+        value_type=Line_InstanceType
     )
     order_major = 0
     order_minor = 0

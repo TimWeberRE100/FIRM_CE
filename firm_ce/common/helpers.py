@@ -164,3 +164,14 @@ def array_min(arr):
         if v < min:
             min = v 
     return min
+
+@njit
+def aggregate_assets_to_nodes(
+    asset_attribute_array: NDArray[np.float64], 
+    asset_node_order: NDArray[np.int64],
+    node_count: int) -> NDArray[np.int64]:
+
+    aggregated_nodal_array = np.zeros(node_count, dtype=np.float64)
+    for idx, node_order in enumerate(asset_node_order):
+        aggregated_nodal_array[node_order] += asset_attribute_array[idx]
+    return aggregated_nodal_array

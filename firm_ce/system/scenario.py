@@ -51,13 +51,20 @@ class Scenario:
 
         load_datafiles_to_generators(self.fleet, datafiles)
         
-        load_datafiles_to_network(self.network, datafiles)
+        load_datafiles_to_network(
+            self.network, 
+            datafiles,
+            self.fleet.generators,
+            self.static.intervals_count,
+            )
 
-        self.energy_balance_static.initialise_residual_load(
+        """ self.energy_balance_static.initialise_residual_load(
             self.fleet.generators,
             self.network.nodes,
             self.static.intervals_count
-        )
+        ) """
+
+        self.static.set_year_energy_demand(self.network.nodes)
 
         return None
 
@@ -66,7 +73,9 @@ class Scenario:
         
         unload_data_from_network(self.network)
 
-        self.energy_balance_static.unload_data()
+        """ self.energy_balance_static.unload_data() """
+
+        self.static.unset_year_energy_demand()
 
         gc.collect()
 

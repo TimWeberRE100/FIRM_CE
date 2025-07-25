@@ -3,12 +3,16 @@ from numpy.typing import NDArray
 import numpy as np
 
 from firm_ce.io.file_manager import DataFile
-from firm_ce.system.components import Fleet
-from firm_ce.system.traces import Traces2d
+from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType
 from firm_ce.system.topology import Network
+from firm_ce.common.constants import JIT_ENABLED
 
-def construct_Traces2d_object() -> Traces2d.class_type.instance_type:
-    return Traces2d()
+if JIT_ENABLED:
+    from numba.core.types import int64
+    from numba.typed.typeddict import Dict as TypedDict
+
+""" def construct_Traces2d_object() -> Traces2d.class_type.instance_type:
+    return Traces2d() """
 
 def select_datafile(
         datafile_type: str,
@@ -29,7 +33,7 @@ def select_datafile(
     
     return trace
 
-def load_datafiles_to_generators(fleet: Fleet.class_type.instance_type,
+def load_datafiles_to_generators(fleet: Fleet_InstanceType,
                                 datafiles_imported_dict: Dict[str, DataFile],
                                 ) -> None:
     for generator in fleet.generators.values():
@@ -41,10 +45,16 @@ def load_datafiles_to_generators(fleet: Fleet.class_type.instance_type,
 
 def load_datafiles_to_network(network: Network.class_type.instance_type,
                               datafiles_imported_dict: Dict[str, DataFile],
+                              generators_typed_dict: TypedDict[int64, Generator_InstanceType],
+                              intervals_count: int,
                               ) -> None:
     for node in network.nodes.values():
         node.load_data(
             select_datafile('demand', node.name, datafiles_imported_dict),
+        )
+        node.initialise_residual_load(
+            generators_typed_dict,
+            intervals_count,
         )
     return None
 

@@ -1,17 +1,17 @@
 import numpy as np
+from numpy.typing import NDArray
 
 from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.helpers import (
+    array_min, 
+    array_max_2d_axis1, 
+    array_sum_2d_axis0, 
+    zero_safe_division
+)
 
 if JIT_ENABLED:
-    from numba import float64, int64, types
-    from numba.experimental import jitclass
-
+    from numba import njit
 else:
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-        return decorator
-    
     def njit(func=None, **kwargs):
         if func is not None:
             return func
@@ -19,90 +19,29 @@ else:
             return f
         return wrapper
 
-#####################################################
-#                       SCENARIO                    #
-#####################################################
-if JIT_ENABLED:
-    scenario_spec = [
-        ('intervals', int64),
-        ('years', int64),
-        ('nodes_count', int64),
-        ('lines_count', int64),
-        ('resolution', float64),
-        ('average_annual_load', float64),
-        ('average_annual_trans_loss', float64),
-        ('reliability', float64),
-        ('fom_scalar', float64),
-    ]
-else:
-    scenario_spec = []
-
-@jitclass(scenario_spec)
-class Scenario_JIT:
-    def __init__(self,
-                 intervals,
-                 years,
-                 nodes_count,
-                 lines_count,
-                 resolution,
-                 average_annual_load,
-                 average_annual_trans_loss,
-                 reliability,
-                 fom_scalar,):
-        self.intervals = intervals
-        self.years = years
-        self.nodes_count = nodes_count
-        self.lines_count = lines_count
-        self.resolution = resolution    
-        self.average_annual_load = average_annual_load
-        self.average_annual_trans_loss = average_annual_trans_loss
-        self.reliability = reliability
-        self.fom_scalar = fom_scalar # Scale average annual fom to account for leap days for PLEXOS consistency
-
-
-@jitclass(buses_spec)
-class Buses_JIT:
-    def __init__(self):
-        self.flexible_cap_power
-        self.storage_cap_power
-        self.storage_cap_energy
-
-        self.power_traces
-        self.remaining_energy_traces
-
-        self._charge_max_interval
-        self._discharge_max_interval
-        self._flexible_max_interval
-
-        self.flexible_sorted_order
-        self.storage_sorted_order
-
-        self.imports
-        self.exports
-
-""" class Network_JIT:
-    def __init__(self):
-        self.lines_dict
-        self.networksteps        
-        self.transmission
-        self.cache_0_donors
-        self.cache_n_donors
-
-    def get_transmission_flows(self, buses_fill, buses_surplus, buses_imports, buses_exports):
+@njit
+#### THIS NEEDS TO BE MOVED OUT OF STATIC INSTANCE
+def get_transmission_flows_t(self,
+                            Fillt: NDArray[np.float64], 
+                            Surplust: NDArray[np.float64], 
+                            Importt: NDArray[np.float64], 
+                            Exportt: NDArray[np.float64],
+                            ) -> NDArray[np.float64]:
+        '''Improve efficiency by avioding so many new variable declarations'''
         # The primary connections are simpler (and faster) to model than the general
         #   nthary connection
         # Since many if not most calls of this function only require primary transmission
         #   I have split it out from general nthary transmission to improve speed
-        _transmission = np.zeros(solution.nodes, np.float64)
+        _transmission = np.zeros(len(self.nodes), np.float64)
         leg = 0
         # loop through nodes with deficits
-        for n in range(solution.nodes):
+        for n in self.nodes:
             if Fillt[n] < 1e-6:
                 continue
             # appropriate slice of network array
             # pdonors is equivalent to donors later on but has different ndim so needs to
             #   be a different variable name for static typing
-            pdonors, pdonor_lines = solution.cache_0_donors[n]
+            pdonors, pdonor_lines = self.cache_0_donors[n]
             _usage = 0.0 # badly named by avoids creating more variables
             for d in pdonors: 
                 _usage += Surplust[d]
@@ -113,17 +52,17 @@ class Buses_JIT:
 
             for d, l in zip(pdonors, pdonor_lines):
                 _usage = 0.0
-                for m in range(solution.nodes):
+                for m in self.nodes:
                     _usage += Importt[m, l]
                 # maximum exportable
                 _transmission[d] = min(
                     Surplust[d],  # power resource constraint
-                    solution.GHvi[l] - _usage, # line capacity constraint
+                    self.transmission_capacities[l] - _usage, # line capacity constraint
                 )  
 
             # scale down to fill requirement
             _usage = 0.0
-            for m in range(solution.nodes):
+            for m in self.nodes:
                 _usage += _transmission[m] 
             if _usage > Fillt[n]:
                 _scale = Fillt[n] / _usage
@@ -147,15 +86,15 @@ class Buses_JIT:
         # Note: This code block works for primary transmission too, but is slower
         if (Fillt.sum() > 1e-6) and (Surplust.sum() > 1e-6):
                 _import = np.zeros(Importt.shape, np.float64)
-                _capacity = np.zeros(solution.nhvi, np.float64)
+                _capacity = np.zeros(self.major_line_count, np.float64)
                 # loop through secondary, tertiary, ..., nthary connections
-                for leg in range(1, solution.networksteps):
+                for leg in range(1, self.networksteps_max):
                     # loop through nodes with deficits
-                    for n in range(solution.nodes):
+                    for n in self.nodes:
                         if Fillt[n] < 1e-6:
                             continue
                         
-                        donors, donor_lines = solution.cache_n_donors[(n, leg)]
+                        donors, donor_lines = self.cache_n_donors[(n, leg)]
 
                         if donors.shape[1] == 0:
                             break  # break if no valid donors
@@ -167,24 +106,24 @@ class Buses_JIT:
                         if _usage < 1e-6:
                             continue
 
-                        _capacity[:] = solution.GHvi - array_sum_2d_axis0(Importt)
+                        _capacity[:] = self.transmission_capacities - array_sum_2d_axis0(Importt)
                         for d, dl in zip(donors[-1], donor_lines.T): # print(d,dl)
                             # power use of each line, clipped to maximum capacity of lowest leg
                             _import[d, dl] = min(array_min(_capacity[dl]), Surplust[d])
                         
-                        for l in range(solution.nhvi):
+                        for l in range(self.major_line_count):
                             # total usage of the line across all import paths
                             _usage=0.0
-                            for m in range(solution.nodes):
+                            for m in self.nodes:
                                 _usage += _import[m, l]
                             # if usage exceeds capacity
                             if _usage > _capacity[l]:
                                 # unclear why this raises zero division error from time to time
                                 _scale = zero_safe_division(_capacity[l], _usage)
-                                for m in range(solution.nodes):
+                                for m in self.nodes:
                                     # clip all legs
                                     if _import[m, l] > 1e-6:
-                                        for o in range(solution.nhvi):
+                                        for o in self.major_lines:
                                             _import[m, o] *= _scale
                             
                         # intermediate calculation array
@@ -192,7 +131,7 @@ class Buses_JIT:
                         
                         # scale down to fill requirement
                         _usage = 0.0
-                        for m in range(solution.nodes):
+                        for m in self.nodes:
                             _usage += _transmission[m] 
                         if _usage > Fillt[n]:
                             _scale = Fillt[n] / _usage
@@ -221,4 +160,64 @@ class Buses_JIT:
                     if (Surplust.sum() < 1e-6) or (Fillt.sum() < 1e-6):
                         break
 
-        return Importt, Exportt """
+        return Importt, Exportt
+
+""" @njit 
+def balance_with_neighbouring_surplus(t: int, 
+                                      energy_balance: EnergyBalance.class_type.instance_type,) -> bool:
+    ### Continue stuff here
+    if energy_balance.check_remaining_deficit(t):
+        return True
+    return False """
+
+@njit
+def balance_for_period(start_t: int, 
+                       end_t: int, 
+                       precharging_allowed: bool,
+                       solution,
+                       ) -> None:
+    perform_precharge = False
+   
+    for t in range(start_t, end_t):
+        pass
+        """ solution.interval_memory.initialise(
+            t,
+            solution.fleet_capacities,
+            solution.energy_balance.storage_energy[t-1], 
+            solution.energy_balance.flexible_energy[t-1],
+            solution.energy_balance.residual_load[t],
+            solution.static.resolution,
+            len(solution.network.nodes),
+        ) """
+
+        """ if not precharging_allowed:
+            solution.energy_balance.reset_transmission(t, solution.static.lines_count)
+
+        continue_balancing_check = balance_with_neighbouring_surplus() """
+        """ if continue_balancing_check:
+            continue_balancing_check = balance_with_local_storage()
+        if continue_balancing_check:
+            balance_with_neighbouring_storage()
+            continue_balancing_check = balance_with_local_flexible()
+        if continue_balancing_check:
+            transmit_surplus_flag = balance_with_neighbouring_flexible()
+
+        if transmit_surplus_flag:
+            transmit_surplus_to_neighbouring_storage()
+
+        energy_balance.update_storage_energy()
+        energy_balance.update_flexible_energy()
+
+        if not precharging_allowed:
+            continue
+
+        if not perform_precharge and (interval_memory.deficit.sum() > 1e-6):
+            perform_precharge = True
+
+        if perform_precharge and (interval_memory.deficit.sum() < 1e-6):
+            precharge_storage(t, energy_balance.residual_load)
+            perform_precharge = False """
+
+        # Test post-energy balance and during energy-balance methods of apportioning
+        # Before building the precharge functionality
+    return None

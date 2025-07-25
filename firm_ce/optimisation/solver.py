@@ -80,7 +80,7 @@ class Solver:
             self.scenario.static,
             self.scenario.fleet,
             self.scenario.network,
-            self.scenario.energy_balance_static,
+            #self.scenario.energy_balance_static,
         )
         return args
 

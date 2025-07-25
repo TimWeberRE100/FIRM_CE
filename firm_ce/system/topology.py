@@ -1,14 +1,18 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.common.exceptions import raise_static_modification_error
+from firm_ce.common.exceptions import (
+    raise_static_modification_error,
+    raise_getting_unloaded_data_error,
+)
 from firm_ce.common.constants import JIT_ENABLED
-from firm_ce.system.costs import UnitCost
-from firm_ce.common.helpers import array_min, array_max_2d_axis1, array_sum_2d_axis0, zero_safe_division
+from firm_ce.system.costs import UnitCost_InstanceType
+#from firm_ce.system.components import Generator_InstanceType
 
 if JIT_ENABLED:
     from numba.core.types import float64, int64, string, boolean, DictType, UniTuple
     from numba.experimental import jitclass
+    from numba.typed.typeddict import Dict as TypedDict
 
     node_spec = [
         ('static_instance',boolean),
@@ -17,6 +21,22 @@ if JIT_ENABLED:
         ('name',string),
         ('data_status',string),
         ('data',float64[:]),
+
+        ('residual_load',float64[:]), 
+        ('flexible_p_capacity',float64), 
+        ('storage_p_capacity',float64), 
+        ('storage_e_capacity',float64),
+
+        # Dynamic
+        ('imports',float64[:]),
+        ('exports',float64[:]), 
+        ('deficits',float64[:]), 
+        ('spillage',float64[:]), 
+
+        ('flexible_power',float64[:]), 
+        ('storage_power',float64[:]),
+        ('flexible_energy',float64[:]), 
+        ('storage_energy',float64[:]), 
     ]
 else:
     def jitclass(spec):
@@ -48,8 +68,37 @@ class Node:
         self.data_status = "unloaded"
         self.data = np.empty((0,), dtype=np.float64)
 
-    def load_data(self, trace):
-        self.data_status= "demand"
+        self.residual_load = np.empty((0,), dtype=np.float64)
+        self.flexible_p_capacity = 0.0
+        self.storage_p_capacity = 0.0
+        self.storage_e_capacity = 0.0
+
+        # Dynamic
+        self.imports = np.empty((0,), dtype=np.float64)
+        self.exports = np.empty((0,), dtype=np.float64)
+        self.deficits = np.empty((0,), dtype=np.float64)
+        self.spillage = np.empty((0,), dtype=np.float64)
+
+        self.flexible_power = np.empty((0,), dtype=np.float64)
+        self.storage_power = np.empty((0,), dtype=np.float64)
+        self.flexible_energy = np.empty((0,), dtype=np.float64)
+        self.storage_energy = np.empty((0,), dtype=np.float64)        
+
+    def create_dynamic_copy(self):
+        node_copy = Node(
+            False,
+            self.id,
+            self.order,
+            self.name
+        )
+        node_copy.data_status = self.data_status # This remains static
+        node_copy.data = self.data # This remains static
+        node_copy.residual_load = self.residual_load # This remains static
+        return node_copy        
+
+    def load_data(self, 
+                  trace: NDArray[np.float64],):
+        self.data_status = "demand"
         self.data = trace
         return None
     
@@ -57,6 +106,51 @@ class Node:
         self.data_status = "unloaded"
         self.data = np.empty((0,), dtype=np.float64)
         return None
+    
+    def get_data(self):
+        if self.data_status == "unloaded":
+            raise_getting_unloaded_data_error()
+        return self.data
+    
+    def initialise_residual_load(
+            self,
+            generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
+            intervals_count: int,) -> None:
+        self.residual_load = self.get_data() / 1000 # Convert to GW
+
+        for generator in generators_typed_dict.values():
+            if (generator.data_status == "availability") and (generator.node.order == self.order):                
+                for interval in range(intervals_count):
+                    self.residual_load[interval] -= generator.get_data("trace")[interval] * generator.initial_capacity  
+        return None
+    
+    def update_residual_load(self,
+                             generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
+                             intervals_count: int,):
+        if self.static_instance:
+            raise_static_modification_error()
+        return None
+    
+    def initialise_nodal_capacities(self):
+        if self.static_instance:
+            raise_static_modification_error()
+        return None
+    
+    def allocate_memory(self):
+        if self.static_instance:
+            raise_static_modification_error()
+        self.imports = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.exports = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.deficits = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.spillage = np.zeros_like(self.residual_load, dtype=np.float64)
+
+        self.flexible_power = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.storage_power = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.flexible_energy = np.zeros_like(self.residual_load, dtype=np.float64)
+        self.storage_energy = np.zeros_like(self.residual_load, dtype=np.float64)
+        return None
+
+Node_InstanceType = Node.class_type.instance_type
 
 if JIT_ENABLED:
     line_spec = [
@@ -65,8 +159,8 @@ if JIT_ENABLED:
         ('order', int64),
         ('name', string),
         ('length', float64),
-        ('node_start', Node.class_type.instance_type),
-        ('node_end', Node.class_type.instance_type),
+        ('node_start', Node_InstanceType),
+        ('node_end', Node_InstanceType),
         ('loss_factor', float64),
         ('max_build', float64),
         ('min_build', float64),
@@ -74,7 +168,7 @@ if JIT_ENABLED:
         ('unit_type', string),
         ('near_optimum_check', boolean),
         ('group', string),
-        ('cost', UnitCost.class_type.instance_type),
+        ('cost', UnitCost_InstanceType),
     ]
 else:
     line_spec = []
@@ -123,6 +217,33 @@ class Line:
         self.group = group
         self.cost = cost
 
+    def create_dynamic_copy(self, nodes_typed_dict, line_type):
+        if line_type == "major":
+            node_start_copy = nodes_typed_dict[self.node_start.order]
+            node_end_copy = nodes_typed_dict[self.node_end.order]
+        elif line_type == "major":
+            node_start_copy = Node(False,-1,-1,"MINOR_NODE")
+            node_end_copy = Node(False,-1,-1,"MINOR_NODE")
+        
+        line_copy = Line(
+            False,
+            self.id,
+            self.order,
+            self.name,
+            self.length,
+            node_start_copy,
+            node_end_copy,
+            self.loss_factor,
+            self.max_build,
+            self.min_build,
+            self.capacity,
+            self.unit_type,
+            self.near_optimum_check,
+            self.group,
+            self.cost, # This remains static
+        )
+        return line_copy
+
     def check_minor_line(self) -> bool:
         return self.id == -1
     
@@ -132,12 +253,14 @@ class Line:
         self.capacity += new_build_power_capacity
         return None
 
+Line_InstanceType = Line.class_type.instance_type
+
 if JIT_ENABLED:
     network_spec = [
         ('static_instance',boolean),
-        ('nodes',DictType(int64,Node.class_type.instance_type)),
-        ('major_lines',DictType(int64,Line.class_type.instance_type)),
-        ('minor_lines',DictType(int64,Line.class_type.instance_type)),        
+        ('nodes',DictType(int64,Node_InstanceType)),
+        ('major_lines',DictType(int64,Line_InstanceType)),
+        ('minor_lines',DictType(int64,Line_InstanceType)),        
         ('cache_0_donors',DictType(int64, int64[:, :])),
         ('cache_n_donors',DictType(UniTuple(int64, 2), int64[:, :, :])),
         ('transmission_mask',boolean[:,:]),
@@ -189,6 +312,44 @@ class Network:
         self.major_line_count = len(major_lines)
         self.line_x_indices = np.full(len(major_lines), -1, dtype=np.int64)
 
+    def create_dynamic_copy(self):
+        nodes_copy = TypedDict.empty(
+            key_type=int64,
+            value_type=Node_InstanceType
+        )
+        major_lines_copy = TypedDict.empty(
+            key_type=int64,
+            value_type=Line_InstanceType
+        )
+        minor_lines_copy = TypedDict.empty(
+            key_type=int64,
+            value_type=Line_InstanceType
+        )
+
+        for order, node in self.nodes.items():
+            nodes_copy[order] = node.create_dynamic_copy()
+
+        for order, line in self.major_lines.items():
+            major_lines_copy[order] = line.create_dynamic_copy(nodes_copy, "major")
+
+        for order, line in self.minor_lines.items():
+            minor_lines_copy[order] = line.create_dynamic_copy(nodes_copy, "minor")
+
+        network_copy = Network(
+            False,
+            nodes_copy,
+            major_lines_copy,
+            minor_lines_copy,
+            self.cache_0_donors, # This is static
+            self.cache_n_donors, # This is static
+            self.transmission_mask, # This is static
+            self.networksteps_max,
+            self.transmission_capacities.copy(),
+        )
+        network_copy.major_line_count = self.major_line_count
+        network_copy.line_x_indices = self.line_x_indices # This is static
+        return network_copy
+
     def assign_x_indices(self, order, x_index) -> None:
         self.line_x_indices[order] = x_index
         return None
@@ -205,144 +366,23 @@ class Network:
             node.unload_data()
         return None
     
-    #### THIS NEEDS TO BE MOVED OUT OF STATIC INSTANCE
-    def get_transmission_flows_t(self,
-                                Fillt: NDArray[np.float64], 
-                                Surplust: NDArray[np.float64], 
-                                Importt: NDArray[np.float64], 
-                                Exportt: NDArray[np.float64],
-                                ) -> NDArray[np.float64]:
-        '''Improve efficiency by avioding so many new variable declarations'''
-        # The primary connections are simpler (and faster) to model than the general
-        #   nthary connection
-        # Since many if not most calls of this function only require primary transmission
-        #   I have split it out from general nthary transmission to improve speed
-        _transmission = np.zeros(len(self.nodes), np.float64)
-        leg = 0
-        # loop through nodes with deficits
-        for n in self.nodes:
-            if Fillt[n] < 1e-6:
-                continue
-            # appropriate slice of network array
-            # pdonors is equivalent to donors later on but has different ndim so needs to
-            #   be a different variable name for static typing
-            pdonors, pdonor_lines = self.cache_0_donors[n]
-            _usage = 0.0 # badly named by avoids creating more variables
-            for d in pdonors: 
-                _usage += Surplust[d]
-
-            if _usage < 1e-6:
-                # continue if no surplus to be traded
-                continue
-
-            for d, l in zip(pdonors, pdonor_lines):
-                _usage = 0.0
-                for m in self.nodes:
-                    _usage += Importt[m, l]
-                # maximum exportable
-                _transmission[d] = min(
-                    Surplust[d],  # power resource constraint
-                    self.transmission_capacities[l] - _usage, # line capacity constraint
-                )  
-
-            # scale down to fill requirement
-            _usage = 0.0
-            for m in self.nodes:
-                _usage += _transmission[m] 
-            if _usage > Fillt[n]:
-                _scale = Fillt[n] / _usage
-                _transmission *= _scale
-                _usage *= _scale
-            if _usage < 1e-6:
-                continue
-
-            # for d, l in zip(pdonors, pdonor_lines):  #  print(d,l)
-            for i in range(len(pdonors)):
-                # record transmission
-                Importt[n, pdonor_lines[i]] += _transmission[pdonors[i]]
-                Exportt[pdonors[i], pdonor_lines[i]] -= _transmission[pdonors[i]]
-                # adjust deficit/surpluses
-                Surplust[pdonors[i]] -= _transmission[pdonors[i]]
-                _transmission[pdonors[i]] = 0
+    def allocate_memory(self):
+        if self.static_instance:
+            raise_static_modification_error()
+        for node in self.nodes.values():
+            node.allocate_memory()
+        return None
     
-            Fillt[n] -= _usage
-
-        # Continue with nthary transmission
-        # Note: This code block works for primary transmission too, but is slower
-        if (Fillt.sum() > 1e-6) and (Surplust.sum() > 1e-6):
-                _import = np.zeros(Importt.shape, np.float64)
-                _capacity = np.zeros(self.major_line_count, np.float64)
-                # loop through secondary, tertiary, ..., nthary connections
-                for leg in range(1, self.networksteps_max):
-                    # loop through nodes with deficits
-                    for n in self.nodes:
-                        if Fillt[n] < 1e-6:
-                            continue
-                        
-                        donors, donor_lines = self.cache_n_donors[(n, leg)]
-
-                        if donors.shape[1] == 0:
-                            break  # break if no valid donors
-                            
-                        _usage = 0.0 # badly named variable but avoids extra variables
-                        for d in donors[-1]:
-                            _usage += Surplust[d]
-
-                        if _usage < 1e-6:
-                            continue
-
-                        _capacity[:] = self.transmission_capacities - array_sum_2d_axis0(Importt)
-                        for d, dl in zip(donors[-1], donor_lines.T): # print(d,dl)
-                            # power use of each line, clipped to maximum capacity of lowest leg
-                            _import[d, dl] = min(array_min(_capacity[dl]), Surplust[d])
-                        
-                        for l in range(self.major_line_count):
-                            # total usage of the line across all import paths
-                            _usage=0.0
-                            for m in self.nodes:
-                                _usage += _import[m, l]
-                            # if usage exceeds capacity
-                            if _usage > _capacity[l]:
-                                # unclear why this raises zero division error from time to time
-                                _scale = zero_safe_division(_capacity[l], _usage)
-                                for m in self.nodes:
-                                    # clip all legs
-                                    if _import[m, l] > 1e-6:
-                                        for o in self.major_lines:
-                                            _import[m, o] *= _scale
-                            
-                        # intermediate calculation array
-                        _transmission = array_max_2d_axis1(_import)
-                        
-                        # scale down to fill requirement
-                        _usage = 0.0
-                        for m in self.nodes:
-                            _usage += _transmission[m] 
-                        if _usage > Fillt[n]:
-                            _scale = Fillt[n] / _usage
-                            _transmission *= _scale
-                            _usage *= _scale
-                        if _usage < 1e-6:
-                            continue
-
-                        for nd, d, dl in zip(range(donors.shape[1]), donors[-1], donor_lines.T): # print(nd, d, dl)
-                            Importt[n, dl[0]] += _transmission[d]
-                            Exportt[donors[0, nd], dl[0]] -= _transmission[d]
-                            for step in range(leg):
-                                Importt[donors[step, nd], dl[step+1]] += _transmission[d]
-                                Exportt[donors[step+1, nd], dl[step+1]] -= _transmission[d]
-
-                        # Adjust fill and surplus
-                        Fillt[n] -= _usage
-                        Surplust -= _transmission
-                        
-                        _import[:] = 0.0
-                        _capacity[:] = 0.0
-                        
-                        if (Surplust.sum() < 1e-6) or (Fillt.sum() < 1e-6):
-                            break
-
-                    if (Surplust.sum() < 1e-6) or (Fillt.sum() < 1e-6):
-                        break
-
-        return Importt, Exportt
+    def update_residual_loads(self,
+                             generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
+                             intervals_count: int,):
+        if self.static_instance:
+            raise_static_modification_error()
+        for node in self.nodes.values():
+            node.update_residual_load(
+                generators_typed_dict,
+                intervals_count
+            )
+        return None
+    
+Network_InstanceType = Network.class_type.instance_type
