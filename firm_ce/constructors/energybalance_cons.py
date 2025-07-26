@@ -4,9 +4,9 @@ from numpy.typing import NDArray
 
 from firm_ce.system.energybalance import (
     ScenarioParameters, 
-    IntervalMemory,
-    FleetCapacities,
-    EnergyBalance,
+    #IntervalMemory,
+    #FleetCapacities,
+    #EnergyBalance,
 )
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.topology import Node
@@ -71,11 +71,11 @@ def construct_ScenarioParameters_object(
         node_count,
     )
 
-def construct_IntervalMemory_object() -> IntervalMemory.class_type.instance_type:
+"""def construct_IntervalMemory_object() -> IntervalMemory.class_type.instance_type:
     return IntervalMemory(True)
 
 def construct_FleetCapacities_object() -> FleetCapacities.class_type.instance_type:
     return FleetCapacities(True)
 
 def construct_EnergyBalance_object() -> EnergyBalance.class_type.instance_type:
-    return EnergyBalance(True)
+    return EnergyBalance(True) """

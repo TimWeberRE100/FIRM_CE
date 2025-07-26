@@ -45,16 +45,10 @@ def load_datafiles_to_generators(fleet: Fleet_InstanceType,
 
 def load_datafiles_to_network(network: Network.class_type.instance_type,
                               datafiles_imported_dict: Dict[str, DataFile],
-                              generators_typed_dict: TypedDict[int64, Generator_InstanceType],
-                              intervals_count: int,
                               ) -> None:
     for node in network.nodes.values():
         node.load_data(
             select_datafile('demand', node.name, datafiles_imported_dict),
-        )
-        node.initialise_residual_load(
-            generators_typed_dict,
-            intervals_count,
         )
     return None
 

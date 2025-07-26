@@ -10,7 +10,7 @@ from firm_ce.constructors import (
     construct_ScenarioParameters_object, 
     construct_Fleet_object, 
     construct_Network_object,
-    construct_EnergyBalance_object,
+    #construct_EnergyBalance_object,
     load_datafiles_to_generators,
     load_datafiles_to_network,
     unload_data_from_generators,
@@ -41,7 +41,7 @@ class Scenario:
             self.network.minor_lines, 
             self.network.nodes,
             )    
-        self.energy_balance_static = construct_EnergyBalance_object()           
+        #self.energy_balance_static = construct_EnergyBalance_object()           
 
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
@@ -49,31 +49,18 @@ class Scenario:
     def load_datafiles(self, all_datafiles: Dict[str, DataFile]) -> None:      
         datafiles = self._get_datafiles(all_datafiles)
 
-        load_datafiles_to_generators(self.fleet, datafiles)
-        
-        load_datafiles_to_network(
-            self.network, 
-            datafiles,
-            self.fleet.generators,
-            self.static.intervals_count,
-            )
+        load_datafiles_to_network(self.network, datafiles)
 
-        """ self.energy_balance_static.initialise_residual_load(
-            self.fleet.generators,
-            self.network.nodes,
-            self.static.intervals_count
-        ) """
+        load_datafiles_to_generators(self.fleet, datafiles)
 
         self.static.set_year_energy_demand(self.network.nodes)
 
         return None
 
     def unload_datafiles(self) -> None:
-        unload_data_from_generators(self.fleet)
-        
         unload_data_from_network(self.network)
 
-        """ self.energy_balance_static.unload_data() """
+        unload_data_from_generators(self.fleet)
 
         self.static.unset_year_energy_demand()
 

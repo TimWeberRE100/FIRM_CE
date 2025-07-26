@@ -71,7 +71,7 @@ class ScenarioParameters:
         for year in range(self.year_count):
             first_t, last_t = self.get_year_t_boundaries(year)
             for node in nodes_typed_dict.values():
-                self.year_energy_demand[year] += sum(node.get_data()[first_t:last_t]) * self.resolution
+                self.year_energy_demand[year] += sum(node.get_data("trace")[first_t:last_t]) * self.resolution
         return None
     
     def unset_year_energy_demand(self) -> None:
@@ -333,7 +333,7 @@ if JIT_ENABLED:
 else: 
     energybalance_spec = []
 
-@jitclass(energybalance_spec)
+""" @jitclass(energybalance_spec)
 class EnergyBalance:
     def __init__(self, static_instance):        
         self.static_instance = static_instance
@@ -457,4 +457,4 @@ class EnergyBalance:
         return None
     
     def check_remaining_deficit(self, t: int) -> bool:
-        return sum(self.deficits[t,:]) > 1e-6
+        return sum(self.deficits[t,:]) > 1e-6 """

@@ -23,9 +23,8 @@ if JIT_ENABLED:
         ('data',float64[:]),
 
         ('residual_load',float64[:]), 
-        ('flexible_p_capacity',float64), 
-        ('storage_p_capacity',float64), 
-        ('storage_e_capacity',float64),
+        ('power_capacity',DictType(string,float64)), 
+        ('energy_capacity',DictType(string,float64)), 
 
         # Dynamic
         ('imports',float64[:]),
@@ -69,11 +68,10 @@ class Node:
         self.data = np.empty((0,), dtype=np.float64)
 
         self.residual_load = np.empty((0,), dtype=np.float64)
-        self.flexible_p_capacity = 0.0
-        self.storage_p_capacity = 0.0
-        self.storage_e_capacity = 0.0
 
         # Dynamic
+        self.power_capacity, self.energy_capacity = self.initialise_nodal_capacity()
+
         self.imports = np.empty((0,), dtype=np.float64)
         self.exports = np.empty((0,), dtype=np.float64)
         self.deficits = np.empty((0,), dtype=np.float64)
@@ -82,7 +80,27 @@ class Node:
         self.flexible_power = np.empty((0,), dtype=np.float64)
         self.storage_power = np.empty((0,), dtype=np.float64)
         self.flexible_energy = np.empty((0,), dtype=np.float64)
-        self.storage_energy = np.empty((0,), dtype=np.float64)        
+        self.storage_energy = np.empty((0,), dtype=np.float64) 
+
+    def initialise_nodal_capacity(self):
+        power_capacity_typed_dict = TypedDict.empty(
+            key_type=string,
+            value_type=float64
+        )
+        energy_capacity_typed_dict = TypedDict.empty(
+            key_type=string,
+            value_type=float64
+        )
+
+        power_capacity_typed_dict['solar'] = 0.0
+        power_capacity_typed_dict['wind'] = 0.0
+        power_capacity_typed_dict['flexible'] = 0.0
+        power_capacity_typed_dict['baseload'] = 0.0
+        power_capacity_typed_dict['storage'] = 0.0
+
+        energy_capacity_typed_dict['storage'] = 0.0
+
+        return power_capacity_typed_dict, energy_capacity_typed_dict      
 
     def create_dynamic_copy(self):
         node_copy = Node(
@@ -91,15 +109,16 @@ class Node:
             self.order,
             self.name
         )
-        node_copy.data_status = self.data_status # This remains static
+        node_copy.data_status = self.data_status 
         node_copy.data = self.data # This remains static
-        node_copy.residual_load = self.residual_load # This remains static
+        node_copy.residual_load = self.residual_load.copy()
         return node_copy        
 
     def load_data(self, 
                   trace: NDArray[np.float64],):
-        self.data_status = "demand"
+        self.data_status = "loaded"
         self.data = trace
+        self.residual_load = trace.copy()
         return None
     
     def unload_data(self):
@@ -107,33 +126,16 @@ class Node:
         self.data = np.empty((0,), dtype=np.float64)
         return None
     
-    def get_data(self):
+    def get_data(self, data_type):
         if self.data_status == "unloaded":
             raise_getting_unloaded_data_error()
-        return self.data
-    
-    def initialise_residual_load(
-            self,
-            generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
-            intervals_count: int,) -> None:
-        self.residual_load = self.get_data() / 1000 # Convert to GW
 
-        for generator in generators_typed_dict.values():
-            if (generator.data_status == "availability") and (generator.node.order == self.order):                
-                for interval in range(intervals_count):
-                    self.residual_load[interval] -= generator.get_data("trace")[interval] * generator.initial_capacity  
-        return None
-    
-    def update_residual_load(self,
-                             generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
-                             intervals_count: int,):
-        if self.static_instance:
-            raise_static_modification_error()
-        return None
-    
-    def initialise_nodal_capacities(self):
-        if self.static_instance:
-            raise_static_modification_error()
+        if data_type == "trace":
+            return self.data
+        elif data_type == "residual_load":
+            return self.residual_load
+        else:
+            raise RuntimeError("Invalid data_type argument for Node.get_data(data_type).")
         return None
     
     def allocate_memory(self):
@@ -169,6 +171,8 @@ if JIT_ENABLED:
         ('near_optimum_check', boolean),
         ('group', string),
         ('cost', UnitCost_InstanceType),
+
+        ('candidate_x_idx',int64),
     ]
 else:
     line_spec = []
@@ -217,6 +221,8 @@ class Line:
         self.group = group
         self.cost = cost
 
+        self.candidate_x_idx = -1
+
     def create_dynamic_copy(self, nodes_typed_dict, line_type):
         if line_type == "major":
             node_start_copy = nodes_typed_dict[self.node_start.order]
@@ -242,6 +248,7 @@ class Line:
             self.group,
             self.cost, # This remains static
         )
+        line_copy.candidate_x_idx = self.candidate_x_idx
         return line_copy
 
     def check_minor_line(self) -> bool:
@@ -267,7 +274,6 @@ if JIT_ENABLED:
         ('networksteps_max', int64),
         ('transmission_capacities', float64[:]),
         ('major_line_count',int64),
-        ('line_x_indices',int64[:]),
     ]
 else:
     network_spec = []
@@ -310,8 +316,7 @@ class Network:
         self.networksteps_max = networksteps_max
         self.transmission_capacities = transmission_capacities_initial
         self.major_line_count = len(major_lines)
-        self.line_x_indices = np.full(len(major_lines), -1, dtype=np.int64)
-
+        
     def create_dynamic_copy(self):
         nodes_copy = TypedDict.empty(
             key_type=int64,
@@ -347,18 +352,13 @@ class Network:
             self.transmission_capacities.copy(),
         )
         network_copy.major_line_count = self.major_line_count
-        network_copy.line_x_indices = self.line_x_indices # This is static
         return network_copy
-
-    def assign_x_indices(self, order, x_index) -> None:
-        self.line_x_indices[order] = x_index
-        return None
 
     def build_capacity(self, decision_x) -> None:
         if self.static_instance:
             raise_static_modification_error()
-        for order, index in enumerate(self.line_x_indices):
-            self.lines[order].capacity += decision_x[index]
+        for order, line in self.lines.items():
+            line.capacity += decision_x[line.candidate_x_idx]
         return None
     
     def unload_data(self):
@@ -373,16 +373,10 @@ class Network:
             node.allocate_memory()
         return None
     
-    def update_residual_loads(self,
-                             generators_typed_dict, # TypedDict[int64, Generator_InstanceType]
-                             intervals_count: int,):
-        if self.static_instance:
-            raise_static_modification_error()
+    def calculate_unserved_power(self, first_t: int, last_t: int):
+        unserved_power = 0
         for node in self.nodes.values():
-            node.update_residual_load(
-                generators_typed_dict,
-                intervals_count
-            )
-        return None
+            unserved_power += sum(node.deficits[first_t:last_t+1])
+        return unserved_power
     
 Network_InstanceType = Network.class_type.instance_type
