@@ -2,6 +2,8 @@ import numpy as np
 from numpy.typing import NDArray
 
 from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.common.helpers import (
     array_min, 
     array_max_2d_axis1, 
@@ -170,6 +172,28 @@ def balance_with_neighbouring_surplus(t: int,
         return True
     return False """
 
+@njit 
+def initialise_interval(network: Network_InstanceType,
+                        fleet: Fleet_InstanceType,
+                        interval: int,
+                        resolution: float) -> None:
+    ####### STILL SLOW WITH MANY FLEXIBLE + STORAGES?
+    ####### CAN WE JUST DO EVERYTHING NODALLY INSTEAD?
+    ####### APPORTION AT END? HOW TO HANDLE EFFICIENCY?
+    ####### ASSUME A MERIT ORDER AT EACH NODE OF STORAGES?
+    ####### CREATE LOOKUP TABLE OF CAPACITY + EFFICIENCY VS STORAGE?
+    ####### Add a model config option for "faster_balancing" to swap between methods
+    for node in network.nodes.values():
+        node.netload_t = node.get_data('residual_load')[interval]
+    
+    for generator in fleet.generators.values():
+        if generator.check_unit_type('flexible'):
+            generator.set_flexible_max_t(interval, resolution)
+    
+    for storage in fleet.storages.values():
+        storage.set_dispatch_max_t(interval, resolution)
+    return None
+
 @njit
 def balance_for_period(start_t: int, 
                        end_t: int, 
@@ -179,21 +203,17 @@ def balance_for_period(start_t: int,
     perform_precharge = False
    
     for t in range(start_t, end_t):
-        pass
-        """ solution.interval_memory.initialise(
+        initialise_interval(
+            solution.network,
+            solution.fleet,
             t,
-            solution.fleet_capacities,
-            solution.energy_balance.storage_energy[t-1], 
-            solution.energy_balance.flexible_energy[t-1],
-            solution.energy_balance.residual_load[t],
-            solution.static.resolution,
-            len(solution.network.nodes),
-        ) """
+            solution.static.resolution
+        )
 
-        """ if not precharging_allowed:
-            solution.energy_balance.reset_transmission(t, solution.static.lines_count)
+        if not precharging_allowed:
+            solution.network.reset_transmission(t)
 
-        continue_balancing_check = balance_with_neighbouring_surplus() """
+        """ continue_balancing_check = balance_with_neighbouring_surplus() """
         """ if continue_balancing_check:
             continue_balancing_check = balance_with_local_storage()
         if continue_balancing_check:

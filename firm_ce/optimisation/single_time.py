@@ -6,7 +6,7 @@ from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIE
 from firm_ce.system.costs import calculate_costs
 from firm_ce.system.components import Fleet
 from firm_ce.system.topology import Network
-from firm_ce.system.energybalance import ScenarioParameters #EnergyBalance, FleetCapacities, IntervalMemory
+from firm_ce.system.parameters import ScenarioParameters
 import firm_ce.common.helpers as helpers
 
 from firm_ce.optimisation.balancing import balance_for_period
@@ -69,11 +69,10 @@ class Solution:
         # some attributes within a worker process of the optimiser
         self.network = network.create_dynamic_copy() # Includes static reference to data
         self.fleet = fleet.create_dynamic_copy(self.network.nodes, self.network.minor_lines) # Includes static reference to data
-        
         self.fleet.build_capacities(x)
 
         self.fleet.allocate_memory(self.static.intervals_count)
-        self.network.allocate_memory()
+        self.network.allocate_memory(self.static.intervals_count)
 
     def balance_residual_load(self) -> bool: 
         self.fleet.initialise_stored_energies()
@@ -82,16 +81,17 @@ class Solution:
             first_t, last_t = self.static.get_year_t_boundaries(year)
             self.fleet.initialise_annual_limits(year, first_t)
 
-            balance_for_period(
+            """ balance_for_period(
                 first_t,
                 last_t,
                 True,
                 self
-            ) 
+            )  """
 
             annual_unserved_energy = self.network.calculate_unserved_power(first_t, last_t) * self.static.resolution
             
-            if not self.static.check_reliability_constraint(year, annual_unserved_energy):
+            # End early if reliability constraint breached for any year
+            if not self.static.check_reliability_constraint(year, annual_unserved_energy): 
                 self.penalties += PENALTY_MULTIPLIER
                 return False
         return True

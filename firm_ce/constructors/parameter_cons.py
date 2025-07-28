@@ -2,19 +2,7 @@ from typing import Dict, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.system.energybalance import (
-    ScenarioParameters, 
-    #IntervalMemory,
-    #FleetCapacities,
-    #EnergyBalance,
-)
-from firm_ce.common.constants import JIT_ENABLED
-from firm_ce.system.topology import Node
-from firm_ce.system.components import Generator
-
-if JIT_ENABLED:
-    from numba.typed.typeddict import Dict as TypedDict
-    from numba.core.types import DictType, int64
+from firm_ce.system.parameters import ScenarioParameters
 
 def determine_interval_parameters(
         first_year: int,
@@ -70,12 +58,3 @@ def construct_ScenarioParameters_object(
         intervals_count, 
         node_count,
     )
-
-"""def construct_IntervalMemory_object() -> IntervalMemory.class_type.instance_type:
-    return IntervalMemory(True)
-
-def construct_FleetCapacities_object() -> FleetCapacities.class_type.instance_type:
-    return FleetCapacities(True)
-
-def construct_EnergyBalance_object() -> EnergyBalance.class_type.instance_type:
-    return EnergyBalance(True) """

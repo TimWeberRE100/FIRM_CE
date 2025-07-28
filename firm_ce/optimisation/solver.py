@@ -1,10 +1,15 @@
 import numpy as np
+from numpy.typing import NDArray
 from itertools import chain
 from scipy.optimize import differential_evolution, OptimizeResult
 import csv, os
 
+from firm_ce.system.parameters import ModelConfig
 from firm_ce.optimisation.single_time import evaluate_vectorised_xs
 from firm_ce.common.constants import SAVE_POPULATION
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
 
 def fixed_path(root: str, scenario_name: str):
     base = os.path.join("results", root, scenario_name)
@@ -12,10 +17,18 @@ def fixed_path(root: str, scenario_name: str):
     return base
 
 class Solver:
-    def __init__(self, config, scenario) -> None:
+    def __init__(self, 
+                 config: ModelConfig, 
+                 initial_x_candidate: NDArray[np.float64],
+                 parameters_static: ScenarioParameters_InstanceType,
+                 fleet_static: Fleet_InstanceType,
+                 network_static: Network_InstanceType,
+                 ) -> None:
         self.config = config
-        self.scenario = scenario
-        self.decision_x0 = scenario.x0 if len(scenario.x0) > 0 else None
+        self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
+        self.parameters_static = parameters_static
+        self.fleet_static = fleet_static
+        self.network_static = network_static
         self.lower_bounds, self.upper_bounds = self.get_bounds()
         #self._build_var_info()
         self.result = None
@@ -35,27 +48,19 @@ class Solver:
                 for s in storage_list
             ]
         
-        generators = list(self.scenario.fleet.generators.values())
-        storages = list(self.scenario.fleet.storages.values())
-        lines = list(self.scenario.network.major_lines.values())
-
-        solar_generators = [g for g in generators if g.unit_type == "solar"]
-        wind_generators = [g for g in generators if g.unit_type == "wind"]
-        flexible_generators = [g for g in generators if g.unit_type == "flexible"]
+        generators = list(self.fleet_static.generators.values())
+        storages = list(self.fleet_static.storages.values())
+        lines = list(self.network_static.major_lines.values())
 
         lower_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "min_build"),
-            power_capacity_bounds(wind_generators, "min_build"),
-            power_capacity_bounds(flexible_generators, "min_build"),
+            power_capacity_bounds(generators, "min_build"),
             power_capacity_bounds(storages, "min_build_p"),
             energy_capacity_bounds(storages, "min_build_e"),
             power_capacity_bounds(lines, "min_build"),
         )))
 
         upper_bounds = np.array(list(chain(
-            power_capacity_bounds(solar_generators, "max_build"),
-            power_capacity_bounds(wind_generators, "max_build"),
-            power_capacity_bounds(flexible_generators, "max_build"),
+            power_capacity_bounds(generators, "max_build"),
             power_capacity_bounds(storages, "max_build_p"),
             energy_capacity_bounds(storages, "max_build_e"),
             power_capacity_bounds(lines, "max_build"),
@@ -91,10 +96,9 @@ class Solver:
 
     def get_de_args(self):
         args = (
-            self.scenario.static,
-            self.scenario.fleet,
-            self.scenario.network,
-            #self.scenario.energy_balance_static,
+            self.parameters_static,
+            self.fleet_static,
+            self.network_static,
         )
         return args
 
@@ -462,5 +466,3 @@ def callback(intermediate_result: OptimizeResult) -> None:
                 writer = csv.writer(f)
                 for energy in intermediate_result.population_energies:
                     writer.writerow([energy])
-
-

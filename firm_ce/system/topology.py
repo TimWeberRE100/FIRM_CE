@@ -22,11 +22,17 @@ if JIT_ENABLED:
         ('data_status',string),
         ('data',float64[:]),
 
-        ('residual_load',float64[:]), 
+        ('residual_load',float64[:]),         
+
+        # Dynamic
         ('power_capacity',DictType(string,float64)), 
         ('energy_capacity',DictType(string,float64)), 
 
-        # Dynamic
+        ('netload_t',float64),
+        ('discharge_max_t',float64),
+        ('charge_max_t',float64),
+        ('flexible_max_t',float64),
+
         ('imports',float64[:]),
         ('exports',float64[:]), 
         ('deficits',float64[:]), 
@@ -71,6 +77,11 @@ class Node:
 
         # Dynamic
         self.power_capacity, self.energy_capacity = self.initialise_nodal_capacity()
+        
+        self.netload_t = 0.0 # GW
+        self.discharge_max_t = 0.0 # GW
+        self.charge_max_t = 0.0 # GW
+        self.flexible_max_t = 0.0 # GW
 
         self.imports = np.empty((0,), dtype=np.float64)
         self.exports = np.empty((0,), dtype=np.float64)
@@ -173,6 +184,8 @@ if JIT_ENABLED:
         ('cost', UnitCost_InstanceType),
 
         ('candidate_x_idx',int64),
+
+        ('flows',float64[:]),
     ]
 else:
     line_spec = []
@@ -223,6 +236,9 @@ class Line:
 
         self.candidate_x_idx = -1
 
+        # Dynamic
+        self.flows = np.empty(0, dtype=np.float64)
+
     def create_dynamic_copy(self, nodes_typed_dict, line_type):
         if line_type == "major":
             node_start_copy = nodes_typed_dict[self.node_start.order]
@@ -258,6 +274,12 @@ class Line:
         if self.static_instance:
             raise_static_modification_error()
         self.capacity += new_build_power_capacity
+        return None
+    
+    def allocate_memory(self, intervals_count: int) -> None:
+        if self.static_instance:
+            raise_static_modification_error()
+        self.flows = np.zeros(intervals_count, dtype=np.float64)
         return None
 
 Line_InstanceType = Line.class_type.instance_type
@@ -357,7 +379,7 @@ class Network:
     def build_capacity(self, decision_x) -> None:
         if self.static_instance:
             raise_static_modification_error()
-        for order, line in self.lines.items():
+        for line in self.lines.values():
             line.capacity += decision_x[line.candidate_x_idx]
         return None
     
@@ -366,11 +388,13 @@ class Network:
             node.unload_data()
         return None
     
-    def allocate_memory(self):
+    def allocate_memory(self, intervals_count: int) -> None:
         if self.static_instance:
             raise_static_modification_error()
         for node in self.nodes.values():
             node.allocate_memory()
+        for line in self.major_lines.values():
+            line.allocate_memory(intervals_count)
         return None
     
     def calculate_unserved_power(self, first_t: int, last_t: int):
@@ -378,5 +402,10 @@ class Network:
         for node in self.nodes.values():
             unserved_power += sum(node.deficits[first_t:last_t+1])
         return unserved_power
+    
+    def reset_transmission(self, interval: int) -> None:
+        for line in self.major_lines.values():
+            line.flows[interval] = 0.0
+        return None
     
 Network_InstanceType = Network.class_type.instance_type

@@ -1,5 +1,6 @@
 from typing import Dict
 import numpy as np
+from numpy.typing  import NDArray
 import gc
 
 from firm_ce.common.helpers import parse_comma_separated
@@ -10,7 +11,6 @@ from firm_ce.constructors import (
     construct_ScenarioParameters_object, 
     construct_Fleet_object, 
     construct_Network_object,
-    #construct_EnergyBalance_object,
     load_datafiles_to_generators,
     load_datafiles_to_network,
     unload_data_from_generators,
@@ -18,7 +18,9 @@ from firm_ce.constructors import (
     )
 
 class Scenario:
-    def __init__(self, model_data: ModelData, scenario_id: int) -> None:
+    def __init__(self, 
+                 model_data: ModelData, 
+                 scenario_id: int) -> None:
         self.logger, self.results_dir = model_data.logger, model_data.results_dir
 
         scenario_data = model_data.scenarios.get(scenario_id) 
@@ -40,8 +42,8 @@ class Scenario:
             self._get_scenario_dicts(model_data.fuels), 
             self.network.minor_lines, 
             self.network.nodes,
-            )    
-        #self.energy_balance_static = construct_EnergyBalance_object()           
+            )      
+        self.statistics = None         
 
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
@@ -89,6 +91,10 @@ class Scenario:
         return None
 
     def solve(self, config):
-        solver = Solver(config, self)
+        solver = Solver(config, 
+                        self.x0,
+                        self.static,
+                        self.fleet,
+                        self.network,)
         solver.evaluate()
         return solver.result

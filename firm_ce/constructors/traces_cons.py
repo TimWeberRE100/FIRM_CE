@@ -48,7 +48,7 @@ def load_datafiles_to_network(network: Network.class_type.instance_type,
                               ) -> None:
     for node in network.nodes.values():
         node.load_data(
-            select_datafile('demand', node.name, datafiles_imported_dict),
+            select_datafile('demand', node.name, datafiles_imported_dict) / 1000, # Convert MW to GW - allow custom unit selection in future
         )
     return None
 

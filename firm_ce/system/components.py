@@ -74,13 +74,14 @@ if JIT_ENABLED:
         ('data',float64[:]),
         ('annual_constraints_data',float64[:]),
 
+        ('candidate_x_idx',int64),
+
         # Dynamic
         ('new_build',float64),
         ('capacity',float64),
         ('dispatch_power',float64[:]),
         ('remaining_energy',float64[:]),
-
-        ('candidate_x_idx',int64),
+        ('flexible_max_t',float64),        
     ]
 else:
     generator_spec = []
@@ -131,7 +132,7 @@ class Generator:
         self.unit_size = unit_size # GW/unit
         self.max_build = max_build  # GW/year
         self.min_build = min_build  # GW/year
-        self.initial_capacity = self.capacity  # GW        
+        self.initial_capacity = capacity  # GW        
         self.unit_type = unit_type
         self.near_optimum_check = near_optimum_check        
         self.node = node
@@ -151,6 +152,8 @@ class Generator:
         self.capacity = capacity  # GW 
         self.dispatch_power = np.empty((0,), dtype=np.float64) # GW
         self.remaining_energy = np.empty((0,), dtype=np.float64) # GWh
+
+        self.flexible_max_t = 0.0
 
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
@@ -186,6 +189,7 @@ class Generator:
         self.capacity += new_build_power_capacity   
         self.new_build += new_build_power_capacity 
         self.node.power_capacity[self.unit_type] += new_build_power_capacity
+        self.line.capacity += new_build_power_capacity
 
         self.update_residual_load(new_build_power_capacity)        
         return None
@@ -225,13 +229,24 @@ class Generator:
         return None
     
     def update_residual_load(self, added_capacity: float) -> None:
-        if self.get_data("trace").shape[0] > 0 and added_capacity > 0:
+        if self.get_data("trace").shape[0] > 0 and added_capacity > 0.0:
             self.node.get_data("residual_load")[:] -= self.get_data("trace") * added_capacity
         return None
     
     def initialise_annual_limit(self, year, first_t) :
         if len(self.get_data('annual_constraints_data')) > 0:
             self.remaining_energy[first_t-1] = self.get_data('annual_constraints_data')[year]
+        return None
+    
+    def check_unit_type(self, unit_type: str) -> bool:
+        return self.unit_type == unit_type
+    
+    def set_flexible_max_t(self, interval: int, resolution: float) -> None:
+        self.flexible_max_t = min(
+            self.capacity, 
+            self.remaining_energy[interval-1] / resolution
+        )
+        self.node.flexible_max_t += self.flexible_max_t
         return None
     
 Generator_InstanceType = Generator.class_type.instance_type 
@@ -268,6 +283,9 @@ if JIT_ENABLED:
         ('energy_capacity',float64),
         ('dispatch_power',float64[:]),
         ('stored_energy',float64[:]),
+
+        ('discharge_max_t',float64),
+        ('charge_max_t',float64),
     ]
 else:
     storage_spec = []
@@ -314,8 +332,8 @@ class Storage:
         self.order = order # id specific to scenario
         self.name = name
         self.initial_power_capacity = power_capacity  # GW
-        self.initial_energy_capacity = energy_capacity  # GWh
         self.duration = duration # hours
+        self.initial_energy_capacity = energy_capacity if duration == 0 else duration*power_capacity # GWh
         self.charge_efficiency = charge_efficiency  # %
         self.discharge_efficiency = discharge_efficiency # %
         self.max_build_p = max_build_p  # GW/year
@@ -336,9 +354,12 @@ class Storage:
         self.new_build_p = 0.0 # GW
         self.new_build_e = 0.0 # GWh
         self.power_capacity = power_capacity # GW
-        self.energy_capacity = energy_capacity # GWh
+        self.energy_capacity = energy_capacity if duration == 0 else duration*power_capacity  # GWh
         self.dispatch_power = np.empty(0, dtype=np.float64) # GW
         self.stored_energy = np.empty(0, dtype=np.float64) # GWh
+
+        self.discharge_max_t = 0.0 # GW
+        self.charge_max_t = 0.0 # GW
         
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
@@ -378,10 +399,18 @@ class Storage:
             self.power_capacity += new_build_capacity
             self.new_build_p += new_build_capacity
             self.node.power_capacity['storage'] += new_build_capacity
+            self.line.capacity += new_build_capacity
+
+            if self.duration > 0:
+                self.energy_capacity += new_build_capacity * self.duration
+                self.new_build_e += new_build_capacity * self.duration
+                self.node.energy_capacity['storage'] += new_build_capacity * self.duration
+                
         if capacity_type == "energy":
-            self.energy_capacity += new_build_capacity
-            self.new_build_e += new_build_capacity
-            self.node.energy_capacity['storage'] += new_build_capacity
+            if self.duration == 0:
+                self.energy_capacity += new_build_capacity 
+                self.new_build_e += new_build_capacity
+                self.node.energy_capacity['storage'] += new_build_capacity
         return None
     
     def allocate_memory(self, intervals_count):
@@ -395,6 +424,20 @@ class Storage:
         if self.static_instance:
             raise_static_modification_error()
         self.stored_energy[-1] = 0.5*self.energy_capacity
+        return None
+    
+    def set_dispatch_max_t(self, interval: int, resolution: float):
+        self.discharge_max_t = min(
+            self.power_capacity, 
+            self.stored_energy[interval-1] * self.discharge_efficiency / resolution
+        )
+        self.charge_max_t = min(
+            self.power_capacity, 
+            (self.energy_capacity - self.stored_energy[interval-1]) / self.charge_efficiency / resolution
+        )
+
+        self.node.discharge_max_t += self.discharge_max_t
+        self.node.charge_max_t += self.charge_max_t
         return None
     
 Storage_InstanceType = Storage.class_type.instance_type
@@ -468,17 +511,22 @@ class Fleet:
     def initialise_stored_energies(self):
         if self.static_instance:
             raise_static_modification_error()
-
         for storage in self.storages.values():
             storage.initialise_stored_energy()
         return None
     
     def initialise_annual_limits(self, year: int, first_t: int):
         if self.static_instance:
-            raise_static_modification_error()
-        
+            raise_static_modification_error()        
         for generator in self.generators.values():            
             generator.initialise_annual_limit(year, first_t)        
         return None
+    
+    def count_generator_unit_type(self, unit_type: str) -> int:
+        count = 0
+        for generator in self.generators.values():
+            if generator.unit_type == unit_type:
+                count+=1
+        return count
 
 Fleet_InstanceType = Fleet.class_type.instance_type

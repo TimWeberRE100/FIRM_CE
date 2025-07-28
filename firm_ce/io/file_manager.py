@@ -1,8 +1,9 @@
 from pathlib import Path
 import pandas as pd
-from typing import List, Dict, Any
+from typing import Dict, Any, Union, List
 import numpy as np
 from numpy.typing import NDArray
+import os, csv
 
 class ImportCSV:
     """
@@ -114,6 +115,33 @@ class DataFile:
 
     def __repr__(self) -> str:
         return f"DataFile ({self.name!r}, {self.type!r}, {self.data!r})"
+
+class ResultFile:
+    def __init__(self, 
+                 file_type: str, 
+                 target_directory: str,
+                 header: List[str],
+                 data_array: NDArray[np.float64],
+                 decimals: Union[int, None] = None,
+                 ):
+        self.name = file_type + '.csv'
+        self.type = file_type
+        self.target_directory = target_directory
+        self.header = header
+        self.data = data_array
+        self.decimals = decimals
+
+    def __repr__(self) -> str:
+        return f'ResultFile ({self.type!r})'
+    
+    def write(self):
+        with open(os.path.join(self.target_directory, self.name), mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(self.header.split(',') if isinstance(self.header, str) else self.header)
+            for row in self.data:
+                writer.writerow(np.round(row, decimals=self.decimals) if self.decimals is not None else row)
+        print(f"Saved {self.name} to {self.target_directory}")
+        return None
 
 def import_config_csvs() -> Dict[str, Any]:
     """

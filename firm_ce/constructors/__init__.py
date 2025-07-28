@@ -1,6 +1,5 @@
-from firm_ce.constructors.energybalance_cons import (
+from firm_ce.constructors.parameter_cons import (
     construct_ScenarioParameters_object,
-    #construct_EnergyBalance_object,
 )
 from firm_ce.constructors.component_cons import construct_Fleet_object
 from firm_ce.constructors.topology_cons import construct_Network_object
