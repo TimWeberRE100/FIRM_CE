@@ -3,8 +3,9 @@ import numpy as np
 from numpy.typing import NDArray
 
 from firm_ce.system.topology import (
-    Node, Line, Network,
-    Node_InstanceType, Line_InstanceType, Network_InstanceType,
+    Node, Line, Network, Route,
+    Node_InstanceType, Line_InstanceType, 
+    Network_InstanceType, Route_InstanceType,
     )
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.io.validate import is_nan
@@ -12,7 +13,8 @@ from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
-    from numba.core.types import DictType, int64, UniTuple
+    from numba.typed.typedlist import List as TypedList
+    from numba.core.types import DictType, int64, UniTuple, ListType
 
 def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:
     return Node(True, idx, order, node_name)
@@ -79,108 +81,110 @@ def construct_Line_object(line_dict: Dict[str, str],
         cost,
     )
 
-def get_topology(major_lines_object_dict: TypedDict[int64,Line_InstanceType],) -> NDArray[np.int64]:
-    topology = np.full((len(major_lines_object_dict), 2), -1, dtype=np.int64)
-    for order, line in major_lines_object_dict.items():
-        topology[order] = [line.node_start.order, line.node_end.order]
-    return topology
-
-def build_scenario_network(topology: NDArray[np.int64], 
-                           node_object_dict: TypedDict[int64, Node_InstanceType]
-                           ) -> Tuple[NDArray[np.int64], NDArray[np.bool_]]:
-    # Not strictly necessary as things are, but will be if nodes are defined as model-level objects 
-    # with distinct idx and order down the track
-    network_mask = np.array([(topology == order).sum(axis=1).astype(bool) for order in node_object_dict]).sum(axis=0) == 2 
-    network = topology[network_mask]
-    transmission_mask = np.zeros((len(node_object_dict), network.shape[0]), dtype=bool)
-    for line_id, (start, _) in enumerate(network):
-        transmission_mask[start, line_id] = True
-    return network, transmission_mask
-
-def get_direct_connections(node_count: int, network: NDArray[np.int64]) -> NDArray[np.int64]:
-    direct_connections = -1 * np.ones((node_count + 1, node_count + 1), dtype=np.int64)
-    for idx, (i, j) in enumerate(network):
-        direct_connections[i, j] = idx
-        direct_connections[j, i] = idx
-    return direct_connections
-
-def network_neighbours(node_idx: int, direct_connections: NDArray[np.int64]) -> NDArray[np.int64]:
-    return np.where(direct_connections[node_idx] != -1)[0]
-
-def build_0_donor_cache(nodes_object_dict: TypedDict[int64, Node], 
-                        direct_connections: NDArray[np.int64]
-                        ) -> TypedDict[int64, NDArray[np.int64]]:
-    cache_0_donors = TypedDict.empty(
-        key_type=int64,
-        value_type=int64[:, :]
-    )
-    for order in nodes_object_dict:
-        neighboring_node_orders = network_neighbours(order, direct_connections)
-        line_orders = direct_connections[order, neighboring_node_orders]
-        cache_0_donors[order] = np.stack((neighboring_node_orders, line_orders))
-    return cache_0_donors
-
-def extend_route(route: NDArray[np.int64], 
-                 direct_connections: NDArray[np.int64]
-                 ) -> list[NDArray[np.int64]]:
-    start_neighbors = [node_order for node_order in network_neighbours(route[0], direct_connections) if node_order not in route]
-    end_neighbors = [node_order for node_order in network_neighbours(route[-1], direct_connections) if node_order not in route]
-    new_routes = []
-
-    for node_order in start_neighbors:
-        new_routes.append(np.insert(route, 0, node_order))
-    for node_order in end_neighbors:
-        new_routes.append(np.append(route, node_order))
-
-    return new_routes
-
-def deduplicate_routes(routes: NDArray[np.int64]) -> NDArray[np.int64]:
-    def canonical(row):
-        return row if tuple(row) < tuple(row[::-1]) else row[::-1]
-
-    canonical_routes = np.array([canonical(row) for row in routes])
-    _, idx = np.unique(canonical_routes, axis=0, return_index=True)
-    return canonical_routes[np.sort(idx)]
-
-def nth_order_routes(routes: NDArray[np.int64], 
-                     direct_connections: NDArray[np.int64]
-                     ) -> NDArray[np.int64]:
-    candidate_routes = []
-    for route in routes:
-        new_routes = extend_route(route, direct_connections)
-        candidate_routes.extend(new_routes)
-
-    deduplicated_routes = deduplicate_routes(np.array(candidate_routes, dtype=np.int64))
-    return deduplicated_routes
-
-def build_n_donor_cache(
-        network: NDArray[np.int64], 
-        networksteps_max: int, 
-        nodes_object_dict: TypedDict[int64,Node],
-        direct_connections: NDArray[np.int64],
-        ) -> Dict[tuple[int, int], NDArray[np.int64]]:
+def construct_new_Route_object(
+    initial_node: Node_InstanceType,
+    new_node: Node_InstanceType,
+    new_line: Line_InstanceType,
+    line_direction: int,
+    leg: int
+):
+    route_nodes = TypedList.empty_list(Node_InstanceType)
+    route_lines = TypedList.empty_list(Line_InstanceType)
     
-    donor_n_cache = TypedDict.empty(
-        key_type=UniTuple(int64, 2),
-        value_type=int64[:, :, :]
+    route_nodes.append(new_node)
+    route_lines.append(new_line)
+
+    return Route(
+        True,
+        initial_node,
+        route_nodes,
+        route_lines,
+        np.array([line_direction], dtype=np.int64),
+        leg
     )
-    routes = network.copy()
 
-    for step in range(1, networksteps_max):
-        routes = nth_order_routes(routes, direct_connections)
-        for node_order in nodes_object_dict:
-            forward = routes[routes[:, 0] == node_order]
-            reverse = routes[routes[:, -1] == node_order]
-            combined = np.vstack((forward[:, 1:], reverse[:, :-1][:, ::-1]))
+def extend_route(
+    route: Route_InstanceType,
+    new_node: Node_InstanceType,
+    new_line: Line_InstanceType,
+    line_direction: int,
+    leg: int
+) -> Route_InstanceType:
+    route_nodes = route.nodes.copy()
+    route_nodes.append(new_node)
+    
+    route_lines = route.lines.copy()
+    route_lines.append(new_line)
+    
+    route_line_directions = list(route.line_directions)
+    route_line_directions.append(line_direction)
+    
+    return Route(
+        True,
+        route.initial_node,
+        route_nodes,
+        route_lines,
+        np.array(route_line_directions, dtype=np.int64),
+        leg
+    )
 
-            line_orders = np.empty_like(combined)
-            for i in range(combined.shape[0]):
-                line_orders[i, 0] = direct_connections[node_order, combined[i, 0]]
-                for j in range(1, combined.shape[1]):
-                    line_orders[i, j] = direct_connections[combined[i, j - 1], combined[i, j]]
+def get_routes_for_node(
+        initial_node: Node_InstanceType,
+        routes_typed_dict: DictType(UniTuple(int64,2), ListType(Route_InstanceType)),
+        lines_object_dict: TypedDict[int64,Line_InstanceType],
+        leg: int,
+        ) -> ListType(Route_InstanceType):
+    routes_to_node_curr_leg = TypedList.empty_list(Route_InstanceType)
+    key = (initial_node.order, leg - 1)
+    if key in routes_typed_dict:
+        routes_to_node_prev_leg = routes_typed_dict[initial_node.order, leg-1].copy()
+        for route in routes_to_node_prev_leg:        
+            for line in lines_object_dict.values():
+                if route.check_contains_line(line): # Remove loops
+                    continue
+                if line.node_start.order == route.nodes[-1].order:
+                    if route.check_contains_node(line.node_end): # Remove loops
+                        continue
+                    new_route = extend_route(route, line.node_end, line, -1, leg)
+                    routes_to_node_curr_leg.append(new_route)
+                elif line.node_end.order == route.nodes[-1].order:
+                    if route.check_contains_node(line.node_start): # Remove loops
+                        continue
+                    new_route = extend_route(route, line.node_start, line, 1, leg)
+                    routes_to_node_curr_leg.append(new_route)
+    else:              
+        routes_to_node_prev_leg = TypedList.empty_list(Route_InstanceType)
+        for line in lines_object_dict.values():
+            if line.node_start.order == initial_node.order:
+                new_route = construct_new_Route_object(initial_node, line.node_end, line, -1, leg)
+                routes_to_node_curr_leg.append(new_route)
+            elif line.node_end.order == initial_node.order:
+                new_route = construct_new_Route_object(initial_node, line.node_start, line, 1, leg)
+                routes_to_node_curr_leg.append(new_route)   
+    return routes_to_node_curr_leg
 
-            donor_n_cache[(node_order, step)] = np.dstack((combined, line_orders)).T
-    return donor_n_cache
+def build_routes_typed_dict(
+        networksteps_max: int, 
+        nodes_object_dict: TypedDict[int64,Node_InstanceType],
+        lines_object_dict: TypedDict[int64,Line_InstanceType],
+        ) -> DictType(UniTuple(int64,2), ListType(Route_InstanceType)):
+    
+    routes_typed_dict = TypedDict.empty(
+        key_type=UniTuple(int64, 2),
+        value_type=ListType(Route_InstanceType)
+    )
+
+    for leg in range(networksteps_max):
+        for node in nodes_object_dict.values():
+            routes_typed_list = get_routes_for_node(
+                node,
+                routes_typed_dict,
+                lines_object_dict,
+                leg,
+            )
+
+            routes_typed_dict[(node.order, leg)] = routes_typed_list
+    return routes_typed_dict
 
 def construct_Network_object(
         nodes_imported_list: List[str],
@@ -213,21 +217,13 @@ def construct_Network_object(
             minor_lines[order_minor] = construct_Line_object(lines_imported_dict[idx], nodes, order_minor)
             order_minor+=1
     
-    topology = get_topology(major_lines)
-    network, transmission_mask = build_scenario_network(topology, nodes)
-    direct_connections = get_direct_connections(len(nodes), network)
-    cache_0_donors = build_0_donor_cache(nodes, direct_connections)
-    cache_n_donors = build_n_donor_cache(network, networksteps_max, nodes, direct_connections)
-    transmission_capacities_initial = np.array([line.capacity for line in major_lines.values()], dtype=np.float64)
-
+    routes = build_routes_typed_dict(networksteps_max, nodes, major_lines)
+    
     return Network(
         True,
         nodes,
         major_lines,
         minor_lines,
-        cache_0_donors,
-        cache_n_donors,
-        transmission_mask,
-        networksteps_max,
-        transmission_capacities_initial,
+        routes,
+        networksteps_max
     )

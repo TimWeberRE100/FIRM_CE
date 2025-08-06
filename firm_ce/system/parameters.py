@@ -59,7 +59,7 @@ class ScenarioParameters:
 
     def get_year_t_boundaries(self, year: int) -> NDArray[np.int64]:
         if year < self.year_count - 1:
-            last_t = self.year_first_t[year+1]-1
+            last_t = self.year_first_t[year+1]
         else:
             last_t = self.intervals_count
         return self.year_first_t[year], last_t

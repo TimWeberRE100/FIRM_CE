@@ -5,14 +5,14 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
     raise_getting_unloaded_data_error,
 )
-from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.constants import JIT_ENABLED, NP_FLOAT_MAX
 from firm_ce.system.costs import UnitCost_InstanceType
-#from firm_ce.system.components import Generator_InstanceType
 
 if JIT_ENABLED:
-    from numba.core.types import float64, int64, string, boolean, DictType, UniTuple
+    from numba.core.types import float64, int64, string, boolean, DictType, UniTuple, ListType
     from numba.experimental import jitclass
     from numba.typed.typeddict import Dict as TypedDict
+    from numba.typed.typedlist import List as TypedList
 
     node_spec = [
         ('static_instance',boolean),
@@ -32,6 +32,10 @@ if JIT_ENABLED:
         ('discharge_max_t',float64),
         ('charge_max_t',float64),
         ('flexible_max_t',float64),
+
+        ('fill',float64),
+        ('surplus',float64),
+        ('available_imports',float64),
 
         ('imports',float64[:]),
         ('exports',float64[:]), 
@@ -82,6 +86,10 @@ class Node:
         self.discharge_max_t = 0.0 # GW
         self.charge_max_t = 0.0 # GW
         self.flexible_max_t = 0.0 # GW
+
+        self.fill = 0.0 # GW, power attempting to import
+        self.surplus = 0.0 # GW, power available for exports
+        self.available_imports = 0.0 # GW, maximum power that could be imported from other node surpluses
 
         self.imports = np.empty((0,), dtype=np.float64)
         self.exports = np.empty((0,), dtype=np.float64)
@@ -162,6 +170,24 @@ class Node:
         self.flexible_energy = np.zeros_like(self.residual_load, dtype=np.float64)
         self.storage_energy = np.zeros_like(self.residual_load, dtype=np.float64)
         return None
+    
+    def initialise_netload_t(self, interval: int) -> None:
+        self.netload_t = self.get_data('residual_load')[interval]
+        self.fill = max(0,self.netload_t)
+        self.surplus = -1*min(0,self.netload_t)
+        return None
+    
+    def update_netload_t(self, interval: int) -> None:
+        self.netload_t = self.get_data('residual_load')[interval] \
+            - self.imports[interval] + self.exports[interval] \
+            - self.flexible_power[interval] - self.storage_power[interval]
+        return None
+    
+    def fill_required(self) -> bool:
+        return self.fill > 1e-6
+    
+    def surplus_available(self) -> bool:
+        return self.surplus > 1e-6
 
 Node_InstanceType = Node.class_type.instance_type
 
@@ -186,6 +212,7 @@ if JIT_ENABLED:
         ('candidate_x_idx',int64),
 
         ('flows',float64[:]),
+        ('temp_leg_flows', float64),
     ]
 else:
     line_spec = []
@@ -237,8 +264,9 @@ class Line:
         self.candidate_x_idx = -1
 
         # Dynamic
-        self.flows = np.empty(0, dtype=np.float64)
-
+        self.flows = np.empty(0, dtype=np.float64) # GW, total line flows
+        self.temp_leg_flows = 0.0 # GW, line flows reserved for a route on the current leg
+        
     def create_dynamic_copy(self, nodes_typed_dict, line_type):
         if line_type == "major":
             node_start_copy = nodes_typed_dict[self.node_start.order]
@@ -285,16 +313,109 @@ class Line:
 Line_InstanceType = Line.class_type.instance_type
 
 if JIT_ENABLED:
+    route_spec = [
+        ('static_instance',boolean),
+        ('initial_node',Node_InstanceType),
+        ('nodes',ListType(Node_InstanceType)),
+        ('lines',ListType(Line_InstanceType)),   
+        ('line_directions',int64[:]),
+        ('legs',int64),
+        ('flow_update',float64),
+    ]
+else:
+    route_spec = []
+
+@jitclass(route_spec)
+class Route:
+    def __init__(self,
+                 static_instance,
+                 initial_node,
+                 nodes_typed_list,
+                 lines_typed_list,
+                 line_directions,
+                 legs,):
+        self.static_instance = static_instance
+        self.initial_node = initial_node
+        self.nodes = nodes_typed_list
+        self.lines = lines_typed_list
+        self.line_directions = line_directions
+        self.legs = legs
+
+        # Dynamic
+        self.flow_update = 0.0
+
+    def create_dynamic_copy(self,
+                            nodes_typed_dict: DictType(int64,Node_InstanceType),
+                            lines_typed_dict: DictType(int64,Line_InstanceType)):
+        nodes_list_copy = TypedList.empty_list(Node_InstanceType)
+        lines_list_copy = TypedList.empty_list(Line_InstanceType)
+
+        for node in self.nodes:
+            nodes_list_copy.append(nodes_typed_dict[node.order])
+
+        for line in self.lines:
+            lines_list_copy.append(lines_typed_dict[line.order])
+        
+        return Route(False,
+                     nodes_typed_dict[self.initial_node.order],
+                     nodes_list_copy,
+                     lines_list_copy,
+                     self.line_directions.copy(),
+                     self.legs)
+    
+    def check_contains_line(self, new_line: Line_InstanceType) -> bool:
+        for line in self.lines:
+            if new_line.order == line.order:
+                return True
+        return False
+    
+    def check_contains_node(self, new_node: Node_InstanceType) -> bool:
+        for node in self.nodes:
+            if new_node.order == node.order:
+                return True
+        return False
+    
+    def get_max_flow_update(self, interval):
+        max_flow = NP_FLOAT_MAX
+        for leg in range(self.legs+1):
+            max_flow = min(
+                max_flow, 
+                self.lines[leg].capacity - self.line_directions[leg] * (self.lines[leg].flows[interval] + self.lines[leg].temp_leg_flows)
+            )
+        return max_flow
+    
+    def calculate_flow_update(self, interval):
+        self.flow_update = min(
+            self.nodes[-1].surplus,
+            self.get_max_flow_update(interval)
+        )
+        self.initial_node.available_imports += self.flow_update
+
+        # If multiple routes on the same leg use the same lines, they must be constrained by capacity committed for that leg
+        for leg in range(self.legs+1):
+            self.lines[leg].temp_leg_flows += self.line_directions[leg] * self.flow_update
+        return None
+    
+    def update_exports(self, interval: int) -> None:
+        self.nodes[-1].exports[interval] -= self.flow_update
+        self.nodes[-1].surplus -= self.flow_update
+        
+        for leg in range(self.legs+1):
+            self.lines[leg].flows[interval] += self.line_directions[leg] * self.flow_update
+        return None
+
+Route_InstanceType = Route.class_type.instance_type
+routes_key_type = UniTuple(int64,2)
+routes_list_type = ListType(Route_InstanceType)
+
+if JIT_ENABLED:
     network_spec = [
         ('static_instance',boolean),
         ('nodes',DictType(int64,Node_InstanceType)),
         ('major_lines',DictType(int64,Line_InstanceType)),
-        ('minor_lines',DictType(int64,Line_InstanceType)),        
-        ('cache_0_donors',DictType(int64, int64[:, :])),
-        ('cache_n_donors',DictType(UniTuple(int64, 2), int64[:, :, :])),
-        ('transmission_mask',boolean[:,:]),
+        ('minor_lines',DictType(int64,Line_InstanceType)),
         ('networksteps_max', int64),
-        ('transmission_capacities', float64[:]),
+        ('routes',DictType(routes_key_type, routes_list_type)), # Key is Tuple(initial_node.order, legs)
         ('major_line_count',int64),
     ]
 else:
@@ -313,11 +434,8 @@ class Network:
                  nodes,
                  major_lines,
                  minor_lines,
-                 cache_0_donors,
-                 cache_n_donors,
-                 transmission_mask,
+                 routes,
                  networksteps_max,
-                 transmission_capacities_initial,
                  ) -> None:
         """
         Initialize the Network topology and build all relevant matrices and masks.
@@ -332,11 +450,8 @@ class Network:
         self.nodes = nodes
         self.major_lines = major_lines
         self.minor_lines = minor_lines
-        self.cache_0_donors = cache_0_donors
-        self.cache_n_donors = cache_n_donors
-        self.transmission_mask = transmission_mask
+        self.routes = routes
         self.networksteps_max = networksteps_max
-        self.transmission_capacities = transmission_capacities_initial
         self.major_line_count = len(major_lines)
         
     def create_dynamic_copy(self):
@@ -352,6 +467,10 @@ class Network:
             key_type=int64,
             value_type=Line_InstanceType
         )
+        routes_copy = TypedDict.empty(
+            key_type=routes_key_type,
+            value_type=routes_list_type
+        )
 
         for order, node in self.nodes.items():
             nodes_copy[order] = node.create_dynamic_copy()
@@ -361,17 +480,19 @@ class Network:
 
         for order, line in self.minor_lines.items():
             minor_lines_copy[order] = line.create_dynamic_copy(nodes_copy, "minor")
+        
+        for tuple_key, routes_list in self.routes.items():
+            routes_copy[tuple_key] = TypedList.empty_list(Route_InstanceType)
+            for route in routes_list:
+                routes_copy[tuple_key].append(route.create_dynamic_copy(nodes_copy, major_lines_copy))
 
         network_copy = Network(
             False,
             nodes_copy,
             major_lines_copy,
             minor_lines_copy,
-            self.cache_0_donors, # This is static
-            self.cache_n_donors, # This is static
-            self.transmission_mask, # This is static
+            routes_copy,
             self.networksteps_max,
-            self.transmission_capacities.copy(),
         )
         network_copy.major_line_count = self.major_line_count
         return network_copy
@@ -397,7 +518,13 @@ class Network:
             line.allocate_memory(intervals_count)
         return None
     
-    def calculate_unserved_power(self, first_t: int, last_t: int):
+    def check_remaining_netloads(self) -> bool:
+        for node in self.nodes.values():
+            if node.netload_t > 1e-6:
+                return True
+        return False
+    
+    def calculate_period_unserved_power(self, first_t: int, last_t: int):
         unserved_power = 0
         for node in self.nodes.values():
             unserved_power += sum(node.deficits[first_t:last_t+1])
@@ -406,6 +533,95 @@ class Network:
     def reset_transmission(self, interval: int) -> None:
         for line in self.major_lines.values():
             line.flows[interval] = 0.0
+        return None
+    
+    def reset_flow_updates(self) -> None:
+        for route_list in self.routes.values():
+            for route in route_list:
+                route.flow_update = 0.0
+        return None
+    
+    def check_route_surpluses(self, fill_node: Node_InstanceType, leg: int) -> bool:
+        # Check if final node in the route has a surplus available
+        for route in self.routes[fill_node.order, leg]:
+            if route.nodes[-1].surplus_available():
+                return True
+        return False
+    
+    def check_network_surplus(self) -> bool:
+        for node in self.nodes.values():
+            if node.surplus_available():
+                return True
+        return False
+    
+    def check_network_fill(self) -> bool:
+        for node in self.nodes.values():
+            if node.fill_required():
+                return True
+        return False
+    
+    def calculate_node_flow_updates(self, fill_node: Node_InstanceType, leg: int, interval: int) -> None:
+        fill_node.available_imports = 0.0
+        for route in self.routes[fill_node.order, leg]:
+            route.calculate_flow_update(interval)
+        return None
+    
+    def scale_flow_updates_to_fill(self, fill_node: Node_InstanceType, leg: int) -> float:
+        if fill_node.available_imports > fill_node.fill:
+            scale_factor = fill_node.fill / fill_node.available_imports
+            for route in self.routes[fill_node.order, leg]:
+                route.flow_update *= scale_factor
+        return None
+    
+    def update_transmission_flows(self, fill_node: Node_InstanceType, leg: int, interval: int) -> None:
+        for route in self.routes[fill_node.order, leg]:
+            fill_node.imports[interval] += route.flow_update
+            fill_node.fill -= route.flow_update
+            route.update_exports(interval)
+        return None
+    
+    def update_netloads(self, interval: int) -> None:
+        for node in self.nodes.values():
+            node.update_netload_t(interval)
+        return None
+    
+    def reset_line_temp_flows(self) -> None:
+        for line in self.major_lines.values():
+            line.temp_leg_flows = 0.0
+        return None
+    
+    def fill_with_transmitted_surpluses(self, interval) -> None:        
+        self.reset_flow_updates() 
+        if not (self.check_network_surplus() and self.check_network_fill()):
+            return None
+        
+        for leg in range(self.networksteps_max):
+            for node in self.nodes.values():
+                if not node.fill_required():
+                    continue
+                if len(self.routes[node.order, leg]) == 0:
+                    continue
+                if not self.check_route_surpluses(node, leg):
+                    continue
+                self.reset_line_temp_flows()
+                self.calculate_node_flow_updates(node, leg, interval)
+                self.scale_flow_updates_to_fill(node, leg)
+                self.update_transmission_flows(node, leg, interval)  
+                
+        self.update_netloads(interval)      
+        return None
+    
+    def set_node_fills_and_surpluses(self, transmission_case: str) -> None:
+        if transmission_case == 'neighbour_surplus':
+            for node in self.nodes.values():
+                node.fill = max(node.netload_t, 0)
+                node.surplus = -1*min(node.netload_t, 0)
+        return None
+    
+    def record_final_netloads(self, interval: int) -> None:
+        for node in self.nodes.values():
+            node.deficits[interval] = max(node.netload_t, 0)
+            node.spillage[interval] = min(node.netload_t, 0)
         return None
     
 Network_InstanceType = Network.class_type.instance_type

@@ -1,7 +1,6 @@
 import numpy as np
 import time
 
-#from firm_ce.system.topology import get_transmission_flows_t
 from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIER
 from firm_ce.system.costs import calculate_costs
 from firm_ce.system.components import Fleet
@@ -80,15 +79,15 @@ class Solution:
         for year in range(self.static.year_count):
             first_t, last_t = self.static.get_year_t_boundaries(year)
             self.fleet.initialise_annual_limits(year, first_t)
-
-            """ balance_for_period(
+            
+            balance_for_period(
                 first_t,
                 last_t,
                 True,
                 self
-            )  """
+            ) 
 
-            annual_unserved_energy = self.network.calculate_unserved_power(first_t, last_t) * self.static.resolution
+            annual_unserved_energy = self.network.calculate_period_unserved_power(first_t, last_t) * self.static.resolution
             
             # End early if reliability constraint breached for any year
             if not self.static.check_reliability_constraint(year, annual_unserved_energy): 
@@ -97,6 +96,21 @@ class Solution:
         return True
 
     def objective(self):
+        """ for node_order in self.network.nodes:
+            print(self.network.nodes[node_order].name)
+            counter=0
+            for route in self.network.routes[node_order, 0]:
+                print(counter)
+                print("---------LINES--------")
+                for leg in range(route.legs+1):
+                    print(route.lines[leg].node_start.name+"-"+route.lines[leg].node_end.name)
+                    print(route.line_directions[leg])
+                print("---------NODES--------")
+                for node in route.nodes:
+                    print(node.name)
+                counter+=1
+                print("---------------------") """
+
         if not self.balance_residual_load(): 
             pass ##### DEBUG    
             #return self.lcoe, self.penalties # End early if reliability constraint breached

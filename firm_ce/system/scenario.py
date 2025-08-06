@@ -1,6 +1,5 @@
 from typing import Dict
 import numpy as np
-from numpy.typing  import NDArray
 import gc
 
 from firm_ce.common.helpers import parse_comma_separated

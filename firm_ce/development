@@ -1,2 +1,4 @@
-Delete the IntervalMemory and FleetCapacities objects
 Fix all docstrings
+
+Add a model config option for "faster_balancing" to swap between nodal_lookup_table and asset_level methods
+    
