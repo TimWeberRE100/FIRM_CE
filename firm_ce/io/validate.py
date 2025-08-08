@@ -69,6 +69,7 @@ def validate_model_config(config_dict, model_logger):
         'global_optimal_lcoe': lambda v: validate_range(v, 0),
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
         'midpoint_count': validate_positive_int,
+        'balancing_type': lambda v: validate_enum(v, ['simple', 'full'],),
     }
 
     for item in config_dict.values():

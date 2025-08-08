@@ -11,7 +11,8 @@ import firm_ce.common.helpers as helpers
 from firm_ce.optimisation.balancing import balance_for_period
 
 if JIT_ENABLED:
-    from numba import float64, boolean, njit, prange, set_num_threads
+    from numba import njit, prange, set_num_threads
+    from numba.core.types import float64, boolean, string
     from numba.experimental import jitclass
 
     set_num_threads(int(NUM_THREADS))
@@ -24,6 +25,7 @@ if JIT_ENABLED:
 
         # Static jitclass instances
         ('static', ScenarioParameters.class_type.instance_type),
+        ('balancing_type', string),
 
         # Dynamic jitclass instances
         ('fleet', Fleet.class_type.instance_type),
@@ -54,6 +56,7 @@ class Solution:
                 static,
                 fleet,
                 network,
+                balancing_type,
                 ) -> None:
         self.x = x  
         self.evaluated=False   
@@ -63,6 +66,7 @@ class Solution:
         # These are static jitclass instances. It is unsafe to modify these
         # within a worker process of the optimiser
         self.static = static 
+        self.balancing_type = balancing_type
 
         # These are dynamic jitclass instances. They are safe to modify
         # some attributes within a worker process of the optimiser
@@ -72,6 +76,12 @@ class Solution:
 
         self.fleet.allocate_memory(self.static.intervals_count)
         self.network.allocate_memory(self.static.intervals_count)
+
+        self.network.assign_storage_merit_orders(self.fleet.storages)
+        self.network.assign_flexible_merit_orders(self.fleet.generators)
+
+        if balancing_type == 'simple':
+            self.network.generate_lookup_tables(self.fleet)
 
     def balance_residual_load(self) -> bool: 
         self.fleet.initialise_stored_energies()
@@ -96,21 +106,6 @@ class Solution:
         return True
 
     def objective(self):
-        """ for node_order in self.network.nodes:
-            print(self.network.nodes[node_order].name)
-            counter=0
-            for route in self.network.routes[node_order, 0]:
-                print(counter)
-                print("---------LINES--------")
-                for leg in range(route.legs+1):
-                    print(route.lines[leg].node_start.name+"-"+route.lines[leg].node_end.name)
-                    print(route.line_directions[leg])
-                print("---------NODES--------")
-                for node in route.nodes:
-                    print(node.name)
-                counter+=1
-                print("---------------------") """
-
         if not self.balance_residual_load(): 
             pass ##### DEBUG    
             #return self.lcoe, self.penalties # End early if reliability constraint breached
@@ -141,6 +136,7 @@ def parallel_wrapper(xs,
                     static,
                     fleet,
                     network,
+                    balancing_type,
                     ):
     """
     parallel_wrapper, but also returns LCOE and penalty seperately
@@ -153,6 +149,7 @@ def parallel_wrapper(xs,
                        static,
                        fleet,
                        network,
+                       balancing_type,
                        )
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
@@ -165,12 +162,14 @@ def evaluate_vectorised_xs(xs,
                            static,
                            fleet,
                            network,
+                           balancing_type,
                            ):
     start_time = time.time()
     result = parallel_wrapper(xs,
                              static,
                              fleet,
                              network,
+                             balancing_type,
                              )  
     end_time = time.time()  
     print(f"Objective time: {(end_time-start_time)/xs.shape[1]:.4f} seconds")

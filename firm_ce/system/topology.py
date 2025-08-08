@@ -22,9 +22,12 @@ if JIT_ENABLED:
         ('data_status',string),
         ('data',float64[:]),
 
-        ('residual_load',float64[:]),         
+        ('residual_load',float64[:]), 
 
         # Dynamic
+        ('storage_merit_order',int64[:]),
+        ('flexible_merit_order',int64[:]),
+
         ('power_capacity',DictType(string,float64)), 
         ('energy_capacity',DictType(string,float64)), 
 
@@ -78,6 +81,8 @@ class Node:
         self.data = np.empty((0,), dtype=np.float64)
 
         self.residual_load = np.empty((0,), dtype=np.float64)
+        self.flexible_merit_order = np.empty((0,), dtype=np.int64)
+        self.storage_merit_order = np.empty((0,), dtype=np.int64)
 
         # Dynamic
         self.power_capacity, self.energy_capacity = self.initialise_nodal_capacity()
@@ -173,14 +178,12 @@ class Node:
     
     def initialise_netload_t(self, interval: int) -> None:
         self.netload_t = self.get_data('residual_load')[interval]
-        self.fill = max(0,self.netload_t)
-        self.surplus = -1*min(0,self.netload_t)
         return None
     
     def update_netload_t(self, interval: int) -> None:
+        # Note: exports are negative, so they add to load
         self.netload_t = self.get_data('residual_load')[interval] \
-            - self.imports[interval] + self.exports[interval] \
-            - self.flexible_power[interval] - self.storage_power[interval]
+            - self.imports[interval] - self.exports[interval]
         return None
     
     def fill_required(self) -> bool:
@@ -188,6 +191,75 @@ class Node:
     
     def surplus_available(self) -> bool:
         return self.surplus > 1e-6
+    
+    def dispatch_storage(self, interval: int) -> None:
+        self.storage_power[interval] = (
+            max(min(self.netload_t, self.discharge_max_t), 0.0) +
+            min(max(self.netload_t, -self.charge_max_t), 0.0)
+        )
+        return None
+    
+    def dispatch_flexible(self, interval: int) -> None:
+        self.flexible_power[interval] = min(
+            max(self.netload_t - self.storage_power[interval], 0.0),
+            self.flexible_max_t
+        )
+        return None
+    
+    def assign_storage_merit_order(self, storages_typed_dict) -> None:
+        storages_count = len(storages_typed_dict)
+        temp_orders = np.full(storages_count, -1, dtype=np.int64)
+        temp_durations = np.full(storages_count, -1, dtype=np.float64)
+
+        idx = 0
+        for storage_order, storage in storages_typed_dict.items():
+            if storage.node.order == self.order:
+                temp_orders[idx] = storage_order
+                temp_durations[idx] = storage.duration
+                idx += 1
+
+        if idx == 0:
+            return
+
+        temp_orders = temp_orders[:idx]
+        temp_durations = temp_durations[:idx]
+
+        sort_order = np.argsort(temp_durations)
+        self.storage_merit_order = temp_orders[sort_order]
+        return None
+    
+    def assign_flexible_merit_order(self, generators_typed_dict) -> None:
+        generators_count = len(generators_typed_dict)
+        temp_orders = np.full(generators_count, -1, dtype=np.int64)
+        temp_marginal_costs = np.full(generators_count, -1, dtype=np.float64)
+
+        idx = 0
+        for generator_order, generator in generators_typed_dict.items():
+            if not generator.check_unit_type('flexible'):
+                continue
+
+            if generator.node.order == self.order:
+                temp_orders[idx] = generator_order
+                temp_marginal_costs[idx] = generator.cost.vom + generator.cost.fuel_cost_mwh \
+                    + generator.cost.fuel_cost_h * 1000 * generator.unit_size
+                idx += 1
+
+        if idx == 0:
+            return
+
+        temp_orders = temp_orders[:idx]
+        temp_marginal_costs = temp_marginal_costs[:idx]
+
+        sort_order = np.argsort(temp_marginal_costs)
+        self.flexible_merit_order = temp_orders[sort_order]
+        return None
+    
+    def generate_lookup_tables(self, fleet) -> None:
+        for storage_order in self.storage_merit_order:
+            pass
+        for flexible_order in self.flexible_merit_order:
+            pass
+        return None
 
 Node_InstanceType = Node.class_type.instance_type
 
@@ -518,10 +590,15 @@ class Network:
             line.allocate_memory(intervals_count)
         return None
     
-    def check_remaining_netloads(self) -> bool:
-        for node in self.nodes.values():
-            if node.netload_t > 1e-6:
-                return True
+    def check_remaining_netloads(self, interval: int, check_case: str) -> bool:
+        if check_case == 'deficit':
+            for node in self.nodes.values():
+                if node.netload_t - node.storage_power[interval] - node.flexible_power[interval] > 1e-6:
+                    return True
+        elif check_case == 'spillage':
+            for node in self.nodes.values():
+                if node.netload_t - node.storage_power[interval] - node.flexible_power[interval] < -1e-6:
+                    return True
         return False
     
     def calculate_period_unserved_power(self, first_t: int, last_t: int):
@@ -606,22 +683,60 @@ class Network:
                 self.reset_line_temp_flows()
                 self.calculate_node_flow_updates(node, leg, interval)
                 self.scale_flow_updates_to_fill(node, leg)
-                self.update_transmission_flows(node, leg, interval)  
-                
-        self.update_netloads(interval)      
+                self.update_transmission_flows(node, leg, interval)       
         return None
     
-    def set_node_fills_and_surpluses(self, transmission_case: str) -> None:
-        if transmission_case == 'neighbour_surplus':
+    def set_node_fills_and_surpluses(self, transmission_case: str, interval: int) -> None:
+        if transmission_case == 'surplus':
             for node in self.nodes.values():
                 node.fill = max(node.netload_t, 0)
                 node.surplus = -1*min(node.netload_t, 0)
+        elif transmission_case == 'storage_discharge':
+            for node in self.nodes.values():
+                node.fill = max(node.netload_t - node.storage_power[interval], 0)
+                node.surplus = max(node.discharge_max_t - node.storage_power[interval], 0)
+        elif transmission_case == 'flexible':
+            for node in self.nodes.values():
+                node.fill = max(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0)
+                node.surplus = max(node.flexible_max_t - node.flexible_power[interval], 0) # Is this correct?
+        elif transmission_case == 'storage_charge':
+            for node in self.nodes.values():
+                node.fill = max(node.charge_max_t + node.storage_power[interval], 0)
+                node.surplus = -min(
+                    node.netload_t - min(node.storage_power[interval], 0),
+                    0
+                    )
         return None
     
-    def record_final_netloads(self, interval: int) -> None:
+    def calculate_spillage_and_deficit(self, interval: int) -> None:
         for node in self.nodes.values():
-            node.deficits[interval] = max(node.netload_t, 0)
-            node.spillage[interval] = min(node.netload_t, 0)
+            node.deficits[interval] = max(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0)
+            node.spillage[interval] = min(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0)
         return None
+    
+    def assign_storage_merit_orders(self, storages_typed_dict) -> None: # storages_typed_dict: DictType(int64, Storage_InstanceType)
+        for node in self.nodes.values():
+            node.assign_storage_merit_order(storages_typed_dict)
+        return None
+    
+    def assign_flexible_merit_orders(self, generators_typed_dict) -> None: # generators_typed_dict: DictType(int64, Generators_InstanceType)
+        for node in self.nodes.values():
+            node.assign_flexible_merit_order(generators_typed_dict)
+        return None
+    
+    def generate_lookup_tables(self, fleet) -> None:
+        for node in self.nodes.values():
+            node.generate_lookup_tables(fleet)
+        return None
+    
+    """ def apportion_storage_powers(self, storages_typed_dict, interval: int) -> None:
+        for node in self.nodes.values():
+            node.apportion_storage_power(storages_typed_dict, interval)
+        return None
+    
+    def apportion_flexible_powers(self, generators_typed_dict, interval: int) -> None:
+        for node in self.nodes.values():
+            node.apportion_flexible_power(generators_typed_dict, interval)
+        return None """
     
 Network_InstanceType = Network.class_type.instance_type

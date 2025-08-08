@@ -99,6 +99,7 @@ class Solver:
             self.parameters_static,
             self.fleet_static,
             self.network_static,
+            self.config.balancing_type,
         )
         return args
 

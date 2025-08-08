@@ -249,6 +249,10 @@ class Generator:
         self.node.flexible_max_t += self.flexible_max_t
         return None
     
+    def update_remaining_energy(self, interval: int, resolution: float) -> None:
+        self.remaining_energy[interval] = self.remaining_energy[interval-1] - self.dispatch_power[interval] * resolution
+        return None
+    
 Generator_InstanceType = Generator.class_type.instance_type 
 
 if JIT_ENABLED:
@@ -440,6 +444,12 @@ class Storage:
         self.node.charge_max_t += self.charge_max_t
         return None
     
+    def update_stored_energy(self, interval: int, resolution: float) -> None:
+        self.stored_energy[interval] = self.stored_energy[interval-1] \
+            - max(self.dispatch_power[interval], 0) / self.discharge_efficiency * resolution \
+            - min(self.dispatch_power[interval], 0) * self.charge_efficiency * resolution 
+        return None
+    
 Storage_InstanceType = Storage.class_type.instance_type
 
 if JIT_ENABLED:
@@ -528,5 +538,17 @@ class Fleet:
             if generator.unit_type == unit_type:
                 count+=1
         return count
+    
+    def update_stored_energies(self, interval: int, resolution: float) -> None:
+        for storage in self.storages.values():
+            storage.update_stored_energy(interval, resolution)
+        return None
+    
+    def update_remaining_flexible_energies(self, interval: int, resolution: float) -> None:
+        for generator in self.generators.values():
+            if not generator.check_unit_type('flexible'):
+                continue
+            generator.update_remaining_energy(interval, resolution)
+        return None
 
 Fleet_InstanceType = Fleet.class_type.instance_type

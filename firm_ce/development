@@ -1,4 +1,5 @@
 Fix all docstrings
 
-Add a model config option for "faster_balancing" to swap between nodal_lookup_table and asset_level methods
+Storage is not dispatching appropriately or charging at all
+Stored energy is broken
     

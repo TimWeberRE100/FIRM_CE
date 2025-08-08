@@ -77,7 +77,7 @@ class UnitCost:
         self.discount_rate = discount_rate # [0,1]
 
         self.fuel_cost_mwh = fuel_cost_mwh # $/MWh = $/GJ * GJ/MWh
-        self.fuel_cost_h = fuel_cost_h # $/h = $/GJ * GJ/h
+        self.fuel_cost_h = fuel_cost_h # $/h/unit = $/GJ * GJ/h/unit
         
         self.transformer_capex = transformer_capex # $/kW, non-zero for lines
 

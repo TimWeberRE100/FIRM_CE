@@ -16,3 +16,7 @@ def raise_static_modification_error():
 @njit
 def raise_getting_unloaded_data_error():
     raise RuntimeError("Attempting to get data with status 'unloaded'.")
+
+@njit
+def raise_unknown_balancing_type_error():
+    raise RuntimeError("Unknown value for balancing_type in config.csv. Valid values are 'simple' and 'full'.")

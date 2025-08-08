@@ -58,7 +58,9 @@ class Model:
             end_time = time.time()
             end_time_str = datetime.fromtimestamp(end_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Scenario completed at {end_time_str} (Total time taken: {(end_time - start_time)/(60*60):.4f} hours).')
-            exit() ###### DEBUG
+
+            if DEBUG:
+                exit()
 
 if __name__ == '__main__':
     model = Model()

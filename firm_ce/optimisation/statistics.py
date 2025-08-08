@@ -17,11 +17,13 @@ class Statistics:
                  network_static: Network_InstanceType,
                  solution_results_directory: str,
                  scenario_name: str,
+                 balancing_type: str,
                  copy_callback: bool = True):
         self.solution = Solution(x_candidate,
                                 parameters_static,
                                 fleet_static,
-                                network_static,) 
+                                network_static,
+                                balancing_type) 
         self.solution.evaluate()
 
         self.results_directory = self.create_solution_directory(solution_results_directory, scenario_name)
