@@ -81,7 +81,7 @@ if JIT_ENABLED:
         ('capacity',float64),
         ('dispatch_power',float64[:]),
         ('remaining_energy',float64[:]),
-        ('flexible_max_t',float64),        
+        ('flexible_max_t',float64),     
     ]
 else:
     generator_spec = []
@@ -154,7 +154,7 @@ class Generator:
         self.remaining_energy = np.empty((0,), dtype=np.float64) # GWh
 
         self.flexible_max_t = 0.0
-
+        
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
         line_copy = lines_typed_dict[self.line.order] 
@@ -249,10 +249,18 @@ class Generator:
         self.node.flexible_max_t += self.flexible_max_t
         return None
     
+    def dispatch(self, interval: int) -> None:
+        self.dispatch_power[interval] = min(
+            max(self.node.netload_t - self.node.storage_power[interval] - self.node.flexible_power[interval], 0.0),
+            self.flexible_max_t
+        )
+        self.node.flexible_power[interval] += self.dispatch_power[interval]
+        return None
+    
     def update_remaining_energy(self, interval: int, resolution: float) -> None:
         self.remaining_energy[interval] = self.remaining_energy[interval-1] - self.dispatch_power[interval] * resolution
         return None
-    
+
 Generator_InstanceType = Generator.class_type.instance_type 
 
 if JIT_ENABLED:
@@ -364,7 +372,7 @@ class Storage:
 
         self.discharge_max_t = 0.0 # GW
         self.charge_max_t = 0.0 # GW
-        
+
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
         line_copy = lines_typed_dict[self.line.order] 
@@ -442,6 +450,14 @@ class Storage:
 
         self.node.discharge_max_t += self.discharge_max_t
         self.node.charge_max_t += self.charge_max_t
+        return None
+    
+    def dispatch(self, interval: int) -> None:
+        self.dispatch_power[interval] = (
+            max(min(self.node.netload_t - self.node.storage_power[interval], self.discharge_max_t), 0.0) +
+            min(max(self.node.netload_t - self.node.storage_power[interval], -self.charge_max_t), 0.0)
+        )
+        self.node.storage_power[interval] += self.dispatch_power[interval]
         return None
     
     def update_stored_energy(self, interval: int, resolution: float) -> None:
@@ -549,6 +565,17 @@ class Fleet:
             if not generator.check_unit_type('flexible'):
                 continue
             generator.update_remaining_energy(interval, resolution)
+        return None
+    
+    def generate_storage_lookup_tables(self, resolution: float, intervals_count: int) -> None:
+        for storage in self.storages.values():
+            storage.generate_lookup_tables(resolution, intervals_count)
+        return None
+    
+    def generate_flexible_lookup_tables(self, year: int, resolution: float, intervals_count: int) -> None:
+        for generator in self.generators.values():
+            if generator.check_unit_type('flexible'):
+                generator.generate_lookup_tables(year, resolution, intervals_count)
         return None
 
 Fleet_InstanceType = Fleet.class_type.instance_type

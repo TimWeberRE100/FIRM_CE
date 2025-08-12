@@ -6,7 +6,6 @@ from firm_ce.system.costs import calculate_costs
 from firm_ce.system.components import Fleet
 from firm_ce.system.topology import Network
 from firm_ce.system.parameters import ScenarioParameters
-import firm_ce.common.helpers as helpers
 
 from firm_ce.optimisation.balancing import balance_for_period
 
@@ -80,14 +79,12 @@ class Solution:
         self.network.assign_storage_merit_orders(self.fleet.storages)
         self.network.assign_flexible_merit_orders(self.fleet.generators)
 
-        if balancing_type == 'simple':
-            self.network.generate_lookup_tables(self.fleet)
-
     def balance_residual_load(self) -> bool: 
-        self.fleet.initialise_stored_energies()
+        self.fleet.initialise_stored_energies()        
 
         for year in range(self.static.year_count):
             first_t, last_t = self.static.get_year_t_boundaries(year)
+
             self.fleet.initialise_annual_limits(year, first_t)
             
             balance_for_period(
@@ -105,10 +102,11 @@ class Solution:
                 return False
         return True
 
-    def objective(self):
-        if not self.balance_residual_load(): 
-            pass ##### DEBUG    
-            #return self.lcoe, self.penalties # End early if reliability constraint breached
+    def objective(self):        
+        reliability_check = self.balance_residual_load()
+
+        if not reliability_check: 
+            return self.lcoe, self.penalties # End early if reliability constraint breached
         
         # self.apportion_nodal_storage() # Add traces2d to fleet_capacities?
         # self.calculate_annual_generation()

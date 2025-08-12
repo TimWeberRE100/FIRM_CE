@@ -44,6 +44,7 @@ class Model:
                     scenario.network,
                     scenario.results_dir,
                     scenario.name,
+                    self.config.balancing_type,
                     True 
                 )
                 scenario.statistics.generate_result_files()

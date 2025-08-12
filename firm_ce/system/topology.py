@@ -1,5 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
+from typing import Tuple
 
 from firm_ce.common.exceptions import (
     raise_static_modification_error,
@@ -48,7 +49,7 @@ if JIT_ENABLED:
         ('flexible_power',float64[:]), 
         ('storage_power',float64[:]),
         ('flexible_energy',float64[:]), 
-        ('storage_energy',float64[:]), 
+        ('storage_energy',float64[:]),         
     ]
 else:
     def jitclass(spec):
@@ -192,7 +193,7 @@ class Node:
     def surplus_available(self) -> bool:
         return self.surplus > 1e-6
     
-    def dispatch_storage(self, interval: int) -> None:
+    """ def dispatch_storage(self, interval: int) -> None:
         self.storage_power[interval] = (
             max(min(self.netload_t, self.discharge_max_t), 0.0) +
             min(max(self.netload_t, -self.charge_max_t), 0.0)
@@ -204,7 +205,7 @@ class Node:
             max(self.netload_t - self.storage_power[interval], 0.0),
             self.flexible_max_t
         )
-        return None
+        return None """
     
     def assign_storage_merit_order(self, storages_typed_dict) -> None:
         storages_count = len(storages_typed_dict)
@@ -252,13 +253,6 @@ class Node:
 
         sort_order = np.argsort(temp_marginal_costs)
         self.flexible_merit_order = temp_orders[sort_order]
-        return None
-    
-    def generate_lookup_tables(self, fleet) -> None:
-        for storage_order in self.storage_merit_order:
-            pass
-        for flexible_order in self.flexible_merit_order:
-            pass
         return None
 
 Node_InstanceType = Node.class_type.instance_type
@@ -723,20 +717,5 @@ class Network:
         for node in self.nodes.values():
             node.assign_flexible_merit_order(generators_typed_dict)
         return None
-    
-    def generate_lookup_tables(self, fleet) -> None:
-        for node in self.nodes.values():
-            node.generate_lookup_tables(fleet)
-        return None
-    
-    """ def apportion_storage_powers(self, storages_typed_dict, interval: int) -> None:
-        for node in self.nodes.values():
-            node.apportion_storage_power(storages_typed_dict, interval)
-        return None
-    
-    def apportion_flexible_powers(self, generators_typed_dict, interval: int) -> None:
-        for node in self.nodes.values():
-            node.apportion_flexible_power(generators_typed_dict, interval)
-        return None """
     
 Network_InstanceType = Network.class_type.instance_type
