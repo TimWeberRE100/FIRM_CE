@@ -33,9 +33,9 @@ if JIT_ENABLED:
         ('energy_capacity',DictType(string,float64)), 
 
         ('netload_t',float64),
-        ('discharge_max_t',float64),
-        ('charge_max_t',float64),
-        ('flexible_max_t',float64),
+        ('discharge_max_t',float64[:]),
+        ('charge_max_t',float64[:]),
+        ('flexible_max_t',float64[:]),
 
         ('fill',float64),
         ('surplus',float64),
@@ -89,9 +89,9 @@ class Node:
         self.power_capacity, self.energy_capacity = self.initialise_nodal_capacity()
         
         self.netload_t = 0.0 # GW
-        self.discharge_max_t = 0.0 # GW
-        self.charge_max_t = 0.0 # GW
-        self.flexible_max_t = 0.0 # GW
+        self.discharge_max_t = np.empty((0,), dtype=np.float64) # GW
+        self.charge_max_t = np.empty((0,), dtype=np.float64) # GW
+        self.flexible_max_t = np.empty((0,), dtype=np.float64) # GW
 
         self.fill = 0.0 # GW, power attempting to import
         self.surplus = 0.0 # GW, power available for exports
@@ -193,20 +193,6 @@ class Node:
     def surplus_available(self) -> bool:
         return self.surplus > 1e-6
     
-    """ def dispatch_storage(self, interval: int) -> None:
-        self.storage_power[interval] = (
-            max(min(self.netload_t, self.discharge_max_t), 0.0) +
-            min(max(self.netload_t, -self.charge_max_t), 0.0)
-        )
-        return None
-    
-    def dispatch_flexible(self, interval: int) -> None:
-        self.flexible_power[interval] = min(
-            max(self.netload_t - self.storage_power[interval], 0.0),
-            self.flexible_max_t
-        )
-        return None """
-    
     def assign_storage_merit_order(self, storages_typed_dict) -> None:
         storages_count = len(storages_typed_dict)
         temp_orders = np.full(storages_count, -1, dtype=np.int64)
@@ -254,6 +240,15 @@ class Node:
         sort_order = np.argsort(temp_marginal_costs)
         self.flexible_merit_order = temp_orders[sort_order]
         return None
+    
+    def check_remaining_netload(self, interval: int, check_case: str) -> bool:
+        if check_case == 'deficit':
+            return self.netload_t - self.storage_power[interval] - self.flexible_power[interval] > 1e-6
+        elif check_case == 'spillage':
+            return self.netload_t - self.storage_power[interval] - self.flexible_power[interval] < 1e-6
+        elif check_case == 'both':
+            return abs(self.netload_t - self.storage_power[interval] - self.flexible_power[interval]) > 1e-6
+        return False
 
 Node_InstanceType = Node.class_type.instance_type
 
@@ -585,14 +580,9 @@ class Network:
         return None
     
     def check_remaining_netloads(self, interval: int, check_case: str) -> bool:
-        if check_case == 'deficit':
-            for node in self.nodes.values():
-                if node.netload_t - node.storage_power[interval] - node.flexible_power[interval] > 1e-6:
-                    return True
-        elif check_case == 'spillage':
-            for node in self.nodes.values():
-                if node.netload_t - node.storage_power[interval] - node.flexible_power[interval] < -1e-6:
-                    return True
+        for node in self.nodes.values():
+            if node.check_remaining_netload(interval, check_case):
+                return True
         return False
     
     def calculate_period_unserved_power(self, first_t: int, last_t: int):
@@ -688,14 +678,14 @@ class Network:
         elif transmission_case == 'storage_discharge':
             for node in self.nodes.values():
                 node.fill = max(node.netload_t - node.storage_power[interval], 0)
-                node.surplus = max(node.discharge_max_t - node.storage_power[interval], 0)
+                node.surplus = max(node.discharge_max_t[-1] - node.storage_power[interval], 0)
         elif transmission_case == 'flexible':
             for node in self.nodes.values():
                 node.fill = max(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0)
-                node.surplus = max(node.flexible_max_t - node.flexible_power[interval], 0) # Is this correct?
+                node.surplus = max(node.flexible_max_t[-1] - node.flexible_power[interval], 0)
         elif transmission_case == 'storage_charge':
             for node in self.nodes.values():
-                node.fill = max(node.charge_max_t + node.storage_power[interval], 0)
+                node.fill = max(node.charge_max_t[-1] + node.storage_power[interval], 0)
                 node.surplus = -min(
                     node.netload_t - min(node.storage_power[interval], 0),
                     0

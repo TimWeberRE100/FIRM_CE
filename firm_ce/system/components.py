@@ -241,21 +241,27 @@ class Generator:
     def check_unit_type(self, unit_type: str) -> bool:
         return self.unit_type == unit_type
     
-    def set_flexible_max_t(self, interval: int, resolution: float) -> None:
+    def set_flexible_max_t(self, interval: int, resolution: float, merit_order_idx: int) -> None:
         self.flexible_max_t = min(
             self.capacity, 
             self.remaining_energy[interval-1] / resolution
         )
-        self.node.flexible_max_t += self.flexible_max_t
+        self.node.flexible_max_t[merit_order_idx] = self.node.flexible_max_t[merit_order_idx-1] + self.flexible_max_t
         return None
     
-    def dispatch(self, interval: int) -> None:
-        self.dispatch_power[interval] = min(
-            max(self.node.netload_t - self.node.storage_power[interval] - self.node.flexible_power[interval], 0.0),
-            self.flexible_max_t
-        )
+    def dispatch(self, interval: int, merit_order_idx: int) -> bool:
+        if merit_order_idx == 0:
+            self.dispatch_power[interval] = min(
+                max(self.node.netload_t - self.node.storage_power[interval], 0.0),
+                self.flexible_max_t
+            )
+        else:
+            self.dispatch_power[interval] = min(
+                max(self.node.netload_t - self.node.storage_power[interval] - self.node.flexible_max_t[merit_order_idx-1], 0.0),
+                self.flexible_max_t
+            )
         self.node.flexible_power[interval] += self.dispatch_power[interval]
-        return None
+        return self.node.check_remaining_netload(interval, 'deficit')
     
     def update_remaining_energy(self, interval: int, resolution: float) -> None:
         self.remaining_energy[interval] = self.remaining_energy[interval-1] - self.dispatch_power[interval] * resolution
@@ -438,7 +444,7 @@ class Storage:
         self.stored_energy[-1] = 0.5*self.energy_capacity
         return None
     
-    def set_dispatch_max_t(self, interval: int, resolution: float):
+    def set_dispatch_max_t(self, interval: int, resolution: float, merit_order_idx: int):
         self.discharge_max_t = min(
             self.power_capacity, 
             self.stored_energy[interval-1] * self.discharge_efficiency / resolution
@@ -448,17 +454,23 @@ class Storage:
             (self.energy_capacity - self.stored_energy[interval-1]) / self.charge_efficiency / resolution
         )
 
-        self.node.discharge_max_t += self.discharge_max_t
-        self.node.charge_max_t += self.charge_max_t
+        self.node.discharge_max_t[merit_order_idx] = self.node.discharge_max_t[merit_order_idx-1] + self.discharge_max_t
+        self.node.charge_max_t[merit_order_idx] = self.node.charge_max_t[merit_order_idx-1] + self.charge_max_t
         return None
     
-    def dispatch(self, interval: int) -> None:
-        self.dispatch_power[interval] = (
-            max(min(self.node.netload_t - self.node.storage_power[interval], self.discharge_max_t), 0.0) +
-            min(max(self.node.netload_t - self.node.storage_power[interval], -self.charge_max_t), 0.0)
-        )
+    def dispatch(self, interval: int, merit_order_idx: int) -> bool:
+        if merit_order_idx == 0:
+            self.dispatch_power[interval] = (
+                max(min(self.node.netload_t, self.discharge_max_t), 0.0) +
+                min(max(self.node.netload_t, -self.charge_max_t), 0.0)
+            )
+        else:
+            self.dispatch_power[interval] = (
+                min(max(0, self.node.netload_t - self.node.discharge_max_t[merit_order_idx-1]), self.discharge_max_t) +
+                max(min(0, self.node.netload_t + self.node.charge_max_t[merit_order_idx-1]), -self.charge_max_t)
+            )
         self.node.storage_power[interval] += self.dispatch_power[interval]
-        return None
+        return self.node.check_remaining_netload(interval, 'both')
     
     def update_stored_energy(self, interval: int, resolution: float) -> None:
         self.stored_energy[interval] = self.stored_energy[interval-1] \

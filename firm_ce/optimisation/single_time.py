@@ -108,7 +108,6 @@ class Solution:
         if not reliability_check: 
             return self.lcoe, self.penalties # End early if reliability constraint breached
         
-        # self.apportion_nodal_storage() # Add traces2d to fleet_capacities?
         # self.calculate_annual_generation()
         # cost, _, _, _ = calculate_costs()
 
