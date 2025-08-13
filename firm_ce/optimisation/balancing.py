@@ -1,6 +1,6 @@
 import numpy as np
 
-from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.constants import JIT_ENABLED, FASTMATH
 from firm_ce.system.topology import Network_InstanceType
 from firm_ce.system.components import Fleet_InstanceType
 
@@ -14,7 +14,7 @@ else:
             return f
         return wrapper
 
-@njit 
+@njit(fastmath=FASTMATH) 
 def initialise_interval(interval: int,
                         network: Network_InstanceType,
                         fleet: Fleet_InstanceType,
@@ -31,7 +31,7 @@ def initialise_interval(interval: int,
             fleet.storages[storage_order].set_dispatch_max_t(interval, resolution, idx)
     return None
 
-@njit 
+@njit(fastmath=FASTMATH)
 def balance_with_transmission(interval: int,
                               network: Network_InstanceType,
                               transmission_case: str
@@ -41,7 +41,7 @@ def balance_with_transmission(interval: int,
     network.update_netloads(interval)
     return None
 
-@njit
+@njit(fastmath=FASTMATH)
 def balance_with_storage(interval: int,
                          network: Network_InstanceType,
                          fleet: Fleet_InstanceType,
@@ -58,7 +58,7 @@ def balance_with_storage(interval: int,
                 break
     return None
 
-@njit
+@njit(fastmath=FASTMATH)
 def balance_with_flexible(interval: int,
                           network: Network_InstanceType,
                           fleet: Fleet_InstanceType,
@@ -72,7 +72,7 @@ def balance_with_flexible(interval: int,
                 break
     return None
 
-@njit
+@njit(fastmath=FASTMATH)
 def balance_for_period(start_t: int, 
                        end_t: int, 
                        precharging_allowed: bool,
@@ -107,7 +107,6 @@ def balance_for_period(start_t: int,
         if solution.network.check_remaining_netloads(t, 'spillage'):
             balance_with_transmission(t, solution.network, 'storage_charge') 
             balance_with_storage(t, solution.network, solution.fleet, 'spillage') # Charge neighbouring storage
-            #balance_with_flexible(t, solution.network, solution.fleet)
         
         solution.network.calculate_spillage_and_deficit(t)
 

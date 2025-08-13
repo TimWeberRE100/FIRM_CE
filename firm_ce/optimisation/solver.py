@@ -66,20 +66,6 @@ class Solver:
             power_capacity_bounds(lines, "max_build"),
         )))
 
-        x_index = 0
-        for generator in generators:
-            generator.candidate_x_idx = x_index
-            x_index += 1
-        for storage in storages:
-            storage.candidate_p_x_idx = x_index
-            x_index += 1
-        for storage in storages:
-            storage.candidate_e_x_idx = x_index
-            x_index += 1
-        for line in lines:
-            line.candidate_x_idx = x_index
-            x_index += 1
-
         return lower_bounds, upper_bounds
 
     def initialise_callback(self):

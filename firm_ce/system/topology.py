@@ -1,13 +1,12 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import Tuple
 
 from firm_ce.common.exceptions import (
     raise_static_modification_error,
     raise_getting_unloaded_data_error,
 )
 from firm_ce.common.constants import JIT_ENABLED, NP_FLOAT_MAX
-from firm_ce.system.costs import UnitCost_InstanceType
+from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
 
 if JIT_ENABLED:
     from numba.core.types import float64, int64, string, boolean, DictType, UniTuple, ListType
@@ -272,8 +271,12 @@ if JIT_ENABLED:
 
         ('candidate_x_idx',int64),
 
+        # Dynamic
         ('flows',float64[:]),
         ('temp_leg_flows', float64),
+        ('lt_flows', float64),
+
+        ('lt_costs',LTCosts_InstanceType),
     ]
 else:
     line_spec = []
@@ -327,7 +330,10 @@ class Line:
         # Dynamic
         self.flows = np.empty(0, dtype=np.float64) # GW, total line flows
         self.temp_leg_flows = 0.0 # GW, line flows reserved for a route on the current leg
-        
+        self.lt_flows = 0.0 # GWh
+
+        self.lt_costs = LTCosts()
+
     def create_dynamic_copy(self, nodes_typed_dict, line_type):
         if line_type == "major":
             node_start_copy = nodes_typed_dict[self.node_start.order]
@@ -370,6 +376,20 @@ class Line:
             raise_static_modification_error()
         self.flows = np.zeros(intervals_count, dtype=np.float64)
         return None
+    
+    def calculate_lt_flow(self, resolution: float) -> None:
+        self.lt_flows = sum(np.abs(self.flows)) * resolution
+        return None
+    
+    def calculate_lt_costs(self, years_float: float) -> float:
+        self.lt_costs.calculate_annualised_build(0.0, self.capacity, 0.0, self.cost, 'line')
+        self.lt_costs.calculate_fom(self.capacity, years_float, 0.0, self.cost, 'line')
+        self.lt_costs.calculate_vom(self.lt_flows, self.cost)
+        self.lt_costs.calculate_fuel(self.lt_flows, 0, self.cost)
+        return self.lt_costs.get_total()
+    
+    def get_lt_losses(self) -> float:
+        return self.lt_flows * self.loss_factor * self.length / 1000
 
 Line_InstanceType = Line.class_type.instance_type
 
@@ -707,5 +727,18 @@ class Network:
         for node in self.nodes.values():
             node.assign_flexible_merit_order(generators_typed_dict)
         return None
+    
+    def calculate_lt_flows(self, resolution: float) -> None:
+        for line in self.major_lines.values():
+            line.calculate_lt_flow(resolution)
+        return None
+    
+    def calculate_lt_line_losses(self) -> float:
+        total_line_losses = 0.0
+        for line in self.major_lines.values():
+            total_line_losses += line.get_lt_losses()
+        for line in self.minor_lines.values():
+            total_line_losses += line.get_lt_losses()
+        return total_line_losses
     
 Network_InstanceType = Network.class_type.instance_type

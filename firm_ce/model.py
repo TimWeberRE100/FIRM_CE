@@ -1,4 +1,3 @@
-from typing import Dict
 import time
 from datetime import datetime
 

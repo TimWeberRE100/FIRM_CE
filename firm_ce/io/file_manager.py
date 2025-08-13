@@ -137,7 +137,8 @@ class ResultFile:
     def write(self):
         with open(os.path.join(self.target_directory, self.name), mode='w', newline='') as file:
             writer = csv.writer(file)
-            writer.writerow(self.header.split(',') if isinstance(self.header, str) else self.header)
+            if self.header:
+                writer.writerow(self.header.split(',') if isinstance(self.header, str) else self.header)
             for row in self.data:
                 writer.writerow(np.round(row, decimals=self.decimals) if self.decimals is not None else row)
         print(f"Saved {self.name} to {self.target_directory}")

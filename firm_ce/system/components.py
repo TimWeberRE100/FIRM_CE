@@ -7,7 +7,7 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
     raise_getting_unloaded_data_error,
 )
-from firm_ce.system.costs import UnitCost_InstanceType
+from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
 
 if JIT_ENABLED:
@@ -81,7 +81,12 @@ if JIT_ENABLED:
         ('capacity',float64),
         ('dispatch_power',float64[:]),
         ('remaining_energy',float64[:]),
-        ('flexible_max_t',float64),     
+        ('flexible_max_t',float64),   
+
+        ('lt_generation',float64),
+        ('unit_lt_hours',float64),
+
+        ('lt_costs', LTCosts_InstanceType),
     ]
 else:
     generator_spec = []
@@ -153,7 +158,11 @@ class Generator:
         self.dispatch_power = np.empty((0,), dtype=np.float64) # GW
         self.remaining_energy = np.empty((0,), dtype=np.float64) # GWh
 
-        self.flexible_max_t = 0.0
+        self.flexible_max_t = 0.0 # GW
+        self.lt_generation = 0.0 # GWh
+        self.unit_lt_hours = 0.0 # hours/unit
+
+        self.lt_costs = LTCosts()
         
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
@@ -180,26 +189,27 @@ class Generator:
         generator_copy.data = self.data # This remains static
         generator_copy.annual_constraints_data = self.annual_constraints_data # This remains static
         generator_copy.candidate_x_idx = self.candidate_x_idx
+        generator_copy.lt_generation = self.lt_generation
 
         return generator_copy
 
-    def build_capacity(self, new_build_power_capacity):
+    def build_capacity(self, new_build_power_capacity: float, resolution: float):
         if self.static_instance:
             raise_static_modification_error()     
         self.capacity += new_build_power_capacity   
         self.new_build += new_build_power_capacity 
         self.node.power_capacity[self.unit_type] += new_build_power_capacity
-        self.line.capacity += new_build_power_capacity
+        self.line.capacity += new_build_power_capacity 
 
-        self.update_residual_load(new_build_power_capacity)        
+        self.update_residual_load(new_build_power_capacity, resolution)     
         return None
     
-    def load_data(self, generation_trace, annual_constraints):
+    def load_data(self, generation_trace: NDArray[np.float64], annual_constraints: NDArray[np.float64], resolution: float):
         self.data_status= "loaded"
         self.data = generation_trace
         self.annual_constraints_data = annual_constraints
 
-        self.update_residual_load(self.initial_capacity)
+        self.update_residual_load(self.initial_capacity, resolution)
         return None
     
     def unload_data(self):
@@ -228,9 +238,16 @@ class Generator:
             self.remaining_energy = np.zeros(intervals_count, dtype=np.float64)
         return None
     
-    def update_residual_load(self, added_capacity: float) -> None:
+    def update_residual_load(self, added_capacity: float, resolution: float) -> None:
         if self.get_data("trace").shape[0] > 0 and added_capacity > 0.0:
-            self.node.get_data("residual_load")[:] -= self.get_data("trace") * added_capacity
+            new_trace = self.get_data("trace") * added_capacity
+            self.node.get_data("residual_load")[:] -= new_trace
+            self.update_lt_generation(new_trace, resolution) 
+        return None
+    
+    def update_lt_generation(self, generation_trace: NDArray[np.float64], resolution: float) -> None:
+        self.lt_generation += sum(generation_trace) * resolution
+        self.line.lt_flows += self.lt_generation
         return None
     
     def initialise_annual_limit(self, year, first_t) :
@@ -266,6 +283,18 @@ class Generator:
     def update_remaining_energy(self, interval: int, resolution: float) -> None:
         self.remaining_energy[interval] = self.remaining_energy[interval-1] - self.dispatch_power[interval] * resolution
         return None
+    
+    def calculate_lt_generation(self, resolution: float) -> None:
+        self.update_lt_generation(self.dispatch_power, resolution)
+        self.unit_lt_hours = sum(np.ceil(self.dispatch_power/self.unit_size)) * resolution
+        return None
+    
+    def calculate_lt_costs(self, years_float: float) -> float:
+        self.lt_costs.calculate_annualised_build(0.0, self.capacity, 0.0, self.cost, 'generator')
+        self.lt_costs.calculate_fom(self.capacity, years_float, 0.0, self.cost, 'generator')
+        self.lt_costs.calculate_vom(self.lt_generation, self.cost)
+        self.lt_costs.calculate_fuel(self.lt_generation, self.unit_lt_hours, self.cost)
+        return self.lt_costs.get_total()
 
 Generator_InstanceType = Generator.class_type.instance_type 
 
@@ -304,6 +333,9 @@ if JIT_ENABLED:
 
         ('discharge_max_t',float64),
         ('charge_max_t',float64),
+        ('lt_discharge',float64),
+
+        ('lt_costs',LTCosts_InstanceType),
     ]
 else:
     storage_spec = []
@@ -378,6 +410,9 @@ class Storage:
 
         self.discharge_max_t = 0.0 # GW
         self.charge_max_t = 0.0 # GW
+        self.lt_discharge = 0.0 # GWh/year
+
+        self.lt_costs = LTCosts()
 
     def create_dynamic_copy(self, nodes_typed_dict, lines_typed_dict):
         node_copy = nodes_typed_dict[self.node.order]
@@ -478,6 +513,23 @@ class Storage:
             - min(self.dispatch_power[interval], 0) * self.charge_efficiency * resolution 
         return None
     
+    def calculate_lt_discharge(self, resolution: float) -> None:
+        self.lt_discharge = sum(
+            np.maximum(self.dispatch_power, 0)
+        ) * resolution
+
+        self.line.lt_flows += sum(
+            np.abs(self.dispatch_power)
+        ) * resolution
+        return None
+    
+    def calculate_lt_costs(self, years_float: float) -> float:
+        self.lt_costs.calculate_annualised_build(self.energy_capacity, self.power_capacity, 0.0, self.cost, 'storage')
+        self.lt_costs.calculate_fom(self.power_capacity, years_float, 0.0, self.cost, 'storage')
+        self.lt_costs.calculate_vom(self.lt_discharge, self.cost)
+        self.lt_costs.calculate_fuel(self.lt_discharge, 0, self.cost)
+        return self.lt_costs.get_total()
+    
 Storage_InstanceType = Storage.class_type.instance_type
 
 if JIT_ENABLED:
@@ -521,12 +573,12 @@ class Fleet:
         
         return fleet_copy
 
-    def build_capacities(self, decision_x) -> None:
+    def build_capacities(self, decision_x, resolution: float) -> None:
         if self.static_instance:
             raise_static_modification_error()
             
         for generator in self.generators.values():
-            generator.build_capacity(decision_x[generator.candidate_x_idx])
+            generator.build_capacity(decision_x[generator.candidate_x_idx], resolution)
 
         for storage in self.storages.values():
             storage.build_capacity(decision_x[storage.candidate_p_x_idx], "power")
@@ -579,15 +631,13 @@ class Fleet:
             generator.update_remaining_energy(interval, resolution)
         return None
     
-    def generate_storage_lookup_tables(self, resolution: float, intervals_count: int) -> None:
-        for storage in self.storages.values():
-            storage.generate_lookup_tables(resolution, intervals_count)
-        return None
-    
-    def generate_flexible_lookup_tables(self, year: int, resolution: float, intervals_count: int) -> None:
+    def calculate_lt_generations(self, resolution: float) -> None:
         for generator in self.generators.values():
             if generator.check_unit_type('flexible'):
-                generator.generate_lookup_tables(year, resolution, intervals_count)
+                generator.calculate_lt_generation(resolution)
+
+        for storage in self.storages.values():
+            storage.calculate_lt_discharge(resolution)
         return None
 
 Fleet_InstanceType = Fleet.class_type.instance_type

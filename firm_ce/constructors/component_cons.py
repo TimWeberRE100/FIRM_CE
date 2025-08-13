@@ -13,7 +13,7 @@ from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
-    from numba.core.types import DictType, int64
+    from numba.core.types import int64
 
 def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel_InstanceType:
     idx = int(fuel_dict['id'])

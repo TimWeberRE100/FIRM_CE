@@ -1,6 +1,5 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import numpy as np
-from numpy.typing import NDArray
 
 from firm_ce.system.topology import (
     Node, Line, Network, Route,

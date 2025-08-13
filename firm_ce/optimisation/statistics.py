@@ -8,6 +8,7 @@ from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.io.file_manager import ResultFile
+from firm_ce.common.helpers import safe_divide
 
 class Statistics:
     def __init__(self,
@@ -49,12 +50,12 @@ class Statistics:
     def generate_result_files(self):
         self.result_files = {
             'capacities': self.generate_capacities_file(),
-            #'component_costs': self.generate_component_costs_file(),
+            'component_costs': self.generate_component_costs_file(),
             #'energy_balance_ASSETS': self.generate_energy_balance_file('assets'),
             'energy_balance_NODES': self.generate_energy_balance_file('nodes'),
             'energy_balance_NETWORK': self.generate_energy_balance_file('network'),            
-            #'levelised_costs': self.generate_levelised_costs_file(),
-            #'summary': self.generate_summary_file(),
+            'levelised_costs': self.generate_levelised_costs_file(),
+            'summary': self.generate_summary_file(),
             'x': self.generate_x_file(),
         }
         return None
@@ -108,14 +109,60 @@ class Statistics:
             decimals=3)
         return result_file  
     
-    """ def generate_component_costs_file(self) -> ResultFile:
+    def generate_component_costs_file(self) -> ResultFile:
+        asset_count = len(self.solution.fleet.generators) + len(self.solution.fleet.storages) \
+            + len(self.solution.network.major_lines) + len(self.solution.network.minor_lines)
+        header = ['Cost Type']
+        row_labels = np.array([
+            'Annualised Build Cost [$]',
+            'Fixed O&M Cost [$]',
+            'Variable O&M Cost [$]',
+            'Fuel Cost [$]'
+        ], dtype=object)
+        data_array = np.zeros((4,asset_count))
+
+        col = 0
+        for generator in self.solution.fleet.generators.values():
+            header.append(generator.name)
+            data_array[0, col] = generator.lt_costs.annualised_build
+            data_array[1, col] = generator.lt_costs.fom
+            data_array[2, col] = generator.lt_costs.vom
+            data_array[3, col] = generator.lt_costs.fuel
+            col+=1
+
+        for storage in self.solution.fleet.storages.values():
+            header.append(storage.name)
+            data_array[0, col] = storage.lt_costs.annualised_build
+            data_array[1, col] = storage.lt_costs.fom
+            data_array[2, col] = storage.lt_costs.vom
+            data_array[3, col] = storage.lt_costs.fuel
+            col+=1
+
+        for line in self.solution.network.major_lines.values():
+            header.append(line.name)
+            data_array[0, col] = line.lt_costs.annualised_build
+            data_array[1, col] = line.lt_costs.fom
+            data_array[2, col] = line.lt_costs.vom
+            data_array[3, col] = line.lt_costs.fuel
+            col+=1
+
+        for line in self.solution.network.minor_lines.values():
+            header.append(line.name)
+            data_array[0, col] = line.lt_costs.annualised_build
+            data_array[1, col] = line.lt_costs.fom
+            data_array[2, col] = line.lt_costs.vom
+            data_array[3, col] = line.lt_costs.fuel
+            col+=1
+
+        labelled_data_array = np.column_stack((row_labels, data_array))
+
         result_file = ResultFile(
             'component_costs', 
             self.results_directory, 
             header, 
-            data_array, 
-            decimals=3)
-        return result_file """
+            labelled_data_array, 
+            decimals=None)
+        return result_file
 
     def generate_energy_balance_file(self, aggregation_type: str) -> ResultFile:
         header = []
@@ -268,23 +315,131 @@ class Statistics:
             decimals=0)
         return result_file
     
-    """ def generate_levelised_costs_file(self) -> ResultFile:
+    def generate_levelised_costs_file(self) -> ResultFile:
+        header = ['LCOE [$/MWh]', 'LCOG [$/MWh]', 'LCOB [$/MWh]', 
+                  'LCOB_storage [$/MWh]', 'LCOB_transmission [$/MWh]', 'LCOB_losses_spillage [$/MWh]']
+        data_array = [0., 0., 0., 0., 0., 0.]
+        total_energy = np.abs(sum(self.solution.static.year_energy_demand) - self.solution.network.calculate_lt_line_losses()) * 1000
+
+        # LCOE and Total Levelised Values
+        for generator in self.solution.fleet.generators.values():
+            header.append(generator.name + ' LCOE [$/MWh]')
+            if generator.check_unit_type('flexible'):
+                data_array.append(generator.lt_costs.get_total() / total_energy)
+            else:
+                data_array.append(generator.lt_costs.get_total() / total_energy)
+            data_array[0] += generator.lt_costs.get_total()
+            data_array[1] += generator.lt_costs.get_total()
+
+        for storage in self.solution.fleet.storages.values():
+            header.append(storage.name + ' LCOE [$/MWh]')
+            data_array.append(storage.lt_costs.get_total() / total_energy)
+            data_array[0] += storage.lt_costs.get_total()
+            data_array[2] += storage.lt_costs.get_total()
+            data_array[3] += storage.lt_costs.get_total()
+
+        for line in self.solution.network.major_lines.values():
+            header.append(line.name + ' LCOE [$/MWh]')
+            data_array.append(line.lt_costs.get_total() / total_energy)
+            data_array[0] += line.lt_costs.get_total()
+            data_array[2] += line.lt_costs.get_total()
+            data_array[4] += line.lt_costs.get_total()
+
+        for line in self.solution.network.minor_lines.values():
+            header.append(line.name + ' LCOE [$/MWh]')
+            data_array.append(line.lt_costs.get_total() / total_energy)
+            data_array[0] += line.lt_costs.get_total()
+            data_array[2] += line.lt_costs.get_total()
+            data_array[4] += line.lt_costs.get_total()
+
+        for i in range(5):
+            data_array[i] /= total_energy
+        data_array[6] = data_array[0] - data_array[1] - data_array[3] - data_array[4]
+
+        # LCOG, LCOS and LCOT
+        for generator in self.solution.fleet.generators.values():
+            header.append(generator.name + ' LCOG [$/MWh]')
+            if generator.check_unit_type('flexible'):
+                data_array.append(safe_divide(
+                    generator.lt_costs.get_total(), 
+                    sum(generator.dispatch_power)*self.solution.static.resolution*1000
+                ))
+            else:
+                data_array.append(safe_divide(
+                    generator.lt_costs.get_total(),
+                    sum(generator.data*generator.capacity)*self.solution.static.resolution*1000
+                ))    
+        
+        for storage in self.solution.fleet.storages.values():
+            header.append(storage.name + ' LCOS [$/MWh_discharged]')
+            data_array.append(safe_divide(
+                storage.lt_costs.get_total(), 
+                sum(np.maximum(storage.dispatch_power,0))*self.solution.static.resolution*1000
+            ))
+
+        for line in self.solution.network.major_lines.values():
+            header.append(line.name + ' LCOT [$/MWh_flow]')
+            data_array.append(safe_divide(
+                line.lt_costs.get_total(), 
+                sum(np.abs(line.flows))*self.solution.static.resolution*1000
+            ))
+
+        for line in self.solution.network.minor_lines.values():
+            header.append(line.name + ' LCOT [$/MWh_flow]')
+            data_array.append(safe_divide(
+                line.lt_costs.get_total(), 
+                sum(np.abs(line.flows))*self.solution.static.resolution*1000
+            ))
+
         result_file = ResultFile(
             'levelised_costs', 
             self.results_directory, 
             header, 
-            data_array, 
+            [np.array(data_array, dtype=np.float64)], 
             decimals=2)
         return result_file
 
+    def calculate_annual_average_energy(self, arr: NDArray[np.float64]) -> float:
+        return sum(arr) * self.solution.static.resolution / self.solution.static.year_count 
+
     def generate_summary_file(self) -> ResultFile:
+        header = []
+        data_array = []
+
+        for node in self.solution.network.nodes.values():
+            header.append(node.name + ' Average Annual Demand [GWh]')
+            data_array.append(self.calculate_annual_average_energy(node.data))
+
+        for generator in self.solution.fleet.generators.values():
+            header.append(generator.name + ' Average Annual Gen [GWh]')
+            if generator.check_unit_type('flexible'):
+                data_array.append(self.calculate_annual_average_energy(generator.dispatch_power))
+            else:
+                data_array.append(self.calculate_annual_average_energy(generator.data*generator.capacity))
+
+        for storage in self.solution.fleet.storages.values():
+            header.append(storage.name + ' Average Annual Discharge [GWh]')
+            data_array.append(self.calculate_annual_average_energy(np.maximum(storage.dispatch_power, 0)))
+
+        for node in self.solution.network.nodes.values():
+            header.append(node.name + ' Average Annual Spillage [GWh]')
+            data_array.append(self.calculate_annual_average_energy(node.spillage))
+
+        for node in self.solution.network.nodes.values():
+            header.append(node.name + ' Average Annual Deficit [GWh]')
+            data_array.append(self.calculate_annual_average_energy(node.deficits))
+
+        for line in self.solution.network.major_lines.values():
+            header.append(line.name + ' Average Annual Flows [GWh]')
+            data_array.append(self.calculate_annual_average_energy(np.abs(line.flows)))
+            
         result_file = ResultFile(
             'summary', 
             self.results_directory, 
             header, 
-            data_array, 
-            decimals=6)
-        return result_file """
+            [np.array(data_array, dtype=np.float64)], 
+            decimals=3)
+        return result_file
     
     def generate_x_file(self) -> ResultFile:
         result_file = ResultFile(

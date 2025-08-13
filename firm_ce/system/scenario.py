@@ -4,7 +4,7 @@ import gc
 
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.io.file_manager import DataFile
-from firm_ce.optimisation import Solver
+from firm_ce.optimisation.solver import Solver
 from firm_ce.io.validate import ModelData
 from firm_ce.constructors import (
     construct_ScenarioParameters_object, 
@@ -42,7 +42,9 @@ class Scenario:
             self.network.minor_lines, 
             self.network.nodes,
             )      
-        self.statistics = None         
+        self.statistics = None   
+
+        self.assign_x_indices()      
 
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
@@ -52,7 +54,7 @@ class Scenario:
 
         load_datafiles_to_network(self.network, datafiles)
 
-        load_datafiles_to_generators(self.fleet, datafiles)
+        load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)
 
         self.static.set_year_energy_demand(self.network.nodes)
 
@@ -87,6 +89,22 @@ class Scenario:
                     x0_str = entry.get('x_0', '').strip()    
                     x0_list = [float(x) for x in x0_str.split(',') if x.strip()]
                 return np.array(x0_list, dtype=np.float64)
+        return None
+    
+    def assign_x_indices(self) -> None:
+        x_index = 0
+        for generator in self.fleet.generators.values():
+            generator.candidate_x_idx = x_index
+            x_index += 1
+        for storage in self.fleet.storages.values():
+            storage.candidate_p_x_idx = x_index
+            x_index += 1
+        for storage in self.fleet.storages.values():
+            storage.candidate_e_x_idx = x_index
+            x_index += 1
+        for line in self.network.major_lines.values():
+            line.candidate_x_idx = x_index
+            x_index += 1
         return None
 
     def solve(self, config):

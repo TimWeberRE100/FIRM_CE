@@ -1,18 +1,10 @@
-from typing import List, Dict
+from typing import Dict
 from numpy.typing import NDArray
 import numpy as np
 
 from firm_ce.io.file_manager import DataFile
-from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType
+from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network
-from firm_ce.common.constants import JIT_ENABLED
-
-if JIT_ENABLED:
-    from numba.core.types import int64
-    from numba.typed.typeddict import Dict as TypedDict
-
-""" def construct_Traces2d_object() -> Traces2d.class_type.instance_type:
-    return Traces2d() """
 
 def select_datafile(
         datafile_type: str,
@@ -35,11 +27,13 @@ def select_datafile(
 
 def load_datafiles_to_generators(fleet: Fleet_InstanceType,
                                 datafiles_imported_dict: Dict[str, DataFile],
+                                resolution: float,
                                 ) -> None:
     for generator in fleet.generators.values():
         generator.load_data(
             select_datafile('generation', generator.name, datafiles_imported_dict),
             select_datafile('flexible_annual_limit', generator.name, datafiles_imported_dict),
+            resolution
         )
     return None
 
