@@ -5,6 +5,7 @@ import numpy as np
 from firm_ce.io.file_manager import DataFile
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network
+from firm_ce.fast_methods import generator_m, node_m
 
 def select_datafile(
         datafile_type: str,
@@ -30,7 +31,8 @@ def load_datafiles_to_generators(fleet: Fleet_InstanceType,
                                 resolution: float,
                                 ) -> None:
     for generator in fleet.generators.values():
-        generator.load_data(
+        generator_m.load_data(
+            generator,
             select_datafile('generation', generator.name, datafiles_imported_dict),
             select_datafile('flexible_annual_limit', generator.name, datafiles_imported_dict),
             resolution
@@ -41,17 +43,18 @@ def load_datafiles_to_network(network: Network.class_type.instance_type,
                               datafiles_imported_dict: Dict[str, DataFile],
                               ) -> None:
     for node in network.nodes.values():
-        node.load_data(
+        node_m.load_data(
+            node,
             select_datafile('demand', node.name, datafiles_imported_dict) / 1000, # Convert MW to GW - allow custom unit selection in future
         )
     return None
 
 def unload_data_from_generators(fleet):
     for generator in fleet.generators.values():
-        generator.unload_data()
+        generator_m.unload_data(generator)
     return None
 
 def unload_data_from_network(network):
     for node in network.nodes.values():
-        node.unload_data()
+        node_m.unload_data(node)
     return None

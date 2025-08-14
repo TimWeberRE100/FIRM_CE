@@ -5,6 +5,11 @@ from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIE
 from firm_ce.system.components import Fleet
 from firm_ce.system.topology import Network
 from firm_ce.system.parameters import ScenarioParameters
+from firm_ce.fast_methods import (
+    network_m, line_m,
+    generator_m, storage_m, fleet_m,
+    static_m
+)
 
 from firm_ce.optimisation.balancing import balance_for_period
 
@@ -68,23 +73,23 @@ class Solution:
 
         # These are dynamic jitclass instances. They are safe to modify
         # some attributes within a worker process of the optimiser
-        self.network = network.create_dynamic_copy() # Includes static reference to data
-        self.fleet = fleet.create_dynamic_copy(self.network.nodes, self.network.minor_lines) # Includes static reference to data
-        self.fleet.build_capacities(x, self.static.resolution)
+        self.network = network_m.create_dynamic_copy(network) # Includes static reference to data
+        self.fleet = fleet_m.create_dynamic_copy(fleet, self.network.nodes, self.network.minor_lines) # Includes static reference to data
+        fleet_m.build_capacities(self.fleet, x, self.static.resolution)
 
-        self.fleet.allocate_memory(self.static.intervals_count)
-        self.network.allocate_memory(self.static.intervals_count)
+        fleet_m.allocate_memory(self.fleet, self.static.intervals_count)
+        network_m.allocate_memory(self.network, self.static.intervals_count)
 
-        self.network.assign_storage_merit_orders(self.fleet.storages)
-        self.network.assign_flexible_merit_orders(self.fleet.generators)
+        network_m.assign_storage_merit_orders(self.network, self.fleet.storages)
+        network_m.assign_flexible_merit_orders(self.network, self.fleet.generators)
 
     def balance_residual_load(self) -> bool: 
-        self.fleet.initialise_stored_energies()        
+        fleet_m.initialise_stored_energies(self.fleet)        
 
         for year in range(self.static.year_count):
-            first_t, last_t = self.static.get_year_t_boundaries(year)
+            first_t, last_t = static_m.get_year_t_boundaries(self.static, year)
 
-            self.fleet.initialise_annual_limits(year, first_t)
+            fleet_m.initialise_annual_limits(self.fleet, year, first_t)
             
             balance_for_period(
                 first_t,
@@ -93,10 +98,10 @@ class Solution:
                 self
             ) 
 
-            annual_unserved_energy = self.network.calculate_period_unserved_power(first_t, last_t) * self.static.resolution
+            annual_unserved_energy = network_m.calculate_period_unserved_power(self.network, first_t, last_t) * self.static.resolution
             
             # End early if reliability constraint breached for any year
-            if not self.static.check_reliability_constraint(year, annual_unserved_energy): 
+            if not static_m.check_reliability_constraint(self.static, year, annual_unserved_energy): 
                 self.penalties += (self.static.year_count - year) * annual_unserved_energy * PENALTY_MULTIPLIER
                 return False
         return True
@@ -105,24 +110,26 @@ class Solution:
         total_costs = 0.0
         years_float = self.static.year_count * self.static.fom_scalar
 
-        self.fleet.calculate_lt_generations(
+        fleet_m.calculate_lt_generations(
+            self.fleet,
             self.static.resolution,
         )
-        self.network.calculate_lt_flows(
+        network_m.calculate_lt_flows(
+            self.network,
             self.static.resolution,
         )
 
         for generator in self.fleet.generators.values():
-            total_costs += generator.calculate_lt_costs(years_float)
+            total_costs += generator_m.calculate_lt_costs(generator, years_float)
 
         for storage in self.fleet.storages.values():
-            total_costs += storage.calculate_lt_costs(years_float)
+            total_costs += storage_m.calculate_lt_costs(storage, years_float)
 
         for line in self.network.major_lines.values():
-            total_costs += line.calculate_lt_costs(years_float)
+            total_costs += line_m.calculate_lt_costs(line, years_float)
 
         for line in self.network.minor_lines.values():
-            total_costs += line.calculate_lt_costs(years_float)
+            total_costs += line_m.calculate_lt_costs(line,  years_float)
 
         return total_costs
 
@@ -134,7 +141,7 @@ class Solution:
         
         total_costs = self.calculate_costs()
 
-        total_line_losses = self.network.calculate_lt_line_losses()
+        total_line_losses = network_m.calculate_lt_line_losses(self.network)
 
         lcoe = total_costs / np.abs(sum(self.static.year_energy_demand) - total_line_losses) / 1000 # $/MWh
 

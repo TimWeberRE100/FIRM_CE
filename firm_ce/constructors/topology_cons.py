@@ -9,6 +9,7 @@ from firm_ce.system.topology import (
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.io.validate import is_nan
 from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.fast_methods import route_m
 
 if JIT_ENABLED:
     from numba.typed.typeddict import Dict as TypedDict
@@ -139,15 +140,15 @@ def get_routes_for_node(
         routes_to_node_prev_leg = routes_typed_dict[initial_node.order, leg-1].copy()
         for route in routes_to_node_prev_leg:        
             for line in lines_object_dict.values():
-                if route.check_contains_line(line): # Remove loops
+                if route_m.check_contains_line(route, line): # Remove loops
                     continue
                 if line.node_start.order == route.nodes[-1].order:
-                    if route.check_contains_node(line.node_end): # Remove loops
+                    if route_m.check_contains_node(route, line.node_end): # Remove loops
                         continue
                     new_route = extend_route(route, line.node_end, line, -1, leg)
                     routes_to_node_curr_leg.append(new_route)
                 elif line.node_end.order == route.nodes[-1].order:
-                    if route.check_contains_node(line.node_start): # Remove loops
+                    if route_m.check_contains_node(route, line.node_start): # Remove loops
                         continue
                     new_route = extend_route(route, line.node_start, line, 1, leg)
                     routes_to_node_curr_leg.append(new_route)

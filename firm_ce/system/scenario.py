@@ -15,6 +15,7 @@ from firm_ce.constructors import (
     unload_data_from_generators,
     unload_data_from_network,
     )
+from firm_ce.fast_methods import static_m
 
 class Scenario:
     def __init__(self, 
@@ -56,7 +57,7 @@ class Scenario:
 
         load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)
 
-        self.static.set_year_energy_demand(self.network.nodes)
+        static_m.set_year_energy_demand(self.static, self.network.nodes)
 
         return None
 
@@ -65,7 +66,7 @@ class Scenario:
 
         unload_data_from_generators(self.fleet)
 
-        self.static.unset_year_energy_demand()
+        static_m.unset_year_energy_demand(self.static)
 
         gc.collect()
 

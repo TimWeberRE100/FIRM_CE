@@ -1,6 +1,7 @@
 import os, re, shutil
 import numpy as np
 from numpy.typing import NDArray
+import time
 
 from firm_ce.common.constants import SAVE_POPULATION
 from firm_ce.optimisation.single_time import Solution
@@ -9,6 +10,11 @@ from firm_ce.system.topology import Network_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.io.file_manager import ResultFile
 from firm_ce.common.helpers import safe_divide
+from firm_ce.fast_methods import (
+    network_m,
+    generator_m, fleet_m, 
+    ltcosts_m,
+)
 
 class Statistics:
     def __init__(self,
@@ -25,7 +31,11 @@ class Statistics:
                                 fleet_static,
                                 network_static,
                                 balancing_type) 
+        start_time = time.time()
         self.solution.evaluate()
+        end_time = time.time()
+        print(f"Statistics solution evaluation time: {end_time - start_time:.4f} seconds")
+        print(f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], Penalties: {self.solution.penalties}")
 
         self.results_directory = self.create_solution_directory(solution_results_directory, scenario_name)
         self.copy_temp_files(copy_callback)
@@ -69,7 +79,7 @@ class Statistics:
     
     def get_asset_column_count(self, include_minor_lines: bool = True, include_energy_limits: bool = True) -> int:
         return len(self.solution.fleet.generators) + 2*len(self.solution.fleet.storages) + len(self.solution.network.major_lines) \
-            + include_minor_lines*len(self.solution.network.minor_lines) + include_energy_limits*self.solution.fleet.count_generator_unit_type('flexible')
+            + include_minor_lines*len(self.solution.network.minor_lines) + include_energy_limits*fleet_m.count_generator_unit_type(self.solution.fleet, 'flexible')
     
     def generate_capacities_file(self) -> ResultFile:
         header = []
@@ -319,38 +329,38 @@ class Statistics:
         header = ['LCOE [$/MWh]', 'LCOG [$/MWh]', 'LCOB [$/MWh]', 
                   'LCOB_storage [$/MWh]', 'LCOB_transmission [$/MWh]', 'LCOB_losses_spillage [$/MWh]']
         data_array = [0., 0., 0., 0., 0., 0.]
-        total_energy = np.abs(sum(self.solution.static.year_energy_demand) - self.solution.network.calculate_lt_line_losses()) * 1000
+        total_energy = np.abs(sum(self.solution.static.year_energy_demand) - network_m.calculate_lt_line_losses(self.solution.network)) * 1000
 
         # LCOE and Total Levelised Values
         for generator in self.solution.fleet.generators.values():
             header.append(generator.name + ' LCOE [$/MWh]')
-            if generator.check_unit_type('flexible'):
-                data_array.append(generator.lt_costs.get_total() / total_energy)
+            if generator_m.check_unit_type(generator, 'flexible'):
+                data_array.append(ltcosts_m.get_total(generator.lt_costs) / total_energy)
             else:
-                data_array.append(generator.lt_costs.get_total() / total_energy)
-            data_array[0] += generator.lt_costs.get_total()
-            data_array[1] += generator.lt_costs.get_total()
+                data_array.append(ltcosts_m.get_total(generator.lt_costs) / total_energy)
+            data_array[0] += ltcosts_m.get_total(generator.lt_costs)
+            data_array[1] += ltcosts_m.get_total(generator.lt_costs)
 
         for storage in self.solution.fleet.storages.values():
             header.append(storage.name + ' LCOE [$/MWh]')
-            data_array.append(storage.lt_costs.get_total() / total_energy)
-            data_array[0] += storage.lt_costs.get_total()
-            data_array[2] += storage.lt_costs.get_total()
-            data_array[3] += storage.lt_costs.get_total()
+            data_array.append(ltcosts_m.get_total(storage.lt_costs) / total_energy)
+            data_array[0] += ltcosts_m.get_total(storage.lt_costs)
+            data_array[2] += ltcosts_m.get_total(storage.lt_costs)
+            data_array[3] += ltcosts_m.get_total(storage.lt_costs)
 
         for line in self.solution.network.major_lines.values():
             header.append(line.name + ' LCOE [$/MWh]')
-            data_array.append(line.lt_costs.get_total() / total_energy)
-            data_array[0] += line.lt_costs.get_total()
-            data_array[2] += line.lt_costs.get_total()
-            data_array[4] += line.lt_costs.get_total()
+            data_array.append(ltcosts_m.get_total(line.lt_costs) / total_energy)
+            data_array[0] += ltcosts_m.get_total(line.lt_costs)
+            data_array[2] += ltcosts_m.get_total(line.lt_costs)
+            data_array[4] += ltcosts_m.get_total(line.lt_costs)
 
         for line in self.solution.network.minor_lines.values():
             header.append(line.name + ' LCOE [$/MWh]')
-            data_array.append(line.lt_costs.get_total() / total_energy)
-            data_array[0] += line.lt_costs.get_total()
-            data_array[2] += line.lt_costs.get_total()
-            data_array[4] += line.lt_costs.get_total()
+            data_array.append(ltcosts_m.get_total(line.lt_costs) / total_energy)
+            data_array[0] += ltcosts_m.get_total(line.lt_costs)
+            data_array[2] += ltcosts_m.get_total(line.lt_costs)
+            data_array[4] += ltcosts_m.get_total(line.lt_costs)
 
         for i in range(5):
             data_array[i] /= total_energy
@@ -359,35 +369,35 @@ class Statistics:
         # LCOG, LCOS and LCOT
         for generator in self.solution.fleet.generators.values():
             header.append(generator.name + ' LCOG [$/MWh]')
-            if generator.check_unit_type('flexible'):
+            if generator_m.check_unit_type(generator, 'flexible'):
                 data_array.append(safe_divide(
-                    generator.lt_costs.get_total(), 
+                    ltcosts_m.get_total(generator.lt_costs), 
                     sum(generator.dispatch_power)*self.solution.static.resolution*1000
                 ))
             else:
                 data_array.append(safe_divide(
-                    generator.lt_costs.get_total(),
+                    ltcosts_m.get_total(generator.lt_costs),
                     sum(generator.data*generator.capacity)*self.solution.static.resolution*1000
                 ))    
         
         for storage in self.solution.fleet.storages.values():
             header.append(storage.name + ' LCOS [$/MWh_discharged]')
             data_array.append(safe_divide(
-                storage.lt_costs.get_total(), 
+                ltcosts_m.get_total(storage.lt_costs), 
                 sum(np.maximum(storage.dispatch_power,0))*self.solution.static.resolution*1000
             ))
 
         for line in self.solution.network.major_lines.values():
             header.append(line.name + ' LCOT [$/MWh_flow]')
             data_array.append(safe_divide(
-                line.lt_costs.get_total(), 
+                ltcosts_m.get_total(line.lt_costs), 
                 sum(np.abs(line.flows))*self.solution.static.resolution*1000
             ))
 
         for line in self.solution.network.minor_lines.values():
             header.append(line.name + ' LCOT [$/MWh_flow]')
             data_array.append(safe_divide(
-                line.lt_costs.get_total(), 
+                ltcosts_m.get_total(line.lt_costs), 
                 sum(np.abs(line.flows))*self.solution.static.resolution*1000
             ))
 
@@ -412,7 +422,7 @@ class Statistics:
 
         for generator in self.solution.fleet.generators.values():
             header.append(generator.name + ' Average Annual Gen [GWh]')
-            if generator.check_unit_type('flexible'):
+            if generator_m.check_unit_type(generator, 'flexible'):
                 data_array.append(self.calculate_annual_average_energy(generator.dispatch_power))
             else:
                 data_array.append(self.calculate_annual_average_energy(generator.data*generator.capacity))
