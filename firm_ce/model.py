@@ -142,8 +142,9 @@ class ModelConfig:
         self.population = int(config_dict['population'])
         self.mutation = float(config_dict['mutation'])
         self.recombination = float(config_dict['recombination'])
-        self.near_optimal_enabled = str(config_dict.get('near_optimal_enabled','false')).lower() in ('true','1','yes')
+        self.global_optimal_lcoe = float(config_dict.get('global_optimal_lcoe', 0.0))
         self.near_optimal_tol = float(config_dict.get('near_optimal_tol', 0.0))
+        self.midpoint_count = int(config_dict.get('midpoint_count', 0))
         self.settings = ModelSettings(settings_dict)
 
 class Model:
@@ -172,14 +173,15 @@ class Model:
             solve_time = time.time()   
             solve_time_str = datetime.fromtimestamp(solve_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours).')
-
-            generate_result_files(de_result.x, scenario, self.config)
-            results_time = time.time() 
-            results_time_str = datetime.fromtimestamp(results_time).strftime('%d/%m/%Y %H:%M:%S')
-            scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).')
+            
+            if self.config.type == 'single_time':
+                generate_result_files(de_result.x, scenario, self.config)
+                results_time = time.time() 
+                results_time_str = datetime.fromtimestamp(results_time).strftime('%d/%m/%Y %H:%M:%S')
+                scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).')
 
             scenario.unload_datafiles()
             end_time = time.time()
             end_time_str = datetime.fromtimestamp(end_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Scenario completed at {end_time_str} (Total time taken: {(end_time - start_time)/(60*60):.4f} hours).')
-            
+   
