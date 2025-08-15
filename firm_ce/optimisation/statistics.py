@@ -61,7 +61,7 @@ class Statistics:
         self.result_files = {
             'capacities': self.generate_capacities_file(),
             'component_costs': self.generate_component_costs_file(),
-            #'energy_balance_ASSETS': self.generate_energy_balance_file('assets'),
+            'energy_balance_ASSETS': self.generate_energy_balance_file('assets'),
             'energy_balance_NODES': self.generate_energy_balance_file('nodes'),
             'energy_balance_NETWORK': self.generate_energy_balance_file('network'),            
             'levelised_costs': self.generate_levelised_costs_file(),

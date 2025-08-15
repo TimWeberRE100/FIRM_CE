@@ -10,14 +10,12 @@ from firm_ce.fast_methods import (
     generator_m, storage_m, fleet_m,
     static_m
 )
-
 from firm_ce.optimisation.balancing import balance_for_period
+from firm_ce.common.typing import float64, string, boolean
+from firm_ce.common.jit_overload import njit, jitclass, prange
 
 if JIT_ENABLED:
-    from numba import njit, prange, set_num_threads
-    from numba.core.types import float64, boolean, string
-    from numba.experimental import jitclass
-
+    from numba import set_num_threads
     set_num_threads(int(NUM_THREADS))
 
     solution_spec = [
@@ -34,22 +32,7 @@ if JIT_ENABLED:
         ('fleet', Fleet.class_type.instance_type),
         ('network', Network.class_type.instance_type),
     ]
-else:
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-        return decorator
-    
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
-    
-    def prange(x):
-        return range(x)
-    
+else:    
     solution_spec = []
 
 @jitclass(solution_spec)
@@ -76,6 +59,7 @@ class Solution:
         self.network = network_m.create_dynamic_copy(network) # Includes static reference to data
         self.fleet = fleet_m.create_dynamic_copy(fleet, self.network.nodes, self.network.minor_lines) # Includes static reference to data
         fleet_m.build_capacities(self.fleet, x, self.static.resolution)
+        network_m.build_capacity(self.network, x)
 
         fleet_m.allocate_memory(self.fleet, self.static.intervals_count)
         network_m.allocate_memory(self.network, self.static.intervals_count)
@@ -121,16 +105,16 @@ class Solution:
 
         for generator in self.fleet.generators.values():
             total_costs += generator_m.calculate_lt_costs(generator, years_float, self.static.year_count)
-
+            
         for storage in self.fleet.storages.values():
             total_costs += storage_m.calculate_lt_costs(storage, years_float, self.static.year_count)
-
+            
         for line in self.network.major_lines.values():
             total_costs += line_m.calculate_lt_costs(line, years_float, self.static.year_count)
-
+        
         for line in self.network.minor_lines.values():
             total_costs += line_m.calculate_lt_costs(line,  years_float, self.static.year_count)
-
+        
         return total_costs
 
     def objective(self):        

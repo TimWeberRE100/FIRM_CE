@@ -1,9 +1,8 @@
 from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.typing import int64, float64
+from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
-    from numba.core.types import float64, int64
-    from numba.experimental import jitclass
-
     unitcost_spec = [
         ('capex_p', float64),
         ('fom', float64),
@@ -69,7 +68,10 @@ class UnitCost:
         
         self.transformer_capex = transformer_capex # $/kW, non-zero for lines
 
-UnitCost_InstanceType = UnitCost.class_type.instance_type
+if JIT_ENABLED:
+    UnitCost_InstanceType = UnitCost.class_type.instance_type
+else:
+    UnitCost_InstanceType = UnitCost
 
 if JIT_ENABLED:
     ltcosts_spec = [
@@ -89,4 +91,7 @@ class LTCosts:
         self.vom = 0.0
         self.fuel = 0.0
 
-LTCosts_InstanceType = LTCosts.class_type.instance_type
+if JIT_ENABLED:
+    LTCosts_InstanceType = LTCosts.class_type.instance_type
+else:
+    LTCosts_InstanceType = LTCosts

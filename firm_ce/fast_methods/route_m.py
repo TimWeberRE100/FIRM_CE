@@ -1,17 +1,7 @@
 from firm_ce.system.topology import Node_InstanceType, Line_InstanceType, Route
 from firm_ce.common.constants import JIT_ENABLED, FASTMATH, NP_FLOAT_MAX
-
-if JIT_ENABLED:
-    from numba import njit
-    from numba.core.types import DictType, int64
-    from numba.typed.typedlist import List as TypedList
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.typing import TypedList, DictType, int64
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(route_instance,

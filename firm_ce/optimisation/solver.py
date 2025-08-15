@@ -18,11 +18,6 @@ from firm_ce.optimisation.broad_optimum import (
     write_broad_optimum_records,
     write_broad_optimum_bands,
 )
-from firm_ce.common.typing import (
-    EvaluationRecord_Type, 
-    DifferentialEvolutionArgs_Type, 
-    BroadOptimumVars_Type
-)
 
 class Solver:
     def __init__(self, 

@@ -3,16 +3,8 @@ from numpy.typing import NDArray
 
 from typing import Dict
 from firm_ce.common.constants import JIT_ENABLED
-
-if JIT_ENABLED:
-    from numba.core.types import float64, int64
-    from numba.experimental import jitclass
-    
-else:
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-        return decorator
+from firm_ce.common.typing import int64, float64
+from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
     scenario_parameters_spec = [
@@ -56,7 +48,10 @@ class ScenarioParameters:
         self.fom_scalar = (year_count+leap_year_count/365)/year_count # Scale average annual fom to account for leap days for PLEXOS consistency
         self.year_energy_demand = np.zeros(self.year_count, dtype=np.float64)
 
-ScenarioParameters_InstanceType = ScenarioParameters.class_type.instance_type
+if JIT_ENABLED:
+    ScenarioParameters_InstanceType = ScenarioParameters.class_type.instance_type
+else:
+    ScenarioParameters_InstanceType = ScenarioParameters
 
 class ModelConfig:
     def __init__(self, config_dict: Dict[str, str]) -> None:

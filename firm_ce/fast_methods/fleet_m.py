@@ -8,18 +8,8 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
 )
 from firm_ce.fast_methods import generator_m, storage_m
-
-if JIT_ENABLED:
-    from numba import njit
-    from numba.core.types import int64
-    from numba.typed.typeddict import Dict as TypedDict
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.typing import TypedDict, int64
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(fleet_instance, nodes_typed_dict, lines_typed_dict):

@@ -4,7 +4,7 @@ import numpy as np
 
 from firm_ce.io.file_manager import DataFile
 from firm_ce.system.components import Fleet_InstanceType
-from firm_ce.system.topology import Network
+from firm_ce.system.topology import Network_InstanceType
 from firm_ce.fast_methods import generator_m, node_m
 
 def select_datafile(
@@ -39,7 +39,7 @@ def load_datafiles_to_generators(fleet: Fleet_InstanceType,
         )
     return None
 
-def load_datafiles_to_network(network: Network.class_type.instance_type,
+def load_datafiles_to_network(network: Network_InstanceType,
                               datafiles_imported_dict: Dict[str, DataFile],
                               ) -> None:
     for node in network.nodes.values():

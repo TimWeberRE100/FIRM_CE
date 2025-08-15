@@ -2,7 +2,7 @@ from typing import Dict, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.system.parameters import ScenarioParameters
+from firm_ce.system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
 
 def determine_interval_parameters(
         first_year: int,
@@ -35,7 +35,7 @@ def determine_interval_parameters(
 def construct_ScenarioParameters_object(
         scenario_data_dict: Dict[str, str],
         node_count: int,
-        ) -> ScenarioParameters.class_type.instance_type:
+        ) -> ScenarioParameters_InstanceType:
     resolution = float(scenario_data_dict.get('resolution', 0.0))
     allowance = float(scenario_data_dict.get('allowance', 0.0))
     first_year = int(scenario_data_dict.get('firstyear', 0))

@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import numpy as np
 
 from firm_ce.system.topology import (
@@ -10,21 +10,17 @@ from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.io.validate import is_nan
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.fast_methods import route_m
-
-if JIT_ENABLED:
-    from numba.typed.typeddict import Dict as TypedDict
-    from numba.typed.typedlist import List as TypedList
-    from numba.core.types import DictType, int64, UniTuple, ListType
+from firm_ce.common.typing import TypedDict, TypedList, DictType, int64, UniTuple, ListType
 
 def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:
     return Node(True, idx, order, node_name)
 
 def construct_Line_object(line_dict: Dict[str, str], 
-                          nodes_object_dict: TypedDict[int64,Node_InstanceType], 
+                          nodes_object_dict: DictType(int64,Node_InstanceType), 
                           order: int) -> Line_InstanceType:
     idx = int(line_dict['id'])
     name = str(line_dict['name'])
-    length = int(line_dict['length']) 
+    length = float(line_dict['length']) 
     loss_factor = float(line_dict['loss_factor'])  
     max_build = float(line_dict['max_build']) 
     min_build = float(line_dict['min_build'])  
@@ -131,7 +127,7 @@ def extend_route(
 def get_routes_for_node(
         initial_node: Node_InstanceType,
         routes_typed_dict: DictType(UniTuple(int64,2), ListType(Route_InstanceType)),
-        lines_object_dict: TypedDict[int64,Line_InstanceType],
+        lines_object_dict: DictType(int64,Line_InstanceType),
         leg: int,
         ) -> ListType(Route_InstanceType):
     routes_to_node_curr_leg = TypedList.empty_list(Route_InstanceType)
@@ -165,8 +161,8 @@ def get_routes_for_node(
 
 def build_routes_typed_dict(
         networksteps_max: int, 
-        nodes_object_dict: TypedDict[int64,Node_InstanceType],
-        lines_object_dict: TypedDict[int64,Line_InstanceType],
+        nodes_object_dict: DictType(int64,Node_InstanceType),
+        lines_object_dict: DictType(int64,Line_InstanceType),
         ) -> DictType(UniTuple(int64,2), ListType(Route_InstanceType)):
     
     routes_typed_dict = TypedDict.empty(

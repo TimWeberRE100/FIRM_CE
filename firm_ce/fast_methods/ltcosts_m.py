@@ -1,15 +1,6 @@
 from firm_ce.system.costs import UnitCost_InstanceType
 from firm_ce.common.constants import JIT_ENABLED, FASTMATH
-
-if JIT_ENABLED:
-    from numba import njit
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
 def get_total(ltcosts_instance):

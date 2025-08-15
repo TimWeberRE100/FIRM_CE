@@ -7,16 +7,7 @@ from firm_ce.fast_methods import (
 )
 from firm_ce.system.topology import Network_InstanceType
 from firm_ce.system.components import Fleet_InstanceType
-
-if JIT_ENABLED:
-    from numba import njit
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH) 
 def initialise_interval(interval: int,
@@ -25,9 +16,16 @@ def initialise_interval(interval: int,
                         resolution: float,) -> None:
     for node in network.nodes.values():
         node_m.initialise_netload_t(node, interval)
-        node.flexible_max_t = np.zeros(len(node.flexible_merit_order), dtype=np.float64)
-        node.discharge_max_t = np.zeros(len(node.storage_merit_order), dtype=np.float64)
-        node.charge_max_t = np.zeros(len(node.storage_merit_order), dtype=np.float64)
+        if len(node.flexible_merit_order) > 0:
+            node.flexible_max_t = np.zeros(len(node.flexible_merit_order), dtype=np.float64)
+        else:
+            node.flexible_max_t = np.zeros(1, dtype=np.float64)
+        if len(node.storage_merit_order) > 0:
+            node.discharge_max_t = np.zeros(len(node.storage_merit_order), dtype=np.float64)
+            node.charge_max_t = np.zeros(len(node.storage_merit_order), dtype=np.float64)
+        else:
+            node.discharge_max_t = np.zeros(1, dtype=np.float64)
+            node.charge_max_t = np.zeros(1, dtype=np.float64)
 
         for idx, flexible_order in enumerate(node.flexible_merit_order):
             generator_m.set_flexible_max_t(fleet.generators[flexible_order], interval, resolution, idx)

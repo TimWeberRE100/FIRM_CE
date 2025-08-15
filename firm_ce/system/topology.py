@@ -1,11 +1,11 @@
 import numpy as np
+from typing import List, Tuple
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
+from firm_ce.common.typing import DictType, int64, UniTuple, ListType, float64, string, boolean
+from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
-    from numba.core.types import float64, int64, string, boolean, DictType, UniTuple, ListType
-    from numba.experimental import jitclass
-
     node_spec = [
         ('static_instance',boolean),
         ('id',int64),
@@ -43,10 +43,6 @@ if JIT_ENABLED:
         ('storage_energy',float64[:]),         
     ]
 else:
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-        return decorator
     node_spec = []
 
 @jitclass(node_spec)
@@ -96,7 +92,10 @@ class Node:
         self.flexible_energy = np.empty((0,), dtype=np.float64)
         self.storage_energy = np.empty((0,), dtype=np.float64) 
 
-Node_InstanceType = Node.class_type.instance_type
+if JIT_ENABLED:
+    Node_InstanceType = Node.class_type.instance_type
+else:
+    Node_InstanceType = Node
 
 if JIT_ENABLED:
     line_spec = [
@@ -110,7 +109,7 @@ if JIT_ENABLED:
         ('loss_factor', float64),
         ('max_build', float64),
         ('min_build', float64),
-        ('capacity', float64),
+        ('initial_capacity', float64),
         ('unit_type', string),
         ('near_optimum_check', boolean),
         ('group', string),
@@ -119,6 +118,8 @@ if JIT_ENABLED:
         ('candidate_x_idx',int64),
 
         # Dynamic
+        ('new_build',float64),
+        ('capacity', float64),
         ('flows',float64[:]),
         ('temp_leg_flows', float64),
         ('lt_flows', float64),
@@ -166,7 +167,7 @@ class Line:
         self.loss_factor = loss_factor # Transmission losses % per 1000 km
         self.max_build = max_build # GW/year
         self.min_build = min_build # GW/year
-        self.capacity = capacity # GW
+        self.initial_capacity = capacity  # GW  
         self.unit_type = unit_type
         self.near_optimum_check = near_optimum_check
         self.group = group
@@ -175,13 +176,18 @@ class Line:
         self.candidate_x_idx = -1
 
         # Dynamic
+        self.new_build = 0.0 # GW
+        self.capacity = capacity # GW
         self.flows = np.empty(0, dtype=np.float64) # GW, total line flows
         self.temp_leg_flows = 0.0 # GW, line flows reserved for a route on the current leg
         self.lt_flows = 0.0 # GWh
 
         self.lt_costs = LTCosts()
 
-Line_InstanceType = Line.class_type.instance_type
+if JIT_ENABLED:
+    Line_InstanceType = Line.class_type.instance_type
+else:
+    Line_InstanceType = Line
 
 if JIT_ENABLED:
     route_spec = [
@@ -215,9 +221,14 @@ class Route:
         # Dynamic
         self.flow_update = 0.0
 
-Route_InstanceType = Route.class_type.instance_type
-routes_key_type = UniTuple(int64,2)
-routes_list_type = ListType(Route_InstanceType)
+if JIT_ENABLED:
+    Route_InstanceType = Route.class_type.instance_type
+    routes_key_type = UniTuple(int64,2)
+    routes_list_type = ListType(Route_InstanceType)
+else:
+    Route_InstanceType = Route
+    routes_key_type = Tuple[int,int]
+    routes_list_type = List[Route_InstanceType]
 
 if JIT_ENABLED:
     network_spec = [
@@ -264,5 +275,8 @@ class Network:
         self.routes = routes
         self.networksteps_max = networksteps_max
         self.major_line_count = len(major_lines)
-    
-Network_InstanceType = Network.class_type.instance_type
+
+if JIT_ENABLED:  
+    Network_InstanceType = Network.class_type.instance_type
+else:
+    Network_InstanceType = Network

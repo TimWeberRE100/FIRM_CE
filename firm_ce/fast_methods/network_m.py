@@ -4,19 +4,8 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
 )
 from firm_ce.fast_methods import line_m, node_m, route_m
-
-if JIT_ENABLED:
-    from numba import njit
-    from numba.core.types import int64
-    from numba.typed.typeddict import Dict as TypedDict
-    from numba.typed.typedlist import List as TypedList
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.typing import TypedDict, TypedList, int64
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(network_instance):
@@ -66,8 +55,8 @@ def create_dynamic_copy(network_instance):
 def build_capacity(network_instance, decision_x) -> None:
     if network_instance.static_instance:
         raise_static_modification_error()
-    for line in network_instance.lines.values():
-        line.capacity += decision_x[line.candidate_x_idx]
+    for line in network_instance.major_lines.values():
+        line_m.build_capacity(line, decision_x[line.candidate_x_idx])
     return None
 
 @njit(fastmath=FASTMATH)

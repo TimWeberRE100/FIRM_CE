@@ -3,11 +3,10 @@ import numpy as np
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
+from firm_ce.common.typing import DictType, int64, float64, string, boolean
+from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
-    from numba.core.types import float64, int64, string, boolean, DictType
-    from numba.experimental import jitclass
-
     fuel_spec = [
         ('static_instance',boolean),
         ('id',int64),
@@ -15,11 +14,7 @@ if JIT_ENABLED:
         ('cost',float64),
         ('emissions',float64),
     ]
-else:
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-        return decorator    
+else:   
     fuel_spec = []
 
 @jitclass(fuel_spec)
@@ -44,7 +39,10 @@ class Fuel:
         self.cost = cost # $/GJ
         self.emissions = emissions # kg/GJ
 
-Fuel_InstanceType = Fuel.class_type.instance_type
+if JIT_ENABLED:
+    Fuel_InstanceType = Fuel.class_type.instance_type
+else:
+    Fuel_InstanceType = Fuel
 
 if JIT_ENABLED:
     generator_spec = [
@@ -157,7 +155,10 @@ class Generator:
 
         self.lt_costs = LTCosts()
 
-Generator_InstanceType = Generator.class_type.instance_type 
+if JIT_ENABLED:
+    Generator_InstanceType = Generator.class_type.instance_type 
+else:
+    Generator_InstanceType = Generator
 
 if JIT_ENABLED:
     storage_spec = [
@@ -274,8 +275,11 @@ class Storage:
         self.lt_discharge = 0.0 # GWh/year
 
         self.lt_costs = LTCosts()
-    
-Storage_InstanceType = Storage.class_type.instance_type
+
+if JIT_ENABLED:
+    Storage_InstanceType = Storage.class_type.instance_type
+else:
+    Storage_InstanceType = Storage
 
 if JIT_ENABLED:
     fleet_spec = [
@@ -296,4 +300,7 @@ class Fleet:
         self.generators = generators
         self.storages = storages
 
-Fleet_InstanceType = Fleet.class_type.instance_type
+if JIT_ENABLED:
+    Fleet_InstanceType = Fleet.class_type.instance_type
+else:
+    Fleet_InstanceType = Fleet

@@ -10,10 +10,7 @@ from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
 
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.common.constants import JIT_ENABLED
-
-if JIT_ENABLED:
-    from numba.typed.typeddict import Dict as TypedDict
-    from numba.core.types import int64
+from firm_ce.common.typing import TypedDict, DictType, int64
 
 def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel_InstanceType:
     idx = int(fuel_dict['id'])
@@ -29,8 +26,8 @@ def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel_InstanceType:
 def construct_Generator_object(
         generator_dict: Dict[str,str], 
         fuels_imported_dict: Dict[str, Dict[str, str]],
-        nodes_object_dict: TypedDict[int64, Node_InstanceType], 
-        lines_object_dict: TypedDict[int64, Line_InstanceType],
+        nodes_object_dict: DictType(int64, Node_InstanceType), 
+        lines_object_dict: DictType(int64, Line_InstanceType),
         order,
         ) -> Generator_InstanceType:
     idx = int(generator_dict['id'])
@@ -95,8 +92,8 @@ def construct_Generator_object(
 
 def construct_Storage_object(
         storage_dict: Dict[str, str], 
-        nodes_object_dict: TypedDict[int64, Node_InstanceType], 
-        lines_object_dict: TypedDict[int64, Line_InstanceType],
+        nodes_object_dict: DictType(int64, Node_InstanceType), 
+        lines_object_dict: DictType(int64, Line_InstanceType),
         order,
         ) -> Storage_InstanceType:
     idx = int(storage_dict['id'])
@@ -169,8 +166,8 @@ def construct_Fleet_object(
         generators_imported_dict: Dict[str, Dict[str, str]], 
         storages_imported_dict: Dict[str, Dict[str, str]], 
         fuels_imported_dict: Dict[str, Dict[str, str]], 
-        lines_object_dict: TypedDict[int64, Line_InstanceType], 
-        nodes_object_dict: TypedDict[int64, Node_InstanceType],
+        lines_object_dict: DictType(int64, Line_InstanceType), 
+        nodes_object_dict: DictType(int64, Node_InstanceType),
     ) -> Fleet_InstanceType:
 
     generators = TypedDict.empty(

@@ -6,23 +6,14 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
 )
 from firm_ce.fast_methods import ltcosts_m
-
-if JIT_ENABLED:
-    from numba import njit
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(line_instance, nodes_typed_dict, line_type):
     if line_type == "major":
         node_start_copy = nodes_typed_dict[line_instance.node_start.order]
         node_end_copy = nodes_typed_dict[line_instance.node_end.order]
-    elif line_type == "major":
+    elif line_type == "minor":
         node_start_copy = Node(False,-1,-1,"MINOR_NODE")
         node_end_copy = Node(False,-1,-1,"MINOR_NODE")
     
@@ -51,10 +42,11 @@ def check_minor_line(line_instance) -> bool:
     return line_instance.id == -1
 
 @njit(fastmath=FASTMATH)
-def build_capacity(line_instance, new_build_power_capacity):
+def build_capacity(line_instance, new_build_power_capacity: float):
     if line_instance.static_instance:
         raise_static_modification_error()
     line_instance.capacity += new_build_power_capacity
+    line_instance.new_build += new_build_power_capacity 
     return None
 
 @njit(fastmath=FASTMATH)

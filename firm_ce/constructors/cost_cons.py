@@ -1,7 +1,6 @@
 from typing import Optional
 from firm_ce.system.components import Fuel
-from firm_ce.system.costs import UnitCost
-
+from firm_ce.system.costs import UnitCost, UnitCost_InstanceType
 
 def construct_UnitCost_object(
         capex_p: float,
@@ -14,7 +13,7 @@ def construct_UnitCost_object(
         fuel: Optional[Fuel] = None,
         capex_e: float = 0.0,
         transformer_capex: float = 0.0
-        ) -> UnitCost.class_type.instance_type:
+        ) -> UnitCost_InstanceType:
     
     fuel_cost_mwh = 0.0
     fuel_cost_h = 0.0

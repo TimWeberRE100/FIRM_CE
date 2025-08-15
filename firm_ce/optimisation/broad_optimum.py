@@ -5,8 +5,7 @@ import os, csv
 from firm_ce.common.constants import PENALTY_MULTIPLIER
 from firm_ce.optimisation.single_time import parallel_wrapper
 from firm_ce.common.typing import (
-    EvaluationRecord_Type, 
-    DifferentialEvolutionArgs_Type, 
+    EvaluationRecord_Type,  
     BroadOptimumVars_Type,
     BandCandidates_Type,
 )
@@ -98,7 +97,7 @@ def create_evaluation_record(group_key:  str,
     )
 
 def broad_optimum_objective(band_population_candidates: List[List[float]], # 2-D array to allow vectorized DE
-                            differential_evolution_args: DifferentialEvolutionArgs_Type,
+                            differential_evolution_args,
                             group_key: str,
                             band_lcoe_max: float,
                             bo_group_orders: List[int],
@@ -159,7 +158,7 @@ def write_broad_optimum_records(scenario_name: str,
 def write_broad_optimum_bands(scenario_name: str,
                            broad_optimum_var_info: List[BroadOptimumVars_Type],
                            bands: BandCandidates_Type,
-                           de_args: DifferentialEvolutionArgs_Type,
+                           de_args,
                            band_lcoe_max: float,
                            groups: Dict[str, List[int]]) -> None:
     space_dir  = near_optimum_path("near_optimum", scenario_name)
