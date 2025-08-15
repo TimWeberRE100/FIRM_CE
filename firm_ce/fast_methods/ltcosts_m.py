@@ -33,12 +33,13 @@ def calculate_annualised_build(ltcosts_instance,
                                 power_capacity: float,
                                 line_length: float,
                                 unit_costs: UnitCost_InstanceType,
-                                asset_type: str) -> None:
+                                year_count: int,
+                                asset_type: str,) -> None:
     present_value = get_present_value(ltcosts_instance, unit_costs.discount_rate, unit_costs.lifetime)
     if asset_type == 'generator' or asset_type == 'storage':
-        ltcosts_instance.annualised_build = (energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p) / present_value if present_value > 1e-6 else 0
+        ltcosts_instance.annualised_build = year_count*(energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p) / present_value if present_value > 1e-6 else 0
     elif asset_type == 'line':
-        ltcosts_instance.annualised_build = (power_capacity * 1e3 * line_length * unit_costs.capex_p + power_capacity * 1e3 * unit_costs.transformer_capex) / present_value if present_value > 1e-6 else 0
+        ltcosts_instance.annualised_build = year_count*(power_capacity * 1e3 * line_length * unit_costs.capex_p + power_capacity * 1e3 * unit_costs.transformer_capex) / present_value if present_value > 1e-6 else 0
     return None
 
 @njit(fastmath=FASTMATH)

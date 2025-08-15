@@ -70,8 +70,8 @@ def calculate_lt_flow(line_instance, resolution: float) -> None:
     return None
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_costs(line_instance, years_float: float) -> float:
-    ltcosts_m.calculate_annualised_build(line_instance.lt_costs, 0.0, line_instance.capacity, 0.0, line_instance.cost, 'line')
+def calculate_lt_costs(line_instance, years_float: float, year_count: int) -> float:
+    ltcosts_m.calculate_annualised_build(line_instance.lt_costs, 0.0, line_instance.capacity, 0.0, line_instance.cost, year_count, 'line')
     ltcosts_m.calculate_fom(line_instance.lt_costs, line_instance.capacity, years_float, 0.0, line_instance.cost, 'line')
     ltcosts_m.calculate_vom(line_instance.lt_costs, line_instance.lt_flows, line_instance.cost)
     ltcosts_m.calculate_fuel(line_instance.lt_costs, line_instance.lt_flows, 0, line_instance.cost)

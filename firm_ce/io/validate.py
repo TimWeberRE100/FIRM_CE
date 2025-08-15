@@ -335,7 +335,7 @@ def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenar
             + scenario_storages[scenario]
             + scenario_storages[scenario]
             + scenario_lines[scenario]
-        ) - len(scenario_baseload[scenario]) - len(scenario_minor_lines[scenario])
+        ) - len(scenario_minor_lines[scenario])
 
         if x0 and not (len(x0) == bound_length):
             model_logger.error("Initial guess 'x_0' for scenario %s contains %d elements, expected %d", scenario, len(x0), bound_length)

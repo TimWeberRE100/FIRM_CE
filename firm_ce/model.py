@@ -2,7 +2,7 @@ import time
 from datetime import datetime
 
 from firm_ce.system.scenario import Scenario
-#from firm_ce.optimisation.statistics import Statistics
+from firm_ce.optimisation.statistics import Statistics
 from firm_ce.system.parameters import ModelConfig
 from firm_ce.io.validate import ModelData
 from firm_ce.common.constants import DEBUG
@@ -35,7 +35,7 @@ class Model:
             solve_time_str = datetime.fromtimestamp(solve_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours).')
             
-            """ if self.config.type == 'single_time':
+            if self.config.type == 'single_time':
                 scenario.statistics = Statistics(
                     de_result.x,
                     scenario.static,
@@ -52,7 +52,7 @@ class Model:
                     scenario.statistics.dump()
                 results_time = time.time() 
                 results_time_str = datetime.fromtimestamp(results_time).strftime('%d/%m/%Y %H:%M:%S')
-                scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).') """
+                scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).')
 
             scenario.unload_datafiles()
             end_time = time.time()

@@ -132,8 +132,8 @@ def calculate_lt_discharge(storage_instance, resolution: float) -> None:
     return None
 
 @njit(fastmath=FASTMATH)    
-def calculate_lt_costs(storage_instance, years_float: float) -> float:
-    ltcosts_m.calculate_annualised_build(storage_instance.lt_costs, storage_instance.energy_capacity, storage_instance.power_capacity, 0.0, storage_instance.cost, 'storage')
+def calculate_lt_costs(storage_instance, years_float: float, year_count: int) -> float:
+    ltcosts_m.calculate_annualised_build(storage_instance.lt_costs, storage_instance.energy_capacity, storage_instance.power_capacity, 0.0, storage_instance.cost, year_count, 'storage')
     ltcosts_m.calculate_fom(storage_instance.lt_costs, storage_instance.power_capacity, years_float, 0.0, storage_instance.cost, 'storage')
     ltcosts_m.calculate_vom(storage_instance.lt_costs, storage_instance.lt_discharge, storage_instance.cost)
     ltcosts_m.calculate_fuel(storage_instance.lt_costs, storage_instance.lt_discharge, 0, storage_instance.cost)

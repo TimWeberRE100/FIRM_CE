@@ -120,16 +120,16 @@ class Solution:
         )
 
         for generator in self.fleet.generators.values():
-            total_costs += generator_m.calculate_lt_costs(generator, years_float)
+            total_costs += generator_m.calculate_lt_costs(generator, years_float, self.static.year_count)
 
         for storage in self.fleet.storages.values():
-            total_costs += storage_m.calculate_lt_costs(storage, years_float)
+            total_costs += storage_m.calculate_lt_costs(storage, years_float, self.static.year_count)
 
         for line in self.network.major_lines.values():
-            total_costs += line_m.calculate_lt_costs(line, years_float)
+            total_costs += line_m.calculate_lt_costs(line, years_float, self.static.year_count)
 
         for line in self.network.minor_lines.values():
-            total_costs += line_m.calculate_lt_costs(line,  years_float)
+            total_costs += line_m.calculate_lt_costs(line,  years_float, self.static.year_count)
 
         return total_costs
 

@@ -113,6 +113,8 @@ class Scenario:
                         self.x0,
                         self.static,
                         self.fleet,
-                        self.network,)
+                        self.network,
+                        self.logger,
+                        self.name)
         solver.evaluate()
         return solver.result

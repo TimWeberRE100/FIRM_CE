@@ -159,8 +159,8 @@ def calculate_lt_generation(generator_instance, resolution: float) -> None:
     return None
 
 @njit(fastmath=FASTMATH)    
-def calculate_lt_costs(generator_instance, years_float: float) -> float:
-    ltcosts_m.calculate_annualised_build(generator_instance.lt_costs, 0.0, generator_instance.capacity, 0.0, generator_instance.cost, 'generator')
+def calculate_lt_costs(generator_instance, years_float: float, year_count: int) -> float:
+    ltcosts_m.calculate_annualised_build(generator_instance.lt_costs, 0.0, generator_instance.capacity, 0.0, generator_instance.cost, year_count, 'generator')
     ltcosts_m.calculate_fom(generator_instance.lt_costs, generator_instance.capacity, years_float, 0.0, generator_instance.cost, 'generator')
     ltcosts_m.calculate_vom(generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.cost)
     ltcosts_m.calculate_fuel(generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.unit_lt_hours, generator_instance.cost)
