@@ -61,7 +61,6 @@ class ModelConfig:
         self.population = int(config_dict['population'])
         self.mutation = float(config_dict['mutation'])
         self.recombination = float(config_dict['recombination'])
-        self.global_optimal_lcoe = float(config_dict.get('global_optimal_lcoe', 0.0))
         self.near_optimal_tol = float(config_dict.get('near_optimal_tol', 0.0))
         self.midpoint_count = int(config_dict.get('midpoint_count', 0))
         self.balancing_type = str(config_dict['balancing_type'])

@@ -7,7 +7,7 @@ import csv, os
 from logging import Logger
 
 from firm_ce.system.parameters import ModelConfig
-from firm_ce.optimisation.single_time import evaluate_vectorised_xs
+from firm_ce.optimisation.single_time import evaluate_vectorised_xs, Solution
 from firm_ce.common.constants import SAVE_POPULATION
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
@@ -17,6 +17,10 @@ from firm_ce.optimisation.broad_optimum import (
     broad_optimum_objective,
     write_broad_optimum_records,
     write_broad_optimum_bands,
+    read_broad_optimum_bands,
+    create_midpoint_csv,
+    create_groups_dict,
+    append_to_midpoint_csv,
 )
 
 class Solver:
@@ -39,6 +43,7 @@ class Solver:
         self.broad_optimum_var_info = build_broad_optimum_var_info(fleet_static, network_static)
         self.scenario_name = scenario_name
         self.result = None
+        self.optimal_lcoe = None
 
     def get_bounds(self):
         def power_capacity_bounds(asset_list, build_cap_constraint):
@@ -115,20 +120,23 @@ class Solver:
             vectorized=True,
         )
 
-    def find_near_optimal_band(self):    
-        band_lcoe_max = self.optimal_lcoe * (1 + self.config.near_optimal_tol)
-    
-        groups = {}
-        for record in self.broad_optimum_var_info:
-            candidate_x_idx, _, near_optimum_check, group = record
+    def get_band_lcoe_max(self):
+        solution = Solution(self.decision_x0,
+                            *self.get_differential_evolution_args()) 
+        
+        if solution.penalties > 1:
+            self.logger.warning(f"Initial guess (assumed optimal solution) has a penalty of {solution.penalties}. It is recommended to double-check initial_guess.csv contains the correct optimal solution.")
 
-            if not near_optimum_check:
-                continue
-            key = group or candidate_x_idx
-            groups.setdefault(key, []).append(candidate_x_idx)
-    
+        self.optimal_lcoe = solution.lcoe
+        band_lcoe_max = self.optimal_lcoe * (1 + self.config.near_optimal_tol)    
+        
+        return band_lcoe_max
+
+    def find_near_optimal_band(self):      
+        band_lcoe_max = self.get_band_lcoe_max()
         evaluation_records = []
         bands = {}
+        groups = create_groups_dict(self.broad_optimum_var_info)
     
         for group_key, idx_list in groups.items():            
             self.logger.info(f"[near_optimum] exploring group '{group_key}'")
@@ -181,97 +189,60 @@ class Solver:
                                   )
         return bands
     
-    """ def explore_midpoints(self, n_midpoints: int):
+    def explore_midpoints(self) -> None:
+        self.logger.info(f"[midpoint_explore] beginning midpoint exploration: {self.config.midpoint_count} per group")
+        band_lcoe_max = self.get_band_lcoe_max()
+        group_bands = read_broad_optimum_bands(self.scenario_name, self.broad_optimum_var_info)
+        csv_path = create_midpoint_csv(self.scenario_name,  self.broad_optimum_var_info)
+
+        for group_key, bands in group_bands.items():
+            band_max, band_min = float(bands['max']), float(bands['min'])
+            step_size = (band_max - band_min) / (self.config.midpoint_count + 1)
+            idx_list = [variable['idx'] 
+                        for variable in self.broad_optimum_var_info 
+                        if (variable[0] or variable[3]) == group_key]
+            
+            self.logger.info(f"[midpoint_explore] group '{group_key}'  min={band_min:.3f}  max={band_max:.3f}  step={step_size:.3f}")
         
-        self.logger.info(f"[midpoint_explore] beginning midpoint exploration: {n_midpoints} per group")
+            for midpoint in range(1, self.config.midpoint_count+1):
+                evaluation_records = []
+                group_target = band_min + midpoint * step_size
+                self.logger.info(f"[midpoint_explore] midpoint {midpoint}/{self.config.midpoint_count}: target sum ≈ {group_target:.3f}")
+
+                args = (
+                    self.get_differential_evolution_args(), 
+                    group_key,
+                    band_lcoe_max,
+                    idx_list,
+                    evaluation_records,
+                    'midpoint',
+                    group_target,
+                    midpoint
+                )
+
+                differential_evolution(
+                    broad_optimum_objective,
+                    bounds=list(zip(self.lower_bounds, self.upper_bounds)),
+                    args=args,
+                    tol=0,
+                    maxiter=self.config.iterations,
+                    popsize=self.config.population,
+                    mutation=(0.2,self.config.mutation),
+                    recombination=self.config.recombination,
+                    disp=True,
+                    polish=False,
+                    updating='deferred',
+                    callback=callback,
+                    workers=1,
+                    vectorized=True
+                ) 
+
+                append_to_midpoint_csv(self.scenario_name, evaluation_records)
+
+        self.logger.info(f"[midpoint_explore] finished; wrote {len(evaluation_records)} feasible points to {csv_path}")
         
-        base_lcoe = self.optimal_lcoe
-        tol       = self.config.near_optimal_tol
-        band_max  = base_lcoe * (1 + tol)
-        LARGE_PEN = 1e6
-        
-        name_groups: Dict[str,List[str]] = {}
-        for v in self.var_info:
-            if v['near_opt']:
-                name_groups.setdefault(v['group'], []).append(v['name'])
-        
-        bands_dir = fixed_path("near_optimum", self.scenario.name)
-        bands_path = os.path.join(bands_dir, "near_optimal_bands.csv")
-        groups: Dict[str, Dict[str, float]] = {}
-        
-        with open(bands_path) as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                grp = row['group']
-                direction = row['direction']
-                vals = [float(row[var_name]) for var_name in name_groups.get(grp, [])]
-                s = sum(vals)
-                groups.setdefault(grp, {'min': None, 'max': None})[direction] = s
-                
-        de_args = self._construct_numba_classes()
-        
-        mid_dir = fixed_path("midpoint_explore", self.scenario.name)
-        mid_csv = os.path.join(mid_dir, "midpoint_space.csv")
-        all_mid_evals = []
-        with open(mid_csv, 'w', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow([
-                'group', 'midpoint_idx', 'target',
-                'lcoe', 'operational_penalty', 'band_penalty',
-                *[f'x{i}' for i in range(len(self.lower_bounds))]
-            ])
-            for grp, limits in groups.items():
-                mn, mx = limits['min'], limits['max']
-                step = (mx - mn) / (n_midpoints + 1)
-                idx_list = [v['idx'] for v in self.var_info if (v['group'] or v['idx']) == grp]
-                
-                self.logger.info(f"[midpoint_explore] group '{grp}'  min={mn:.3f}  max={mx:.3f}  step={step:.3f}")
-                
-                for i in range(1, n_midpoints+1):
-                    target = mn + i * step
-                    self.logger.info(f"[midpoint_explore] midpoint {i}/{n_midpoints}: target sum ≈ {target:.3f}")
-                    def obj_mid(X):
-                        batch = parallel_wrapper(X, *de_args)
-                        lcoes = batch[1]
-                        pens = batch[2]
-                        band_pen = np.maximum(0, lcoes - band_max) * LARGE_PEN
-                        var_sum  = X[idx_list, :].sum(axis=0)
-                        target_pen = np.abs(var_sum - target)
-                        
-                        for j in range(X.shape[1]):
-                            if pens[j] <= 1e-3 and band_pen[j] <= 1e-3:
-                                all_mid_evals.append([
-                                    grp,
-                                    i,
-                                    target,
-                                    float(lcoes[j]),
-                                    float(pens[j]),
-                                    float(band_pen[j]),
-                                    *X[:, j].tolist()
-                                ])
-                        return band_pen + pens + target_pen
-                    
-                    differential_evolution(
-                        obj_mid,
-                        bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                        tol=0,
-                        maxiter=self.config.iterations,
-                        popsize=self.config.population,
-                        mutation=(0.2,self.config.mutation),
-                        recombination=self.config.recombination,
-                        disp=True,
-                        polish=False,
-                        updating='deferred',
-                        callback=callback,
-                        workers=1,
-                        vectorized=True
-                    )
-                    
-            for row in all_mid_evals:
-                writer.writerow(row)
-                
-        self.logger.info(f"[midpoint_explore] finished; wrote {len(all_mid_evals)} feasible points to {mid_csv}")
-         """
+        return None
+    
     def capacity_expansion(self):
         pass
 
@@ -279,11 +250,9 @@ class Solver:
         if self.config.type == 'single_time':
             self.single_time()            
         elif self.config.type == 'near_optimum':
-            self.optimal_lcoe = self.config.global_optimal_lcoe
             self.find_near_optimal_band()            
-            """ elif self.config.type == 'midpoint_explore':
-                self.optimal_lcoe = self.config.global_optimal_lcoe
-                self.explore_midpoints(self.config.midpoint_count)  """           
+        elif self.config.type == 'midpoint_explore':
+            self.explore_midpoints()            
         elif self.config.type == 'capacity_expansion':
             self.capacity_expansion() 
         else:

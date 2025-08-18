@@ -3,4 +3,4 @@ Fix all docstrings
 If simple balancing method is used, run a few polish iterations with the final population and full balancing method at the end
 Simple balancing - test at lower time resolution with full capacity dispatch, polish with the full method for 200 iterations or so
 
-The fastmath flag for njit decorators is only applied on a per-function basis. It does not yet work for jitclass methods. It would be worth testing moving all the methods to njit functions with fastmath to see whether the reduced readability is worth the efficiency gains (maybe even just for transmission)
+Remove commented debug lines from broad_optimum module
