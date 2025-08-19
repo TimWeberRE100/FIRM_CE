@@ -120,11 +120,14 @@ def set_flexible_max_t(generator_instance, interval: int, resolution: float, mer
         generator_instance.capacity, 
         generator_instance.remaining_energy[interval-1] / resolution
     )
-    generator_instance.node.flexible_max_t[merit_order_idx] = generator_instance.node.flexible_max_t[merit_order_idx-1] + generator_instance.flexible_max_t
+    if merit_order_idx == 0:
+        generator_instance.node.flexible_max_t[0] = generator_instance.flexible_max_t
+    else:
+        generator_instance.node.flexible_max_t[merit_order_idx] = generator_instance.node.flexible_max_t[merit_order_idx-1] + generator_instance.flexible_max_t
     return None
 
 @njit(fastmath=FASTMATH)    
-def dispatch(generator_instance, interval: int, merit_order_idx: int) -> bool:
+def dispatch(generator_instance, interval: int, merit_order_idx: int) -> None:
     if merit_order_idx == 0:
         generator_instance.dispatch_power[interval] = min(
             max(generator_instance.node.netload_t - generator_instance.node.storage_power[interval], 0.0),
@@ -136,7 +139,7 @@ def dispatch(generator_instance, interval: int, merit_order_idx: int) -> bool:
             generator_instance.flexible_max_t
         )
     generator_instance.node.flexible_power[interval] += generator_instance.dispatch_power[interval]
-    return node_m.check_remaining_netload(generator_instance.node, interval, 'deficit')
+    return None
 
 @njit(fastmath=FASTMATH)    
 def update_remaining_energy(generator_instance, interval: int, resolution: float) -> None:

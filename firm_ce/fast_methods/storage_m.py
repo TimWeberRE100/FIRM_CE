@@ -85,12 +85,20 @@ def set_dispatch_max_t(storage_instance, interval: int, resolution: float, merit
         (storage_instance.energy_capacity - storage_instance.stored_energy[interval-1]) / storage_instance.charge_efficiency / resolution
     )
 
-    storage_instance.node.discharge_max_t[merit_order_idx] = storage_instance.node.discharge_max_t[merit_order_idx-1] + storage_instance.discharge_max_t
-    storage_instance.node.charge_max_t[merit_order_idx] = storage_instance.node.charge_max_t[merit_order_idx-1] + storage_instance.charge_max_t
+    if merit_order_idx == 0:
+        storage_instance.node.discharge_max_t[0] = storage_instance.discharge_max_t
+        storage_instance.node.charge_max_t[0] = storage_instance.charge_max_t
+    else:
+        storage_instance.node.discharge_max_t[merit_order_idx] = (
+            storage_instance.node.discharge_max_t[merit_order_idx-1] + storage_instance.discharge_max_t
+        )
+        storage_instance.node.charge_max_t[merit_order_idx] = (
+            storage_instance.node.charge_max_t[merit_order_idx-1] + storage_instance.charge_max_t
+        )
     return None
 
 @njit(fastmath=FASTMATH)    
-def dispatch(storage_instance, interval: int, merit_order_idx: int) -> bool:
+def dispatch(storage_instance, interval: int, merit_order_idx: int) -> None:
     if merit_order_idx == 0:
         storage_instance.dispatch_power[interval] = (
             max(min(storage_instance.node.netload_t, storage_instance.discharge_max_t), 0.0) +
@@ -98,11 +106,11 @@ def dispatch(storage_instance, interval: int, merit_order_idx: int) -> bool:
         )
     else:
         storage_instance.dispatch_power[interval] = (
-            min(max(0, storage_instance.node.netload_t - storage_instance.node.discharge_max_t[merit_order_idx-1]), storage_instance.discharge_max_t) +
-            max(min(0, storage_instance.node.netload_t + storage_instance.node.charge_max_t[merit_order_idx-1]), -storage_instance.charge_max_t)
+            max(min(storage_instance.node.netload_t - storage_instance.node.discharge_max_t[merit_order_idx-1], storage_instance.discharge_max_t), 0.0) +
+            min(max(storage_instance.node.netload_t + storage_instance.node.charge_max_t[merit_order_idx-1], -storage_instance.charge_max_t), 0.0)
         )
     storage_instance.node.storage_power[interval] += storage_instance.dispatch_power[interval]
-    return node_m.check_remaining_netload(storage_instance.node, interval, 'both')
+    return None
 
 @njit(fastmath=FASTMATH)    
 def update_stored_energy(storage_instance, interval: int, resolution: float) -> None:

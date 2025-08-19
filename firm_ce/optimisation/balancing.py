@@ -47,17 +47,13 @@ def balance_with_transmission(interval: int,
 def balance_with_storage(interval: int,
                          network: Network_InstanceType,
                          fleet: Fleet_InstanceType,
-                         check_case: str,
                          ) -> None:   
     for node in network.nodes.values():
         if not node_m.check_remaining_netload(node, interval, 'both'):
             continue 
         node.storage_power[interval] = 0
-        if check_case == 'deficit':
-            node.flexible_power[interval] = 0       
         for idx, storage_order in enumerate(node.storage_merit_order):
-            if not storage_m.dispatch(fleet.storages[storage_order], interval, idx):
-                break
+            storage_m.dispatch(fleet.storages[storage_order], interval, idx)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -70,8 +66,7 @@ def balance_with_flexible(interval: int,
             continue
         node.flexible_power[interval] = 0
         for idx, flexible_order in enumerate(node.flexible_merit_order):
-            if not generator_m.dispatch(fleet.generators[flexible_order], interval, idx):
-                break
+            generator_m.dispatch(fleet.generators[flexible_order], interval, idx)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -95,11 +90,11 @@ def balance_for_period(start_t: int,
 
         if network_m.check_remaining_netloads(solution.network, t, 'deficit'):
             balance_with_transmission(t, solution.network, 'surplus')
-            balance_with_storage(t, solution.network, solution.fleet, 'deficit') # Local storage
+            balance_with_storage(t, solution.network, solution.fleet) # Local storage
 
         if network_m.check_remaining_netloads(solution.network, t, 'deficit'):
             balance_with_transmission(t, solution.network, 'storage_discharge')
-            balance_with_storage(t, solution.network, solution.fleet, 'deficit') # Neighbouring and local storage
+            balance_with_storage(t, solution.network, solution.fleet) # Neighbouring and local storage
             balance_with_flexible(t, solution.network, solution.fleet) # Local flexible
         
         if network_m.check_remaining_netloads(solution.network, t, 'deficit'):
@@ -108,8 +103,8 @@ def balance_for_period(start_t: int,
 
         if network_m.check_remaining_netloads(solution.network, t, 'spillage'):
             balance_with_transmission(t, solution.network, 'storage_charge') 
-            balance_with_storage(t, solution.network, solution.fleet, 'spillage') # Charge neighbouring storage
-        
+            balance_with_storage(t, solution.network, solution.fleet) # Charge neighbouring storage           
+
         network_m.calculate_spillage_and_deficit(solution.network, t)
 
         fleet_m.update_stored_energies(solution.fleet, t, solution.static.resolution)
