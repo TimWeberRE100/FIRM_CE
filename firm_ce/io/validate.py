@@ -70,6 +70,7 @@ def validate_model_config(config_dict, model_logger):
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
         'midpoint_count': validate_positive_int,
         'balancing_type': lambda v: validate_enum(v, ['simple', 'full'],),
+        'simple_blocks_per_day':validate_positive_int,
     }
 
     for item in config_dict.values():

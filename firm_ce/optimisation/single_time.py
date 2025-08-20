@@ -11,7 +11,7 @@ from firm_ce.fast_methods import (
     static_m
 )
 from firm_ce.optimisation.balancing import balance_for_period
-from firm_ce.common.typing import float64, string, boolean
+from firm_ce.common.typing import float64, string, boolean, int64
 from firm_ce.common.jit_overload import njit, jitclass, prange
 
 if JIT_ENABLED:
@@ -23,10 +23,10 @@ if JIT_ENABLED:
         ('evaluated', boolean),
         ('lcoe', float64),
         ('penalties', float64),
+        ('balancing_type', string),
 
         # Static jitclass instances
-        ('static', ScenarioParameters.class_type.instance_type),
-        ('balancing_type', string),
+        ('static', ScenarioParameters.class_type.instance_type),        
 
         # Dynamic jitclass instances
         ('fleet', Fleet.class_type.instance_type),
@@ -49,18 +49,19 @@ class Solution:
         self.lcoe = 0.0
         self.penalties = 0.0
 
-        # These are static jitclass instances. It is unsafe to modify these
+        # These are static jitclass instances. It is UNSAFE to modify these
         # within a worker process of the optimiser
         self.static = static 
         self.balancing_type = balancing_type
 
-        # These are dynamic jitclass instances. They are safe to modify
+        # These are dynamic jitclass instances. It is SAFE to modify
         # some attributes within a worker process of the optimiser
         self.network = network_m.create_dynamic_copy(network) # Includes static reference to data
         self.fleet = fleet_m.create_dynamic_copy(fleet, self.network.nodes, self.network.minor_lines) # Includes static reference to data
-        fleet_m.build_capacities(self.fleet, x, self.static.resolution)
+        
+        fleet_m.build_capacities(self.fleet, x, self.static.interval_resolutions)
         network_m.build_capacity(self.network, x)
-
+            
         fleet_m.allocate_memory(self.fleet, self.static.intervals_count)
         network_m.allocate_memory(self.network, self.static.intervals_count)
 
@@ -78,11 +79,11 @@ class Solution:
             balance_for_period(
                 first_t,
                 last_t,
-                True,
+                self.balancing_type == 'full',
                 self
             ) 
 
-            annual_unserved_energy = network_m.calculate_period_unserved_power(self.network, first_t, last_t) * self.static.resolution
+            annual_unserved_energy = network_m.calculate_period_unserved_energy(self.network, first_t, last_t, self.static.interval_resolutions)
             
             # End early if reliability constraint breached for any year
             if not static_m.check_reliability_constraint(self.static, year, annual_unserved_energy): 
@@ -96,11 +97,11 @@ class Solution:
 
         fleet_m.calculate_lt_generations(
             self.fleet,
-            self.static.resolution,
+            self.static.interval_resolutions,
         )
         network_m.calculate_lt_flows(
             self.network,
-            self.static.resolution,
+            self.static.interval_resolutions,
         )
 
         for generator in self.fleet.generators.values():
@@ -177,6 +178,6 @@ def evaluate_vectorised_xs(xs,
                              balancing_type,
                              )  
     end_time = time.time()  
-    print(f"Objective time: {(end_time-start_time)/xs.shape[1]:.4f} seconds")
-    print(f"Iteration time: {(end_time-start_time):.4f} seconds")
+    print(f"Objective time: {NUM_THREADS*(end_time-start_time)/xs.shape[1]:.4f} seconds")
+    print(f"Iteration time: {(end_time-start_time):.4f} seconds for {NUM_THREADS} workers")
     return result[0,:]

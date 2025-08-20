@@ -9,6 +9,7 @@ from firm_ce.common.jit_overload import jitclass
 if JIT_ENABLED:
     scenario_parameters_spec = [
         ('resolution', float64),
+        ('interval_resolutions', float64[:]),
         ('allowance', float64),
         ('first_year', int64),
         ('final_year', int64),
@@ -16,6 +17,7 @@ if JIT_ENABLED:
         ('leap_year_count', int64),
         ('year_first_t', int64[:]),
         ('intervals_count', int64),
+        ('block_lengths', int64[:]),
         ('node_count', int64),
         ('fom_scalar', float64),
         ('year_energy_demand',float64[:]),
@@ -37,6 +39,7 @@ class ScenarioParameters:
                  node_count: int,):        
 
         self.resolution = resolution # length of time interval in hours
+        self.interval_resolutions = resolution*np.ones(intervals_count, dtype=np.float64) # length of blocks in hours for 'simple' balancing_method
         self.allowance = allowance # % annual demand allowed as unserved energy
         self.first_year = first_year # YYYY
         self.final_year = final_year # YYYY
@@ -44,6 +47,7 @@ class ScenarioParameters:
         self.leap_year_count = leap_year_count
         self.year_first_t = year_first_t
         self.intervals_count = intervals_count
+        self.block_lengths = np.ones(intervals_count, dtype=np.int64)
         self.node_count = node_count
         self.fom_scalar = (year_count+leap_year_count/365)/year_count # Scale average annual fom to account for leap days for PLEXOS consistency
         self.year_energy_demand = np.zeros(self.year_count, dtype=np.float64)
@@ -64,3 +68,4 @@ class ModelConfig:
         self.near_optimal_tol = float(config_dict.get('near_optimal_tol', 0.0))
         self.midpoint_count = int(config_dict.get('midpoint_count', 0))
         self.balancing_type = str(config_dict['balancing_type'])
+        self.blocks_per_day = int(config_dict['simple_blocks_per_day'])

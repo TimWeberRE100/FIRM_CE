@@ -25,16 +25,17 @@ class Model:
             start_time_str = datetime.fromtimestamp(start_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Started scenario {scenario.name} at {start_time_str}.')
 
-            scenario.load_datafiles(self.datafile_filenames_dict)     
+            scenario.load_datafiles(self.datafile_filenames_dict, self.config.balancing_type, self.config.blocks_per_day)     
             datafile_loadtime = time.time()   
             datafile_loadtime_str = datetime.fromtimestamp(datafile_loadtime).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Datafiles loaded at {datafile_loadtime_str} ({datafile_loadtime - start_time:.4f} seconds).')
             
             de_result = scenario.solve(self.config)
+
             solve_time = time.time()   
             solve_time_str = datetime.fromtimestamp(solve_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours).')
-            
+
             if self.config.type == 'single_time':
                 scenario.statistics = Statistics(
                     de_result.x,
@@ -55,6 +56,29 @@ class Model:
                 scenario.logger.info(f'Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).')
 
             scenario.unload_datafiles()
+
+            if self.config.balancing_type == 'simple' and self.config.type == 'single_time': # Currently broken for broad optimum
+                scenario.logger.info(f'Starting polish...')
+                scenario.reset_static()
+                scenario.load_datafiles(self.datafile_filenames_dict, 'full', self.config.blocks_per_day) 
+                de_result = scenario.polish(self.config, de_result.population)
+                scenario.statistics = Statistics(
+                    de_result.x,
+                    scenario.static,
+                    scenario.fleet,
+                    scenario.network,
+                    scenario.results_dir,
+                    scenario.name,
+                    'polish',
+                    True, 
+                )
+                scenario.statistics.generate_result_files()
+                scenario.statistics.write_results()
+                scenario.unload_datafiles()
+                polish_time = time.time() 
+                polish_time_str = datetime.fromtimestamp(results_time).strftime('%d/%m/%Y %H:%M:%S')
+                scenario.logger.info(f'Polish results saved at {polish_time_str} ({polish_time - results_time:.4f} seconds).')
+
             end_time = time.time()
             end_time_str = datetime.fromtimestamp(end_time).strftime('%d/%m/%Y %H:%M:%S')
             scenario.logger.info(f'Scenario completed at {end_time_str} (Total time taken: {(end_time - start_time)/(60*60):.4f} hours).')
@@ -65,7 +89,17 @@ class Model:
 if __name__ == '__main__':
     model = Model()
     for scenario in model.scenarios.values():
-        scenario.load_datafiles()  
+        scenario.load_datafiles(model.datafile_filenames_dict, model.config.balancing_type, model.config.blocks_per_day)  
+        scenario.statistics = Statistics(
+            scenario.x0,
+            scenario.static,
+            scenario.fleet,
+            scenario.network,
+            scenario.results_dir,
+            scenario.name,
+            model.config.balancing_type,
+            False 
+        )
         scenario.statistics.generate_result_files()
         scenario.statistics.write_results()
         scenario.unload_datafiles()

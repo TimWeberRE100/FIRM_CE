@@ -35,12 +35,12 @@ def create_dynamic_copy(fleet_instance, nodes_typed_dict, lines_typed_dict):
     return fleet_copy
 
 @njit(fastmath=FASTMATH)
-def build_capacities(fleet_instance, decision_x, resolution: float) -> None:
+def build_capacities(fleet_instance, decision_x, interval_resolutions: NDArray[np.float64]) -> None:
     if fleet_instance.static_instance:
         raise_static_modification_error()
             
     for generator in fleet_instance.generators.values():
-        generator_m.build_capacity(generator, decision_x[generator.candidate_x_idx], resolution)
+        generator_m.build_capacity(generator, decision_x[generator.candidate_x_idx], interval_resolutions)
 
     for storage in fleet_instance.storages.values():
         storage_m.build_capacity(storage, decision_x[storage.candidate_p_x_idx], "power")
@@ -100,11 +100,11 @@ def update_remaining_flexible_energies(fleet_instance, interval: int, resolution
     return None
 
 @njit(fastmath=FASTMATH)    
-def calculate_lt_generations(fleet_instance, resolution: float) -> None:
+def calculate_lt_generations(fleet_instance, interval_resolutions: NDArray[np.float64]) -> None:
     for generator in fleet_instance.generators.values():
         if generator_m.check_unit_type(generator, 'flexible'):
-            generator_m.calculate_lt_generation(generator, resolution)
+            generator_m.calculate_lt_generation(generator, interval_resolutions)
 
     for storage in fleet_instance.storages.values():
-        storage_m.calculate_lt_discharge(storage, resolution)
+        storage_m.calculate_lt_discharge(storage, interval_resolutions)
     return None

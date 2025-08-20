@@ -67,12 +67,12 @@ class Node:
         self.name = name
         self.data_status = "unloaded"
         self.data = np.empty((0,), dtype=np.float64)
-
+        
         self.residual_load = np.empty((0,), dtype=np.float64)
-        self.flexible_merit_order = np.empty((0,), dtype=np.int64)
-        self.storage_merit_order = np.empty((0,), dtype=np.int64)
 
         # Dynamic
+        self.flexible_merit_order = np.empty((0,), dtype=np.int64)
+        self.storage_merit_order = np.empty((0,), dtype=np.int64)
         self.netload_t = 0.0 # GW
         self.discharge_max_t = np.empty((0,), dtype=np.float64) # GW
         self.charge_max_t = np.empty((0,), dtype=np.float64) # GW

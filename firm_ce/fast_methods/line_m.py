@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 
 from firm_ce.system.topology import Line, Node
 from firm_ce.common.constants import JIT_ENABLED, FASTMATH
@@ -57,8 +58,8 @@ def allocate_memory(line_instance, intervals_count: int) -> None:
     return None
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_flow(line_instance, resolution: float) -> None:
-    line_instance.lt_flows = sum(np.abs(line_instance.flows)) * resolution
+def calculate_lt_flow(line_instance, interval_resolutions: NDArray[np.float64]) -> None:
+    line_instance.lt_flows = sum(np.abs(line_instance.flows)*interval_resolutions)
     return None
 
 @njit(fastmath=FASTMATH)

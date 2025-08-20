@@ -76,13 +76,13 @@ def balance_for_period(start_t: int,
                        solution,
                        ) -> None:
     perform_precharge = False
-   
+
     for t in range(start_t, end_t):
         initialise_interval(
             t,
             solution.network,
             solution.fleet,            
-            solution.static.resolution
+            solution.static.interval_resolutions[t] 
         )
 
         if not precharging_allowed:
@@ -107,8 +107,8 @@ def balance_for_period(start_t: int,
 
         network_m.calculate_spillage_and_deficit(solution.network, t)
 
-        fleet_m.update_stored_energies(solution.fleet, t, solution.static.resolution)
-        fleet_m.update_remaining_flexible_energies(solution.fleet, t, solution.static.resolution)
+        fleet_m.update_stored_energies(solution.fleet, t, solution.static.interval_resolutions[t] )
+        fleet_m.update_remaining_flexible_energies(solution.fleet, t, solution.static.interval_resolutions[t] )
 
         if not precharging_allowed:
             continue

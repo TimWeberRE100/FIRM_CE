@@ -10,6 +10,7 @@ from firm_ce.common.exceptions import (
 from firm_ce.fast_methods import generator_m
 from firm_ce.common.typing import TypedDict, float64, string
 from firm_ce.common.jit_overload import njit 
+from firm_ce.optimisation.simple import data_medoids_for_blocks
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(node_instance):
@@ -36,6 +37,7 @@ def load_data(node_instance,
 def unload_data(node_instance):
     node_instance.data_status = "unloaded"
     node_instance.data = np.empty((0,), dtype=np.float64)
+    node_instance.residual_load = np.empty((0,), dtype=np.float64)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -52,18 +54,18 @@ def get_data(node_instance, data_type):
     return None
 
 @njit(fastmath=FASTMATH)
-def allocate_memory(node_instance):
+def allocate_memory(node_instance, intervals_count):
     if node_instance.static_instance:
         raise_static_modification_error()
-    node_instance.imports = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.exports = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.deficits = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.spillage = np.zeros_like(node_instance.residual_load, dtype=np.float64)
+    node_instance.imports = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.exports = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.deficits = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.spillage = np.zeros(intervals_count, dtype=np.float64)
 
-    node_instance.flexible_power = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.storage_power = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.flexible_energy = np.zeros_like(node_instance.residual_load, dtype=np.float64)
-    node_instance.storage_energy = np.zeros_like(node_instance.residual_load, dtype=np.float64)
+    node_instance.flexible_power = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.storage_power = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.flexible_energy = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.storage_energy = np.zeros(intervals_count, dtype=np.float64)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -145,3 +147,9 @@ def check_remaining_netload(node_instance, interval: int, check_case: str) -> bo
     elif check_case == 'both':
         return abs(node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]) > 1e-6
     return False
+
+@njit(fastmath=FASTMATH)
+def convert_full_to_simple(node_instance, block_first_intervals: NDArray[np.int64], block_final_intervals: NDArray[np.int64]) -> None:
+    node_instance.data = data_medoids_for_blocks(node_instance.data, block_first_intervals, block_final_intervals)
+    node_instance.residual_load = data_medoids_for_blocks(node_instance.residual_load, block_first_intervals, block_final_intervals)
+    return None

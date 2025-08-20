@@ -10,6 +10,7 @@ from firm_ce.common.exceptions import (
 )
 from firm_ce.fast_methods import node_m, ltcosts_m
 from firm_ce.common.jit_overload import njit
+from firm_ce.optimisation.simple import data_medoids_for_blocks
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(generator_instance, nodes_typed_dict, lines_typed_dict):
@@ -42,23 +43,23 @@ def create_dynamic_copy(generator_instance, nodes_typed_dict, lines_typed_dict):
     return generator_copy
 
 @njit(fastmath=FASTMATH)
-def build_capacity(generator_instance, new_build_power_capacity: float, resolution: float):
+def build_capacity(generator_instance, new_build_power_capacity: float, interval_resolutions: NDArray[np.float64]):
     if generator_instance.static_instance:
         raise_static_modification_error()     
     generator_instance.capacity += new_build_power_capacity   
     generator_instance.new_build += new_build_power_capacity 
     generator_instance.line.capacity += new_build_power_capacity 
 
-    update_residual_load(generator_instance, new_build_power_capacity, resolution)     
+    update_residual_load(generator_instance, new_build_power_capacity, interval_resolutions)     
     return None
 
 @njit(fastmath=FASTMATH)    
-def load_data(generator_instance, generation_trace: NDArray[np.float64], annual_constraints: NDArray[np.float64], resolution: float):
+def load_data(generator_instance, generation_trace: NDArray[np.float64], annual_constraints: NDArray[np.float64], interval_resolutions: NDArray[np.float64]):
     generator_instance.data_status= "loaded"
     generator_instance.data = generation_trace
     generator_instance.annual_constraints_data = annual_constraints
 
-    update_residual_load(generator_instance, generator_instance.initial_capacity, resolution)
+    update_residual_load(generator_instance, generator_instance.initial_capacity, interval_resolutions)
     return None
 
 @njit(fastmath=FASTMATH)    
@@ -76,7 +77,7 @@ def get_data(generator_instance, data_type: str) -> Union[NDArray[np.float64], N
     if data_type == "annual_constraints_data":
         return generator_instance.annual_constraints_data        
     elif data_type == "trace":
-        return generator_instance.data        
+        return generator_instance.data    
     else:
         raise RuntimeError("Invalid data_type argument for Generator.get_data(data_type).")
     return None
@@ -91,16 +92,16 @@ def allocate_memory(generator_instance, intervals_count):
     return None
 
 @njit(fastmath=FASTMATH)    
-def update_residual_load(generator_instance, added_capacity: float, resolution: float) -> None:
+def update_residual_load(generator_instance, added_capacity: float, interval_resolutions: NDArray[np.float64]) -> None:
     if get_data(generator_instance, "trace").shape[0] > 0 and added_capacity > 0.0:
         new_trace = get_data(generator_instance, "trace") * added_capacity
         node_m.get_data(generator_instance.node, "residual_load")[:] -= new_trace
-        update_lt_generation(generator_instance, new_trace, resolution) 
+        update_lt_generation(generator_instance, new_trace, interval_resolutions) 
     return None
 
 @njit(fastmath=FASTMATH)    
-def update_lt_generation(generator_instance, generation_trace: NDArray[np.float64], resolution: float) -> None:
-    generator_instance.lt_generation += sum(generation_trace) * resolution
+def update_lt_generation(generator_instance, generation_trace: NDArray[np.float64], interval_resolutions: NDArray[np.float64]) -> None:
+    generator_instance.lt_generation += sum(generation_trace*interval_resolutions)
     generator_instance.line.lt_flows += generator_instance.lt_generation
     return None
 
@@ -147,9 +148,9 @@ def update_remaining_energy(generator_instance, interval: int, resolution: float
     return None
 
 @njit(fastmath=FASTMATH)    
-def calculate_lt_generation(generator_instance, resolution: float) -> None:
-    update_lt_generation(generator_instance, generator_instance.dispatch_power, resolution)
-    generator_instance.unit_lt_hours = sum(np.ceil(generator_instance.dispatch_power/generator_instance.unit_size)) * resolution
+def calculate_lt_generation(generator_instance, interval_resolutions: NDArray[np.float64]) -> None:
+    update_lt_generation(generator_instance, generator_instance.dispatch_power, interval_resolutions)
+    generator_instance.unit_lt_hours = sum(np.ceil(generator_instance.dispatch_power/generator_instance.unit_size) * interval_resolutions)
     return None
 
 @njit(fastmath=FASTMATH)    
@@ -159,3 +160,8 @@ def calculate_lt_costs(generator_instance, years_float: float, year_count: int) 
     ltcosts_m.calculate_vom(generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.cost)
     ltcosts_m.calculate_fuel(generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.unit_lt_hours, generator_instance.cost)
     return ltcosts_m.get_total(generator_instance.lt_costs)
+
+@njit(fastmath=FASTMATH)
+def convert_full_to_simple(generator_instance, block_first_intervals: NDArray[np.int64], block_final_intervals: NDArray[np.int64]) -> None:
+    generator_instance.data = data_medoids_for_blocks(generator_instance.data, block_first_intervals, block_final_intervals)
+    return None

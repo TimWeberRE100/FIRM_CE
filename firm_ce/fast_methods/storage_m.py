@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 
 from firm_ce.common.constants import JIT_ENABLED, FASTMATH
 from firm_ce.system.components import Storage
@@ -120,14 +121,14 @@ def update_stored_energy(storage_instance, interval: int, resolution: float) -> 
     return None
 
 @njit(fastmath=FASTMATH)    
-def calculate_lt_discharge(storage_instance, resolution: float) -> None:
+def calculate_lt_discharge(storage_instance, interval_resolutions: NDArray[np.float64]) -> None:
     storage_instance.lt_discharge = sum(
-        np.maximum(storage_instance.dispatch_power, 0)
-    ) * resolution
+        np.maximum(storage_instance.dispatch_power, 0)*interval_resolutions
+    )
 
     storage_instance.line.lt_flows += sum(
-        np.abs(storage_instance.dispatch_power)
-    ) * resolution
+        np.abs(storage_instance.dispatch_power)*interval_resolutions
+    )
     return None
 
 @njit(fastmath=FASTMATH)    

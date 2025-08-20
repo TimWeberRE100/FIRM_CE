@@ -15,6 +15,7 @@ from firm_ce.fast_methods import (
     generator_m, fleet_m, 
     ltcosts_m,
 )
+from firm_ce.optimisation.simple import get_block_intervals
 
 class Statistics:
     def __init__(self,
@@ -37,9 +38,12 @@ class Statistics:
         print(f"Statistics solution evaluation time: {end_time - start_time:.4f} seconds")
         print(f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], Penalties: {self.solution.penalties}")
 
-        self.results_directory = self.create_solution_directory(solution_results_directory, scenario_name)
+        self.results_directory = self.create_solution_directory(solution_results_directory, scenario_name+'_'+balancing_type)
         self.copy_temp_files(copy_callback)
         self.result_files = None
+
+        self.full_intervals_count = self.solution.static.block_lengths.sum()
+        self.block_first_intervals, self.block_last_intervals = get_block_intervals(self.solution.static.block_lengths)
 
     def create_solution_directory(self, result_directory: str, solution_name: str) -> str:
         safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', solution_name)
@@ -56,6 +60,16 @@ class Statistics:
                 shutil.copy(os.path.join(temp_dir, "population.csv"), os.path.join(self.results_directory, "population.csv"))
                 shutil.copy(os.path.join(temp_dir, "population_energies.csv"), os.path.join(self.results_directory, "population_energies.csv"))
         return None
+    
+    def expand_block_data(self, block_array: NDArray):    
+        if self.full_intervals_count == self.solution.static.intervals_count:
+            return block_array
+          
+        expanded_array = np.zeros(self.full_intervals_count, dtype=np.float64)
+        for block in range(self.solution.static.intervals_count):
+            for idx in range(self.block_first_intervals[block], self.block_last_intervals[block]):
+                expanded_array[idx] = block_array[block]
+        return expanded_array
     
     def generate_result_files(self):
         self.result_files = {
@@ -185,60 +199,60 @@ class Statistics:
                     + len(self.solution.network.major_lines)
             case "network":
                 column_count = 10
-        data_array = np.zeros((self.solution.static.intervals_count, column_count), dtype=np.float64)
+        data_array = np.zeros((self.full_intervals_count, column_count), dtype=np.float64)
 
         column_counter = 0
         match aggregation_type:
             case "assets":
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Demand [MW]')
-                    data_array[:,column_counter] = node.data*1000
+                    data_array[:,column_counter] = self.expand_block_data(node.data*1000)
                     column_counter += 1
 
                 for generator in self.solution.fleet.generators.values():
                     header.append(generator.name + ' [MW]')
                     match generator.unit_type:
                         case 'flexible':
-                            data_array[:,column_counter] = generator.dispatch_power*1000
+                            data_array[:,column_counter] = self.expand_block_data(generator.dispatch_power*1000)
                         case _:
-                            data_array[:,column_counter] = generator.data*generator.capacity*1000
+                            data_array[:,column_counter] = self.expand_block_data(generator.data*generator.capacity*1000)
                     column_counter += 1
 
                 for storage in self.solution.fleet.storages.values():
                     header.append(storage.name + ' [MW]')
-                    data_array[:,column_counter] = storage.dispatch_power*1000
+                    data_array[:,column_counter] = self.expand_block_data(storage.dispatch_power*1000)
                     column_counter += 1
 
                 for generator in self.solution.fleet.generators.values():
                     if generator.unit_type == 'flexible':
                         header.append(generator.name + 'Remaining Energy [MWh]')
-                        data_array[:,column_counter] = generator.remaining_energy*1000
+                        data_array[:,column_counter] = self.expand_block_data(generator.remaining_energy*1000)
                         column_counter += 1
 
                 for storage in self.solution.fleet.storages.values():
                     header.append(storage.name + ' Stored Energy [MWh]')
-                    data_array[:,column_counter] = storage.stored_energy*1000
+                    data_array[:,column_counter] = self.expand_block_data(storage.stored_energy*1000)
                     column_counter += 1
 
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Spillage [MW]')
-                    data_array[:,column_counter] = node.spillage*1000
+                    data_array[:,column_counter] = self.expand_block_data(node.spillage*1000)
                     column_counter += 1
 
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Deficit [MW]')
-                    data_array[:,column_counter] = node.deficits*1000
+                    data_array[:,column_counter] = self.expand_block_data(node.deficits*1000)
                     column_counter += 1
 
                 for line in self.solution.network.major_lines.values():
                     header.append(line.name + ' [MW]')
-                    data_array[:,column_counter] = line.flows*1000
+                    data_array[:,column_counter] = self.expand_block_data(line.flows*1000)
                     column_counter += 1
 
             case "nodes":
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Demand [MW]')
-                    data_array[:,column_counter] = node.data*1000
+                    data_array[:,column_counter] = self.expand_block_data(node.data*1000)
                     column_counter += 1
                 
                 for header_item in ['Solar [MW]', 'Wind [MW]', 'Baseload [MW]', 'Flexible Dispatch [MW]', 
@@ -251,43 +265,43 @@ class Statistics:
                     match generator.unit_type:
                         case "solar":
                             column_idx = len(self.solution.network.nodes) + generator.node.order
-                            data_array[:,column_idx] += generator.data*generator.capacity*1000
+                            data_array[:,column_idx] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "wind":                            
                             column_idx = 2*len(self.solution.network.nodes) + generator.node.order
-                            data_array[:,column_idx] += generator.data*generator.capacity*1000
+                            data_array[:,column_idx] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "baseload":
                             column_idx = 3*len(self.solution.network.nodes) + generator.node.order
-                            data_array[:,column_idx] += generator.data*generator.capacity*1000
+                            data_array[:,column_idx] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "flexible":
                             column_idx = 4*len(self.solution.network.nodes) + generator.node.order
-                            data_array[:,column_idx] += generator.dispatch_power*1000
+                            data_array[:,column_idx] += self.expand_block_data(generator.dispatch_power*1000)
                             
 
                 for storage in self.solution.fleet.storages.values():
                     column_idx = 5*len(self.solution.network.nodes) + storage.node.order
-                    data_array[:,column_idx] += storage.dispatch_power*1000
+                    data_array[:,column_idx] += self.expand_block_data(storage.dispatch_power*1000)
 
                 for generator in self.solution.fleet.generators.values():
                     if generator.unit_type == 'flexible':
                         column_idx = 6*len(self.solution.network.nodes) + generator.node.order
-                        data_array[:,column_idx] += generator.remaining_energy*1000
+                        data_array[:,column_idx] += self.expand_block_data(generator.remaining_energy*1000)
 
                 for storage in self.solution.fleet.storages.values():
                     column_idx = 7*len(self.solution.network.nodes) + storage.node.order
-                    data_array[:,column_idx] += storage.stored_energy*1000
+                    data_array[:,column_idx] += self.expand_block_data(storage.stored_energy*1000)
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Spillage [MW]')
-                    data_array[:,column_counter] += node.spillage*1000
+                    data_array[:,column_counter] += self.expand_block_data(node.spillage*1000)
                     column_counter += 1
 
                 for node in self.solution.network.nodes.values():
                     header.append(node.name + ' Deficit [MW]')
-                    data_array[:,column_counter] += node.deficits*1000
+                    data_array[:,column_counter] += self.expand_block_data(node.deficits*1000)
                     column_counter += 1
 
                 for line in self.solution.network.major_lines.values():
                     header.append(line.name + ' Flows [MW]')
-                    data_array[:,column_counter] += line.flows*1000
+                    data_array[:,column_counter] += self.expand_block_data(line.flows*1000)
                     column_counter += 1
 
             case "network":
@@ -297,25 +311,25 @@ class Statistics:
                                     'Spillage [MW]', 'Deficit [MW]']:
                     header.append(header_item)
                 for node in self.solution.network.nodes.values():
-                    data_array[:,0] += node.data*1000
-                    data_array[:,8] += node.spillage*1000
-                    data_array[:,9] += node.deficits*1000
+                    data_array[:,0] += self.expand_block_data(node.data*1000)
+                    data_array[:,8] += self.expand_block_data(node.spillage*1000)
+                    data_array[:,9] += self.expand_block_data(node.deficits*1000)
 
                 for generator in self.solution.fleet.generators.values():
                     match generator.unit_type:
                         case "solar":
-                            data_array[:,1] += generator.data*generator.capacity*1000
+                            data_array[:,1] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "wind":
-                            data_array[:,2] += generator.data*generator.capacity*1000
+                            data_array[:,2] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "baseload":
-                            data_array[:,3] += generator.data*generator.capacity*1000
+                            data_array[:,3] += self.expand_block_data(generator.data*generator.capacity*1000)
                         case "flexible":
-                            data_array[:,4] += generator.dispatch_power*1000
-                            data_array[:,6] += generator.remaining_energy*1000
+                            data_array[:,4] += self.expand_block_data(generator.dispatch_power*1000)
+                            data_array[:,6] += self.expand_block_data(generator.remaining_energy*1000)
 
                 for storage in self.solution.fleet.storages.values():
-                    data_array[:,5] += storage.dispatch_power*1000
-                    data_array[:,7] += storage.stored_energy*1000
+                    data_array[:,5] += self.expand_block_data(storage.dispatch_power*1000)
+                    data_array[:,7] += self.expand_block_data(storage.stored_energy*1000)
         
         result_file = ResultFile(
             f'energy_balance_{aggregation_type.upper()}', 
@@ -464,3 +478,4 @@ class Statistics:
         residual_load_header = [node.name for node in self.solution.network.nodes.values()]
         residual_load_data = np.array([node.residual_load for node in self.solution.network.nodes.values()], dtype=np.float64).T
         residual_load_dump = ResultFile('residual_load',self.results_directory,residual_load_header,residual_load_data).write()
+        block_lengths_dump = ResultFile('block_lengths',self.results_directory,residual_load_header,self.solution.static.block_lengths).write()

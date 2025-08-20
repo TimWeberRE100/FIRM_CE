@@ -3,6 +3,8 @@ __pycache__
 results
 preprocessing
 firm_ce/config/Backup
-firm_ce/config_ISP
-firm_ce/data_ISP
+firm_ce/config_isp
+firm_ce/data_isp
+firm_ce/config_validation
+firm_ce/data_validation
 !results/temp/*

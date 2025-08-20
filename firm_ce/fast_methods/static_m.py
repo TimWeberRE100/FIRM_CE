@@ -16,6 +16,19 @@ def get_year_t_boundaries(static_instance, year: int) -> NDArray[np.int64]:
     return static_instance.year_first_t[year], last_t
 
 @njit(fastmath=FASTMATH)
+def set_year_first_block(static_instance, blocks_per_day: int):
+    static_instance.year_first_t = np.zeros(static_instance.year_count, dtype=np.int64)
+
+    leap_days = 0
+    for i in range(static_instance.year_count):
+        static_instance.year_first_t[i] = blocks_per_day*(i*365 + leap_days)
+
+        year = static_instance.first_year + i
+        if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
+            leap_days += 1
+    return None
+
+@njit(fastmath=FASTMATH)
 def set_year_energy_demand(static_instance, nodes_typed_dict: Node_InstanceType) -> None:
     for year in range(static_instance.year_count):
         first_t, last_t = get_year_t_boundaries(static_instance, year)
@@ -31,3 +44,8 @@ def unset_year_energy_demand(static_instance) -> None:
 @njit(fastmath=FASTMATH)
 def check_reliability_constraint(static_instance, year: int, year_unserved_energy: float) -> bool:
     return (year_unserved_energy / static_instance.year_energy_demand[year]) <= static_instance.allowance
+
+@njit(fastmath=FASTMATH)
+def set_block_resolutions(static_instance, block_durations: NDArray[np.int64]) -> None:
+    static_instance.interval_resolutions = block_durations*static_instance.resolution
+    return None

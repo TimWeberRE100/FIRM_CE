@@ -1,6 +1,7 @@
 from typing import Dict
 import numpy as np
 import gc
+from numpy.typing import NDArray
 
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.io.file_manager import DataFile
@@ -16,6 +17,7 @@ from firm_ce.constructors import (
     unload_data_from_network,
     )
 from firm_ce.fast_methods import static_m
+from firm_ce.optimisation.simple import convert_full_to_simple
 
 class Scenario:
     def __init__(self, 
@@ -23,19 +25,19 @@ class Scenario:
                  scenario_id: int) -> None:
         self.logger, self.results_dir = model_data.logger, model_data.results_dir
 
-        scenario_data = model_data.scenarios.get(scenario_id) 
+        self.scenario_data = model_data.scenarios.get(scenario_id) 
 
         self.id = scenario_id
-        self.name = scenario_data.get('scenario_name', '')
-        self.type = scenario_data.get('type', '')
+        self.name = self.scenario_data.get('scenario_name', '')
+        self.type = self.scenario_data.get('type', '')
         self.x0 = self._get_x0(model_data.x0s)
 
         self.network = construct_Network_object(
-            scenario_data.get('nodes', '').split(','), 
+            self.scenario_data.get('nodes', '').split(','), 
             self._get_scenario_dicts(model_data.lines), 
-            scenario_data.get('networksteps_max', 0)
+            self.scenario_data.get('networksteps_max', 0)
             )
-        self.static = construct_ScenarioParameters_object(scenario_data, len(self.network.nodes))
+        self.static = construct_ScenarioParameters_object(self.scenario_data, len(self.network.nodes))
         self.fleet = construct_Fleet_object(
             self._get_scenario_dicts(model_data.generators), 
             self._get_scenario_dicts(model_data.storages), 
@@ -50,12 +52,18 @@ class Scenario:
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
     
-    def load_datafiles(self, all_datafiles: Dict[str, DataFile]) -> None:      
+    def load_datafiles(self, 
+                       all_datafiles: Dict[str, DataFile], 
+                       balancing_type: str,
+                       blocks_per_day: int | None = None) -> None:      
         datafiles = self._get_datafiles(all_datafiles)
 
         load_datafiles_to_network(self.network, datafiles)
 
-        load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)
+        load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)        
+
+        if balancing_type == 'simple':
+            convert_full_to_simple(self.network, self.fleet, self.static, blocks_per_day)
 
         static_m.set_year_energy_demand(self.static, self.network.nodes)
 
@@ -70,6 +78,10 @@ class Scenario:
 
         gc.collect()
 
+        return None
+    
+    def reset_static(self) -> None:
+        self.static = construct_ScenarioParameters_object(self.scenario_data, len(self.network.nodes))
         return None
     
     def _get_scenario_dicts(self, imported_dict: Dict[str,Dict[str,str]]) -> Dict[str,str]:
@@ -116,5 +128,18 @@ class Scenario:
                         self.network,
                         self.logger,
                         self.name)
+        solver.evaluate()
+        return solver.result
+    
+    def polish(self, config, initial_population: NDArray[np.float64]):
+        solver = Solver(config, 
+                        self.x0,
+                        self.static,
+                        self.fleet,
+                        self.network,
+                        self.logger,
+                        self.name,
+                        True,
+                        initial_population)
         solver.evaluate()
         return solver.result

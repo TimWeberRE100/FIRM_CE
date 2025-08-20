@@ -6,6 +6,8 @@ from firm_ce.common.exceptions import (
 from firm_ce.fast_methods import line_m, node_m, route_m
 from firm_ce.common.typing import TypedDict, TypedList, int64
 from firm_ce.common.jit_overload import njit
+from numpy.typing import NDArray
+import numpy as np
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(network_instance):
@@ -70,7 +72,7 @@ def allocate_memory(network_instance, intervals_count: int) -> None:
     if network_instance.static_instance:
         raise_static_modification_error()
     for node in network_instance.nodes.values():
-        node_m.allocate_memory(node)
+        node_m.allocate_memory(node, intervals_count)
     for line in network_instance.major_lines.values():
         line_m.allocate_memory(line, intervals_count)
     return None
@@ -83,11 +85,11 @@ def check_remaining_netloads(network_instance, interval: int, check_case: str) -
     return False
 
 @njit(fastmath=FASTMATH)
-def calculate_period_unserved_power(network_instance, first_t: int, last_t: int):
-    unserved_power = 0
+def calculate_period_unserved_energy(network_instance, first_t: int, last_t: int, interval_resolutions: NDArray[np.float64]):
+    unserved_energy = 0
     for node in network_instance.nodes.values():
-        unserved_power += sum(node.deficits[first_t:last_t+1])
-    return unserved_power
+        unserved_energy += sum(node.deficits[first_t:last_t+1]*interval_resolutions[first_t:last_t+1])
+    return unserved_energy
 
 @njit(fastmath=FASTMATH)
 def reset_transmission(network_instance, interval: int) -> None:
@@ -222,9 +224,9 @@ def assign_flexible_merit_orders(network_instance, generators_typed_dict) -> Non
     return None
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_flows(network_instance, resolution: float) -> None:
+def calculate_lt_flows(network_instance, interval_resolutions: NDArray[np.float64]) -> None:
     for line in network_instance.major_lines.values():
-        line_m.calculate_lt_flow(line, resolution)
+        line_m.calculate_lt_flow(line, interval_resolutions)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -235,3 +237,10 @@ def calculate_lt_line_losses(network_instance) -> float:
     for line in network_instance.minor_lines.values():
         total_line_losses += line_m.get_lt_losses(line)
     return total_line_losses
+
+@njit(fastmath=FASTMATH)
+def calculate_net_residual_load(network_instance) -> NDArray[np.float64]:
+    net_residual_load = np.zeros_like(network_instance.nodes[0].residual_load, dtype=np.float64)
+    for node in network_instance.nodes.values():
+        net_residual_load += node.residual_load
+    return net_residual_load

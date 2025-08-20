@@ -32,6 +32,8 @@ class Solver:
                  network_static: Network_InstanceType,
                  scenario_logger: Logger,
                  scenario_name: str,
+                 polish_flag: bool = False,
+                 initial_population: NDArray[np.float64] | None = None,
                  ) -> None:
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
@@ -44,6 +46,14 @@ class Solver:
         self.scenario_name = scenario_name
         self.result = None
         self.optimal_lcoe = None
+        self.initial_population = initial_population
+
+        if polish_flag:
+            self.population = 10
+            self.iterations = int(parameters_static.iterations // 8)
+        else:
+            self.population = config.population
+            self.iterations = config.iterations
 
     def get_bounds(self):
         def power_capacity_bounds(asset_list, build_cap_constraint):
@@ -108,8 +118,8 @@ class Solver:
             bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
             args = self.get_differential_evolution_args(),
             tol=0,
-            maxiter=self.config.iterations, 
-            popsize=self.config.population, 
+            maxiter=self.iterations, 
+            popsize=self.population, 
             mutation=(0.2,self.config.mutation), 
             recombination=self.config.recombination,
             disp=True, 
@@ -163,8 +173,8 @@ class Solver:
                     bounds=list(zip(self.lower_bounds, self.upper_bounds)),
                     args=args,  
                     tol=0,
-                    maxiter=self.config.iterations, 
-                    popsize=self.config.population, 
+                    maxiter=self.iterations, 
+                    popsize=self.population, 
                     mutation=(0.2,self.config.mutation), 
                     recombination=self.config.recombination,
                     disp=True, 
@@ -225,8 +235,8 @@ class Solver:
                     bounds=list(zip(self.lower_bounds, self.upper_bounds)),
                     args=args,
                     tol=0,
-                    maxiter=self.config.iterations,
-                    popsize=self.config.population,
+                    maxiter=self.iterations,
+                    popsize=self.population,
                     mutation=(0.2,self.config.mutation),
                     recombination=self.config.recombination,
                     disp=True,
