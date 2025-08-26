@@ -3,7 +3,7 @@ import numpy as np
 from numpy.typing import NDArray
 import time
 
-from firm_ce.common.constants import SAVE_POPULATION
+from firm_ce.common.constants import SAVE_POPULATION, PENALTY_MULTIPLIER
 from firm_ce.optimisation.single_time import Solution
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
@@ -26,17 +26,19 @@ class Statistics:
                  solution_results_directory: str,
                  scenario_name: str,
                  balancing_type: str,
+                 fixed_costs_threshold: float,
                  copy_callback: bool = True):
         self.solution = Solution(x_candidate,
                                 parameters_static,
                                 fleet_static,
                                 network_static,
-                                balancing_type) 
+                                balancing_type,
+                                fixed_costs_threshold) 
         start_time = time.time()
         self.solution.evaluate()
         end_time = time.time()
         print(f"Statistics solution evaluation time: {end_time - start_time:.4f} seconds")
-        print(f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], Penalties: {self.solution.penalties}")
+        print(f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], Penalties: {self.solution.penalties}, Deficit: {self.solution.penalties/PENALTY_MULTIPLIER}")
 
         self.results_directory = self.create_solution_directory(solution_results_directory, scenario_name+'_'+balancing_type)
         self.copy_temp_files(copy_callback)
@@ -61,7 +63,7 @@ class Statistics:
                 shutil.copy(os.path.join(temp_dir, "population_energies.csv"), os.path.join(self.results_directory, "population_energies.csv"))
         return None
     
-    def expand_block_data(self, block_array: NDArray):    
+    def expand_block_data(self, block_array: NDArray[np.float64]) -> NDArray[np.float64]:    
         if self.full_intervals_count == self.solution.static.intervals_count:
             return block_array
           
@@ -71,7 +73,7 @@ class Statistics:
                 expanded_array[idx] = block_array[block]
         return expanded_array
     
-    def generate_result_files(self):
+    def generate_result_files(self) -> None:
         self.result_files = {
             'capacities': self.generate_capacities_file(),
             'component_costs': self.generate_component_costs_file(),
@@ -84,7 +86,7 @@ class Statistics:
         }
         return None
 
-    def write_results(self):
+    def write_results(self) -> None:
         if not self.solution.evaluated:
             print("WARNING: Solution must be evaluated before writing statistics.")
         for result_file in self.result_files.values():
@@ -225,7 +227,7 @@ class Statistics:
 
                 for generator in self.solution.fleet.generators.values():
                     if generator.unit_type == 'flexible':
-                        header.append(generator.name + 'Remaining Energy [MWh]')
+                        header.append(generator.name + ' Remaining Energy [MWh]')
                         data_array[:,column_counter] = self.expand_block_data(generator.remaining_energy*1000)
                         column_counter += 1
 
@@ -478,4 +480,4 @@ class Statistics:
         residual_load_header = [node.name for node in self.solution.network.nodes.values()]
         residual_load_data = np.array([node.residual_load for node in self.solution.network.nodes.values()], dtype=np.float64).T
         residual_load_dump = ResultFile('residual_load',self.results_directory,residual_load_header,residual_load_data).write()
-        block_lengths_dump = ResultFile('block_lengths',self.results_directory,residual_load_header,self.solution.static.block_lengths).write()
+        block_lengths_dump = ResultFile('block_lengths',self.results_directory,residual_load_header,self.solution.static.block_lengths).write() # block_lengths typing does not match np.float64

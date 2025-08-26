@@ -3,14 +3,14 @@ import numpy as np
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
-from firm_ce.common.typing import DictType, int64, float64, string, boolean
+from firm_ce.common.typing import DictType, int64, float64, unicode_type, boolean
 from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
     fuel_spec = [
         ('static_instance',boolean),
         ('id',int64),
-        ('name',string),
+        ('name',unicode_type),
         ('cost',float64),
         ('emissions',float64),
     ]
@@ -23,7 +23,12 @@ class Fuel:
     Represents a fuel type with associated cost and emissions.
     """
 
-    def __init__(self, static_instance, idx, name, cost, emissions) -> None:
+    def __init__(self, 
+                 static_instance: boolean, 
+                 idx: int64, 
+                 name: unicode_type, 
+                 cost: float64, 
+                 emissions: float64) -> None:
         """
         Initialize a Fuel object.
 
@@ -49,7 +54,7 @@ if JIT_ENABLED:
         ('static_instance',boolean),
         ('id',int64),
         ('order', int64),
-        ('name',string),
+        ('name',unicode_type),
         ('node',Node_InstanceType),
         ('fuel',Fuel_InstanceType),
         ('unit_size',float64),
@@ -57,11 +62,11 @@ if JIT_ENABLED:
         ('min_build',float64),
         ('initial_capacity',float64),
         ('line',Line_InstanceType),
-        ('unit_type',string),
+        ('unit_type',unicode_type),
         ('near_optimum_check',boolean),
-        ('group',string),
+        ('group',unicode_type),
         ('cost',UnitCost_InstanceType),
-        ('data_status',string),
+        ('data_status',unicode_type),
         ('data',float64[:]),
         ('annual_constraints_data',float64[:]),
 
@@ -78,6 +83,15 @@ if JIT_ENABLED:
         ('unit_lt_hours',float64),
 
         ('lt_costs', LTCosts_InstanceType),
+
+        # Precharging
+        ('remaining_energy_temp_reverse',float64),
+        ('remaining_energy_temp_forward',float64),
+        ('deficit_block_max_energy',float64),
+        ('deficit_block_min_energy',float64),
+        ('trickling_flag',boolean),
+        ('trickling_reserves',float64),
+        ('remaining_trickling_reserves',float64),
     ]
 else:
     generator_spec = []
@@ -93,21 +107,21 @@ class Generator:
     """
 
     def __init__(self, 
-                 static_instance,
-                 idx, 
-                 order,
-                 name,
-                 unit_size,
-                 max_build,
-                 min_build,
-                 capacity,
-                 unit_type,
-                 near_optimum_check,
-                 node,
-                 fuel, 
-                 line,
-                 group,
-                 cost,
+                 static_instance: boolean,
+                 idx: int64, 
+                 order: int64,
+                 name: unicode_type,
+                 unit_size: float64,
+                 max_build: float64,
+                 min_build: float64,
+                 capacity: float64,
+                 unit_type: unicode_type,
+                 near_optimum_check: boolean,
+                 node: Node_InstanceType,
+                 fuel: Fuel_InstanceType, 
+                 line: Line_InstanceType,
+                 group: unicode_type,
+                 cost: UnitCost_InstanceType,
                  ) -> None:
         """
         Initialize a Generator object.
@@ -155,6 +169,15 @@ class Generator:
 
         self.lt_costs = LTCosts()
 
+        # Precharging
+        self.remaining_energy_temp_reverse = 0.0 # GWh
+        self.remaining_energy_temp_forward = 0.0 # GWh
+        self.deficit_block_max_energy = 0.0 # GWh
+        self.deficit_block_min_energy = 0.0 # GWh
+        self.trickling_flag = False # Determines whether flexible generator can precharge storage systems
+        self.trickling_reserves = 0.0 # GWh
+        self.remaining_trickling_reserves = 0.0 # GWh
+
 if JIT_ENABLED:
     Generator_InstanceType = Generator.class_type.instance_type 
 else:
@@ -165,7 +188,7 @@ if JIT_ENABLED:
         ('static_instance',boolean),
         ('id',int64),
         ('order',int64),
-        ('name',string),
+        ('name',unicode_type),
         ('node',Node_InstanceType),
         ('initial_power_capacity',float64),
         ('initial_energy_capacity',float64),
@@ -177,9 +200,9 @@ if JIT_ENABLED:
         ('min_build_p',float64),
         ('min_build_e',float64),        
         ('line',Line_InstanceType),
-        ('unit_type',string),
+        ('unit_type',unicode_type),
         ('near_optimum_check',boolean),
-        ('group',string),
+        ('group',unicode_type),
         ('cost',UnitCost_InstanceType),
 
         ('candidate_p_x_idx',int64),
@@ -198,6 +221,19 @@ if JIT_ENABLED:
         ('lt_discharge',float64),
 
         ('lt_costs',LTCosts_InstanceType),
+
+        # Precharging
+        ('deficit_block_min_storage',float64),
+        ('deficit_block_max_storage',float64),
+        ('stored_energy_temp_reverse',float64),
+        ('stored_energy_temp_forward',float64),
+        ('precharge_energy',float64),
+        ('trickling_reserves',float64),
+        ('remaining_trickling_reserves',float64),
+        ('precharge_flag',boolean),
+        ('trickling_flag',boolean),
+        ('remaining_discharge_max_t',float64),
+        ('remaining_charge_max_t',float64),
     ]
 else:
     storage_spec = []
@@ -208,25 +244,25 @@ class Storage:
     Represents an energy storage system unit in the system.
     """
     def __init__(self, 
-                 static_instance,
-                 idx,
-                 order,
-                 name,
-                 power_capacity,
-                 energy_capacity,
-                 duration,
-                 charge_efficiency,
-                 discharge_efficiency,
-                 max_build_p,
-                 max_build_e,
-                 min_build_p,
-                 min_build_e,
-                 unit_type,
-                 near_optimum_check,
-                 node,
-                 line,
-                 group,
-                 cost,) -> None:
+                 static_instance: boolean,
+                 idx: int64,
+                 order: int64,
+                 name: unicode_type,
+                 power_capacity: float64,
+                 energy_capacity: float64,
+                 duration: float64,
+                 charge_efficiency: float64,
+                 discharge_efficiency: float64,
+                 max_build_p: float64,
+                 max_build_e: float64,
+                 min_build_p: float64,
+                 min_build_e: float64,
+                 unit_type: unicode_type,
+                 near_optimum_check: boolean,
+                 node: Node_InstanceType,
+                 line: Line_InstanceType,
+                 group: unicode_type,
+                 cost: UnitCost_InstanceType,) -> None:
         """
         Initialize a Storage object.
 
@@ -276,6 +312,20 @@ class Storage:
 
         self.lt_costs = LTCosts()
 
+        # Precharging
+        self.stored_energy_temp_reverse = 0.0 # GWh
+        self.stored_energy_temp_forward = 0.0 # GWh
+        self.deficit_block_min_storage = 0.0 # GWh
+        self.deficit_block_max_storage = 0.0 # GW  h
+        self.precharge_energy = 0.0 # GWh
+        self.trickling_reserves = 0.0 # GWh 
+        self.remaining_trickling_reserves = 0.0 # GWh
+        self.precharge_flag = False # Determines whether storage system can precharge
+        self.trickling_flag = False # Determines whether storage system can trickle-charge other storages
+
+        self.remaining_discharge_max_t = 0.0 # GW
+        self.remaining_charge_max_t = 0.0 # GW
+
 if JIT_ENABLED:
     Storage_InstanceType = Storage.class_type.instance_type
 else:
@@ -293,9 +343,9 @@ else:
 @jitclass(fleet_spec)
 class Fleet:
     def __init__(self,
-                 static_instance,
-                 generators,
-                 storages,):
+                 static_instance: boolean,
+                 generators: DictType(int64, Generator_InstanceType),
+                 storages: DictType(int64, Storage_InstanceType),):
         self.static_instance = static_instance
         self.generators = generators
         self.storages = storages

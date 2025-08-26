@@ -1,6 +1,6 @@
 import numpy as np
 from numpy.typing import NDArray
-from typing import List
+from typing import Union, List, Tuple, Dict
 from itertools import chain
 from scipy.optimize import differential_evolution, OptimizeResult
 import csv, os
@@ -9,8 +9,8 @@ from logging import Logger
 from firm_ce.system.parameters import ModelConfig
 from firm_ce.optimisation.single_time import evaluate_vectorised_xs, Solution
 from firm_ce.common.constants import SAVE_POPULATION
-from firm_ce.system.components import Fleet_InstanceType
-from firm_ce.system.topology import Network_InstanceType
+from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.topology import Network_InstanceType, Line_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.optimisation.broad_optimum import (
     build_broad_optimum_var_info, 
@@ -33,7 +33,7 @@ class Solver:
                  scenario_logger: Logger,
                  scenario_name: str,
                  polish_flag: bool = False,
-                 initial_population: NDArray[np.float64] | None = None,
+                 initial_population: Union[NDArray[np.float64], None] = None,
                  ) -> None:
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
@@ -55,14 +55,16 @@ class Solver:
             self.population = config.population
             self.iterations = config.iterations
 
-    def get_bounds(self):
-        def power_capacity_bounds(asset_list, build_cap_constraint):
+    def get_bounds(self) -> NDArray[np.float64]:
+        def power_capacity_bounds(asset_list: Union[List[Generator_InstanceType],List[Storage_InstanceType],List[Line_InstanceType]], 
+                                  build_cap_constraint: str
+                                  ) -> List[float]:
             return [
                 getattr(asset, build_cap_constraint)
                 for asset in asset_list
             ]
 
-        def energy_capacity_bounds(storage_list, build_cap_constraint):
+        def energy_capacity_bounds(storage_list: List[Storage_InstanceType], build_cap_constraint: str) -> List[float]:
             return [
                 getattr(s, build_cap_constraint)
                 if s.duration == 0
@@ -90,7 +92,7 @@ class Solver:
 
         return lower_bounds, upper_bounds
 
-    def initialise_callback(self):
+    def initialise_callback(self) -> None:
         temp_dir = os.path.join("results", "temp")
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "callback.csv"), 'w', newline='') as csvfile:
@@ -100,16 +102,17 @@ class Solver:
         with open(os.path.join(temp_dir, "population_energies.csv"), 'w', newline='') as csvfile:
             csv.writer(csvfile)
 
-    def get_differential_evolution_args(self):
+    def get_differential_evolution_args(self) -> Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float]:
         args = (
             self.parameters_static,
             self.fleet_static,
             self.network_static,
             self.config.balancing_type,
+            self.config.fixed_costs_threshold,
         )
         return args
 
-    def single_time(self):
+    def single_time(self) -> None:
         self.initialise_callback()
 
         self.result = differential_evolution(
@@ -130,7 +133,7 @@ class Solver:
             vectorized=True,
         )
 
-    def get_band_lcoe_max(self):
+    def get_band_lcoe_max(self) -> float:
         solution = Solution(self.decision_x0,
                             *self.get_differential_evolution_args()) 
         
@@ -142,7 +145,7 @@ class Solver:
         
         return band_lcoe_max
 
-    def find_near_optimal_band(self):      
+    def find_near_optimal_band(self) -> Dict[str, Tuple[float]]:      
         band_lcoe_max = self.get_band_lcoe_max()
         evaluation_records = []
         bands = {}
@@ -256,7 +259,7 @@ class Solver:
     def capacity_expansion(self):
         pass
 
-    def evaluate(self):
+    def evaluate(self) -> None:
         if self.config.type == 'single_time':
             self.single_time()            
         elif self.config.type == 'near_optimum':

@@ -11,7 +11,7 @@ def select_datafile(
         datafile_type: str,
         generator_name: str,
         datafiles_imported_dict: Dict[str, DataFile],
-        ) -> NDArray:
+    ) -> NDArray[np.float64]:
     
     matching_datafiles = [
         df for df in datafiles_imported_dict.values()
@@ -26,10 +26,11 @@ def select_datafile(
     
     return trace
 
-def load_datafiles_to_generators(fleet: Fleet_InstanceType,
-                                datafiles_imported_dict: Dict[str, DataFile],
-                                resolution: float,
-                                ) -> None:
+def load_datafiles_to_generators(
+        fleet: Fleet_InstanceType,
+        datafiles_imported_dict: Dict[str, DataFile],
+        resolution: float,
+    ) -> None:
     for generator in fleet.generators.values():
         generator_m.load_data(
             generator,
@@ -39,9 +40,10 @@ def load_datafiles_to_generators(fleet: Fleet_InstanceType,
         )
     return None
 
-def load_datafiles_to_network(network: Network_InstanceType,
-                              datafiles_imported_dict: Dict[str, DataFile],
-                              ) -> None:
+def load_datafiles_to_network(
+        network: Network_InstanceType,
+        datafiles_imported_dict: Dict[str, DataFile],
+    ) -> None:
     for node in network.nodes.values():
         node_m.load_data(
             node,
@@ -49,12 +51,12 @@ def load_datafiles_to_network(network: Network_InstanceType,
         )
     return None
 
-def unload_data_from_generators(fleet):
+def unload_data_from_generators(fleet: Fleet_InstanceType):
     for generator in fleet.generators.values():
         generator_m.unload_data(generator)
     return None
 
-def unload_data_from_network(network):
+def unload_data_from_network(network: Network_InstanceType):
     for node in network.nodes.values():
         node_m.unload_data(node)
     return None

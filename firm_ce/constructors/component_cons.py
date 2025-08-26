@@ -7,9 +7,7 @@ from firm_ce.system.components import (
     Fuel_InstanceType, Fleet_InstanceType,
 )
 from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
-
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
-from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.common.typing import TypedDict, DictType, int64
 
 def construct_Fuel_object(fuel_dict: Dict[str,str]) -> Fuel_InstanceType:
@@ -28,8 +26,8 @@ def construct_Generator_object(
         fuels_imported_dict: Dict[str, Dict[str, str]],
         nodes_object_dict: DictType(int64, Node_InstanceType), 
         lines_object_dict: DictType(int64, Line_InstanceType),
-        order,
-        ) -> Generator_InstanceType:
+        order: int,
+    ) -> Generator_InstanceType:
     idx = int(generator_dict['id'])
     name = str(generator_dict['name'])
     unit_size = float(generator_dict['unit_size']) 
@@ -94,7 +92,7 @@ def construct_Storage_object(
         storage_dict: Dict[str, str], 
         nodes_object_dict: DictType(int64, Node_InstanceType), 
         lines_object_dict: DictType(int64, Line_InstanceType),
-        order,
+        order: int,
         ) -> Storage_InstanceType:
     idx = int(storage_dict['id'])
     name = str(storage_dict['name'])

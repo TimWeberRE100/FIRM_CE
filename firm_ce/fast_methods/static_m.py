@@ -1,14 +1,14 @@
 import numpy as np
-from numpy.typing import NDArray
 
-from typing import Dict
-from firm_ce.common.constants import JIT_ENABLED, FASTMATH
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
+from firm_ce.common.constants import FASTMATH
 from firm_ce.system.topology import Node_InstanceType
 from firm_ce.fast_methods import node_m
 from firm_ce.common.jit_overload import njit
+from firm_ce.common.typing import int64, DictType, float64, boolean
 
 @njit(fastmath=FASTMATH)
-def get_year_t_boundaries(static_instance, year: int) -> NDArray[np.int64]:
+def get_year_t_boundaries(static_instance: ScenarioParameters_InstanceType, year: int64) -> int64[:]:
     if year < static_instance.year_count - 1:
         last_t = static_instance.year_first_t[year+1]
     else:
@@ -16,7 +16,7 @@ def get_year_t_boundaries(static_instance, year: int) -> NDArray[np.int64]:
     return static_instance.year_first_t[year], last_t
 
 @njit(fastmath=FASTMATH)
-def set_year_first_block(static_instance, blocks_per_day: int):
+def set_year_first_block(static_instance: ScenarioParameters_InstanceType, blocks_per_day: int64) -> None:
     static_instance.year_first_t = np.zeros(static_instance.year_count, dtype=np.int64)
 
     leap_days = 0
@@ -29,7 +29,9 @@ def set_year_first_block(static_instance, blocks_per_day: int):
     return None
 
 @njit(fastmath=FASTMATH)
-def set_year_energy_demand(static_instance, nodes_typed_dict: Node_InstanceType) -> None:
+def set_year_energy_demand(static_instance: ScenarioParameters_InstanceType, 
+                           nodes_typed_dict: DictType(int64, Node_InstanceType)
+                           ) -> None:
     for year in range(static_instance.year_count):
         first_t, last_t = get_year_t_boundaries(static_instance, year)
         for node in nodes_typed_dict.values():
@@ -37,15 +39,15 @@ def set_year_energy_demand(static_instance, nodes_typed_dict: Node_InstanceType)
     return None
 
 @njit(fastmath=FASTMATH)
-def unset_year_energy_demand(static_instance) -> None:
+def unset_year_energy_demand(static_instance: ScenarioParameters_InstanceType) -> None:
     static_instance.year_energy_demand = np.zeros(static_instance.year_count, dtype=np.float64)
     return None
 
 @njit(fastmath=FASTMATH)
-def check_reliability_constraint(static_instance, year: int, year_unserved_energy: float) -> bool:
+def check_reliability_constraint(static_instance: ScenarioParameters_InstanceType, year: int64, year_unserved_energy: float64) -> boolean:
     return (year_unserved_energy / static_instance.year_energy_demand[year]) <= static_instance.allowance
 
 @njit(fastmath=FASTMATH)
-def set_block_resolutions(static_instance, block_durations: NDArray[np.int64]) -> None:
+def set_block_resolutions(static_instance: ScenarioParameters_InstanceType, block_durations: int64[:]) -> None:
     static_instance.interval_resolutions = block_durations*static_instance.resolution
     return None

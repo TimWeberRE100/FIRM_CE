@@ -28,15 +28,15 @@ else:
 @jitclass(scenario_parameters_spec)
 class ScenarioParameters:
     def __init__(self,
-                 resolution: float, 
-                 allowance: float,
-                 first_year: int,
-                 final_year: int, 
-                 year_count: int, 
-                 leap_year_count: int, 
-                 year_first_t: NDArray[np.int64],
-                 intervals_count: int,
-                 node_count: int,):        
+                 resolution: float64, 
+                 allowance: float64,
+                 first_year: int64,
+                 final_year: int64, 
+                 year_count: int64, 
+                 leap_year_count: int64, 
+                 year_first_t: int64[:],
+                 intervals_count: int64,
+                 node_count: int64,):        
 
         self.resolution = resolution # length of time interval in hours
         self.interval_resolutions = resolution*np.ones(intervals_count, dtype=np.float64) # length of blocks in hours for 'simple' balancing_method
@@ -69,3 +69,4 @@ class ModelConfig:
         self.midpoint_count = int(config_dict.get('midpoint_count', 0))
         self.balancing_type = str(config_dict['balancing_type'])
         self.blocks_per_day = int(config_dict['simple_blocks_per_day'])
+        self.fixed_costs_threshold = float(config_dict.get('fixed_costs_threshold', 500.0))

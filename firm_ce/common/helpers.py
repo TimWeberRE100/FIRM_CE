@@ -1,16 +1,4 @@
 from typing import List
-
-from firm_ce.common.constants import JIT_ENABLED
-
-if JIT_ENABLED:
-    from numba import njit    
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
     
 def parse_comma_separated(value: str) -> List[str]:
     """
@@ -26,5 +14,5 @@ def parse_comma_separated(value: str) -> List[str]:
     """
     return [item.strip() for item in value.split(',') if item.strip()]
 
-def safe_divide(num: float, denom: float):
-    return num / denom if denom != 0 else 0
+def safe_divide(num: float, denom: float) -> float:
+    return num / denom if denom != 0 else 0.0

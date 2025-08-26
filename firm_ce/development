@@ -1,7 +1,4 @@
 Fix all docstrings
 
-If simple balancing method is used, run a few polish iterations with the final population and full balancing method at the end
-Simple balancing - test at lower time resolution with full capacity dispatch, polish with the full method for 200 iterations or so
-
 Remove commented debug lines from broad_optimum module
 Fix broad_optimum for simple balancing method

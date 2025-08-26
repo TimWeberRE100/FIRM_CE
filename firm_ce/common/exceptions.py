@@ -1,13 +1,4 @@
-from firm_ce.common.constants import JIT_ENABLED
-if JIT_ENABLED:
-    from numba import njit
-else:
-    def njit(func=None, **kwargs):
-        if func is not None:
-            return func
-        def wrapper(f):
-            return f
-        return wrapper
+from firm_ce.common.jit_overload import njit
 
 @njit
 def raise_static_modification_error():

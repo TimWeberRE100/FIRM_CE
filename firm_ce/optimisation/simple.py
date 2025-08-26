@@ -3,6 +3,10 @@ from numpy.typing import NDArray
 
 from firm_ce.common.jit_overload import njit
 from firm_ce.fast_methods import network_m, static_m, node_m, generator_m
+from firm_ce.common.typing import float64, int64
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
 
 #@njit
 def prefix_sums(array_1d: NDArray[np.float64]):
@@ -194,7 +198,10 @@ def get_block_intervals(block_lengths: NDArray[np.int64]):
     return block_first_intervals, block_final_intervals
 
 #@njit
-def CTPC_datafiles(network, fleet, block_first_intervals: NDArray[np.int64], block_final_intervals: NDArray[np.int64]):
+def CTPC_datafiles(network: Network_InstanceType, 
+                   fleet: Fleet_InstanceType, 
+                   block_first_intervals: NDArray[np.int64], 
+                   block_final_intervals: NDArray[np.int64]):
     for node in network.nodes.values():
         node_m.convert_full_to_simple(node, block_first_intervals, block_final_intervals)
 
@@ -203,9 +210,9 @@ def CTPC_datafiles(network, fleet, block_first_intervals: NDArray[np.int64], blo
     return None
 
 #@njit
-def convert_full_to_simple(network, 
-                           fleet,
-                           static,
+def convert_full_to_simple(network: Network_InstanceType, 
+                           fleet: Fleet_InstanceType,
+                           static: ScenarioParameters_InstanceType,
                            blocks_per_day: int,):
     net_residual_load = network_m.calculate_net_residual_load(network)
     _, static.block_lengths = chronological_time_period_clustering(net_residual_load, static.resolution, static.intervals_count, blocks_per_day)
@@ -217,7 +224,7 @@ def convert_full_to_simple(network,
     return None
 
 @njit
-def data_medoids_for_blocks(data_array: NDArray[np.float64], block_first_intervals: NDArray[np.int64], block_final_intervals: NDArray[np.int64]):
+def data_medoids_for_blocks(data_array: float64[:], block_first_intervals: int64[:], block_final_intervals: int64[:]):
     if len(data_array) == 0:
         return np.empty(0, dtype=np.float64)
 

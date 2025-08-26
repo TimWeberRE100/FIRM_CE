@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Tuple
 from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
-from firm_ce.common.typing import DictType, int64, UniTuple, ListType, float64, string, boolean
+from firm_ce.common.typing import DictType, int64, UniTuple, ListType, float64, unicode_type, boolean
 from firm_ce.common.jit_overload import jitclass
 
 if JIT_ENABLED:
@@ -10,8 +10,8 @@ if JIT_ENABLED:
         ('static_instance',boolean),
         ('id',int64),
         ('order',int64),
-        ('name',string),
-        ('data_status',string),
+        ('name',unicode_type),
+        ('data_status',unicode_type),
         ('data',float64[:]),
 
         ('residual_load',float64[:]), 
@@ -20,8 +20,8 @@ if JIT_ENABLED:
         ('storage_merit_order',int64[:]),
         ('flexible_merit_order',int64[:]),
 
-        ('power_capacity',DictType(string,float64)), 
-        ('energy_capacity',DictType(string,float64)), 
+        ('power_capacity',DictType(unicode_type,float64)), 
+        ('energy_capacity',DictType(unicode_type,float64)), 
 
         ('netload_t',float64),
         ('discharge_max_t',float64[:]),
@@ -40,7 +40,14 @@ if JIT_ENABLED:
         ('flexible_power',float64[:]), 
         ('storage_power',float64[:]),
         ('flexible_energy',float64[:]), 
-        ('storage_energy',float64[:]),         
+        ('storage_energy',float64[:]),    
+
+        # Precharging
+        ('imports_exports_temp',float64), 
+        ('imports_exports_update',float64), 
+        ('existing_surplus',float64), 
+        ('precharge_fill',float64), 
+        ('precharge_surplus',float64), 
     ]
 else:
     node_spec = []
@@ -52,7 +59,11 @@ class Node:
     stored in a datafile within 'data' and referenced in 'config/datafiles.csv'. 
     """
 
-    def __init__(self, static_instance, idx, order, name) -> None:
+    def __init__(self, 
+                 static_instance: boolean, 
+                 idx: int64, 
+                 order: int64, 
+                 name: unicode_type) -> None:
         """
         Initialize a Node.
 
@@ -92,6 +103,13 @@ class Node:
         self.flexible_energy = np.empty((0,), dtype=np.float64)
         self.storage_energy = np.empty((0,), dtype=np.float64) 
 
+        # Precharging
+        self.imports_exports_temp = 0.0 # GW, Existing imports/exports at start of precharging action
+        self.imports_exports_update = 0.0 # GW, Update to imports/exports during precharging
+        self.existing_surplus = 0.0 # GW
+        self.precharge_fill = 0.0 # GW
+        self.precharge_surplus = 0.0 # GW
+
 if JIT_ENABLED:
     Node_InstanceType = Node.class_type.instance_type
 else:
@@ -102,7 +120,7 @@ if JIT_ENABLED:
         ('static_instance',boolean),
         ('id', int64),
         ('order', int64),
-        ('name', string),
+        ('name', unicode_type),
         ('length', float64),
         ('node_start', Node_InstanceType),
         ('node_end', Node_InstanceType),
@@ -110,9 +128,9 @@ if JIT_ENABLED:
         ('max_build', float64),
         ('min_build', float64),
         ('initial_capacity', float64),
-        ('unit_type', string),
+        ('unit_type', unicode_type),
         ('near_optimum_check', boolean),
-        ('group', string),
+        ('group', unicode_type),
         ('cost', UnitCost_InstanceType),
 
         ('candidate_x_idx',int64),
@@ -139,21 +157,21 @@ class Line:
     transmission network.
     """
     def __init__(self, 
-                 static_instance,
-                 idx,
-                 order,
-                 name,
-                 length,
-                 node_start,
-                 node_end,
-                 loss_factor,
-                 max_build,
-                 min_build,
-                 capacity,
-                 unit_type,
-                 near_optimum_check,
-                 group,
-                 cost,) -> None:
+                 static_instance: boolean,
+                 idx: int64,
+                 order: int64,
+                 name: unicode_type,
+                 length: float64,
+                 node_start: Node_InstanceType,
+                 node_end: Node_InstanceType,
+                 loss_factor: float64,
+                 max_build: float64,
+                 min_build: float64,
+                 capacity: float64,
+                 unit_type: unicode_type,
+                 near_optimum_check: boolean,
+                 group: unicode_type,
+                 cost: UnitCost_InstanceType,) -> None:
         """
         Initialize a Line object.
         """
@@ -205,12 +223,12 @@ else:
 @jitclass(route_spec)
 class Route:
     def __init__(self,
-                 static_instance,
-                 initial_node,
-                 nodes_typed_list,
-                 lines_typed_list,
-                 line_directions,
-                 legs,):
+                 static_instance: boolean,
+                 initial_node: Node_InstanceType,
+                 nodes_typed_list: ListType(Node_InstanceType),
+                 lines_typed_list: ListType(Line_InstanceType),
+                 line_directions: int64[:],
+                 legs: int64,):
         self.static_instance = static_instance
         self.initial_node = initial_node
         self.nodes = nodes_typed_list
@@ -252,12 +270,12 @@ class Network:
     """
 
     def __init__(self, 
-                 static_instance,
-                 nodes,
-                 major_lines,
-                 minor_lines,
-                 routes,
-                 networksteps_max,
+                 static_instance: boolean,
+                 nodes: DictType(int64,Node_InstanceType),
+                 major_lines: DictType(int64,Line_InstanceType),
+                 minor_lines: DictType(int64,Line_InstanceType),
+                 routes: DictType(routes_key_type, routes_list_type),
+                 networksteps_max: int64,
                  ) -> None:
         """
         Initialize the Network topology and build all relevant matrices and masks.

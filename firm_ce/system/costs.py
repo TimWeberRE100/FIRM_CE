@@ -28,15 +28,15 @@ class UnitCost:
     Represents cost parameters for a generator, storage, or line object.
     """
     def __init__(self, 
-                 capex_p,
-                 fom,
-                 vom,
-                 lifetime,
-                 discount_rate,
-                 fuel_cost_mwh,
-                 fuel_cost_h,
-                 capex_e,
-                 transformer_capex,
+                 capex_p: float64,
+                 fom: float64,
+                 vom: float64,
+                 lifetime: int64,
+                 discount_rate: float64,
+                 fuel_cost_mwh: float64,
+                 fuel_cost_h: float64,
+                 capex_e: float64,
+                 transformer_capex: float64,
                  ) -> None:
         """
         Initialize cost attributes for a Generator, Storage or Line object.

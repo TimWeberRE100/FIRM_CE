@@ -2,6 +2,7 @@ from typing import Dict
 import numpy as np
 import gc
 from numpy.typing import NDArray
+from scipy.optimize import OptimizeResult
 
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.io.file_manager import DataFile
@@ -18,6 +19,7 @@ from firm_ce.constructors import (
     )
 from firm_ce.fast_methods import static_m
 from firm_ce.optimisation.simple import convert_full_to_simple
+from firm_ce.system.parameters import ModelConfig
 
 class Scenario:
     def __init__(self, 
@@ -92,7 +94,7 @@ class Scenario:
         """Filter or prepare datafiles specific to this scenario."""
         return {idx: DataFile(all_datafiles[idx]['filename'],all_datafiles[idx]['datafile_type']) for idx in all_datafiles if self.name in parse_comma_separated(all_datafiles[idx]['scenarios'])}
 
-    def _get_x0(self, all_x0s: Dict[str,Dict[str,str]]) -> np.ndarray:
+    def _get_x0(self, all_x0s: Dict[str,Dict[str,str]]) -> NDArray[np.float64]:
         """Get the initial guess corresponding to this scenario."""
         for entry in all_x0s.values():
             if entry.get('scenario') == self.name:
@@ -120,7 +122,7 @@ class Scenario:
             x_index += 1
         return None
 
-    def solve(self, config):
+    def solve(self, config: ModelConfig) -> OptimizeResult:
         solver = Solver(config, 
                         self.x0,
                         self.static,
@@ -131,7 +133,7 @@ class Scenario:
         solver.evaluate()
         return solver.result
     
-    def polish(self, config, initial_population: NDArray[np.float64]):
+    def polish(self, config: ModelConfig, initial_population: NDArray[np.float64]) -> OptimizeResult:
         solver = Solver(config, 
                         self.x0,
                         self.static,

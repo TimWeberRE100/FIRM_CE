@@ -19,7 +19,7 @@ class Model:
             model_data.scenarios[scenario_idx].get('scenario_name'): Scenario(model_data,scenario_idx) for scenario_idx in model_data.scenarios 
         }
 
-    def solve(self):
+    def solve(self) -> None:
         for scenario in self.scenarios.values(): 
             start_time = time.time()
             start_time_str = datetime.fromtimestamp(start_time).strftime('%d/%m/%Y %H:%M:%S')
@@ -45,6 +45,7 @@ class Model:
                     scenario.results_dir,
                     scenario.name,
                     self.config.balancing_type,
+                    self.config.fixed_costs_threshold,
                     True 
                 )
                 scenario.statistics.generate_result_files()
@@ -70,6 +71,7 @@ class Model:
                     scenario.results_dir,
                     scenario.name,
                     'polish',
+                    self.config.fixed_costs_threshold,
                     True, 
                 )
                 scenario.statistics.generate_result_files()
@@ -86,6 +88,8 @@ class Model:
             if DEBUG:
                 exit()
 
+        return None
+
 if __name__ == '__main__':
     model = Model()
     for scenario in model.scenarios.values():
@@ -98,6 +102,7 @@ if __name__ == '__main__':
             scenario.results_dir,
             scenario.name,
             model.config.balancing_type,
+            model.config.fixed_costs_threshold,
             False 
         )
         scenario.statistics.generate_result_files()

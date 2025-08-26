@@ -66,11 +66,11 @@ def validate_model_config(config_dict, model_logger):
         'recombination': lambda v: validate_range(v, 0, 1),
         'type': lambda v: validate_enum(v, ['single_time', 'capacity_expansion', 'near_optimum', 'midpoint_explore'],),
         'model_name': None,
-        'global_optimal_lcoe': lambda v: validate_range(v, 0),
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
         'midpoint_count': validate_positive_int,
         'balancing_type': lambda v: validate_enum(v, ['simple', 'full'],),
         'simple_blocks_per_day':validate_positive_int,
+        'fixed_costs_threshold': lambda v: validate_range(v, 0),
     }
 
     for item in config_dict.values():

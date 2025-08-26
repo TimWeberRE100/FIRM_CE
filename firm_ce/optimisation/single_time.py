@@ -1,17 +1,17 @@
 import numpy as np
 import time
 
-from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIER, FASTMATH
-from firm_ce.system.components import Fleet
-from firm_ce.system.topology import Network
-from firm_ce.system.parameters import ScenarioParameters
+from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIER
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.fast_methods import (
     network_m, line_m,
     generator_m, storage_m, fleet_m,
     static_m
 )
 from firm_ce.optimisation.balancing import balance_for_period
-from firm_ce.common.typing import float64, string, boolean, int64
+from firm_ce.common.typing import float64, unicode_type, boolean
 from firm_ce.common.jit_overload import njit, jitclass, prange
 
 if JIT_ENABLED:
@@ -23,14 +23,15 @@ if JIT_ENABLED:
         ('evaluated', boolean),
         ('lcoe', float64),
         ('penalties', float64),
-        ('balancing_type', string),
+        ('balancing_type', unicode_type),
+        ('fixed_costs_threshold',float64),
 
         # Static jitclass instances
-        ('static', ScenarioParameters.class_type.instance_type),        
+        ('static', ScenarioParameters_InstanceType),        
 
         # Dynamic jitclass instances
-        ('fleet', Fleet.class_type.instance_type),
-        ('network', Network.class_type.instance_type),
+        ('fleet', Fleet_InstanceType),
+        ('network', Network_InstanceType),
     ]
 else:    
     solution_spec = []
@@ -38,11 +39,12 @@ else:
 @jitclass(solution_spec)
 class Solution:
     def __init__(self, 
-                x, 
-                static,
-                fleet,
-                network,
-                balancing_type,
+                x: float64[:], 
+                static: ScenarioParameters_InstanceType,
+                fleet: Fleet_InstanceType,
+                network: Network_InstanceType,
+                balancing_type: unicode_type,
+                fixed_costs_threshold: float64,
                 ) -> None:
         self.x = x  
         self.evaluated=False   
@@ -53,6 +55,7 @@ class Solution:
         # within a worker process of the optimiser
         self.static = static 
         self.balancing_type = balancing_type
+        self.fixed_costs_threshold = fixed_costs_threshold
 
         # These are dynamic jitclass instances. It is SAFE to modify
         # some attributes within a worker process of the optimiser
@@ -68,7 +71,7 @@ class Solution:
         network_m.assign_storage_merit_orders(self.network, self.fleet.storages)
         network_m.assign_flexible_merit_orders(self.network, self.fleet.generators)
 
-    def balance_residual_load(self) -> bool: 
+    def balance_residual_load(self) -> boolean: 
         fleet_m.initialise_stored_energies(self.fleet)        
 
         for year in range(self.static.year_count):
@@ -80,7 +83,8 @@ class Solution:
                 first_t,
                 last_t,
                 self.balancing_type == 'full',
-                self
+                self,
+                year
             ) 
 
             annual_unserved_energy = network_m.calculate_period_unserved_energy(self.network, first_t, last_t, self.static.interval_resolutions)
@@ -91,9 +95,26 @@ class Solution:
                 return False
         return True
     
-    def calculate_costs(self) -> float:
+    def calculate_fixed_costs(self) -> float64:
         total_costs = 0.0
         years_float = self.static.year_count * self.static.fom_scalar
+
+        for generator in self.fleet.generators.values():
+            total_costs += generator_m.calculate_fixed_costs(generator, years_float, self.static.year_count)
+            
+        for storage in self.fleet.storages.values():
+            total_costs += storage_m.calculate_fixed_costs(storage, years_float, self.static.year_count)
+            
+        for line in self.network.major_lines.values():
+            total_costs += line_m.calculate_fixed_costs(line, years_float, self.static.year_count)
+        
+        for line in self.network.minor_lines.values():
+            total_costs += line_m.calculate_fixed_costs(line,  years_float, self.static.year_count)
+        
+        return total_costs
+    
+    def calculate_variable_costs(self) -> float64:
+        total_costs = 0.0
 
         fleet_m.calculate_lt_generations(
             self.fleet,
@@ -105,26 +126,32 @@ class Solution:
         )
 
         for generator in self.fleet.generators.values():
-            total_costs += generator_m.calculate_lt_costs(generator, years_float, self.static.year_count)
+            total_costs += generator_m.calculate_variable_costs(generator)
             
         for storage in self.fleet.storages.values():
-            total_costs += storage_m.calculate_lt_costs(storage, years_float, self.static.year_count)
+            total_costs += storage_m.calculate_variable_costs(storage)
             
         for line in self.network.major_lines.values():
-            total_costs += line_m.calculate_lt_costs(line, years_float, self.static.year_count)
+            total_costs += line_m.calculate_variable_costs(line)
         
         for line in self.network.minor_lines.values():
-            total_costs += line_m.calculate_lt_costs(line,  years_float, self.static.year_count)
+            total_costs += line_m.calculate_variable_costs(line)
         
         return total_costs
+    
+    def check_fixed_costs(self, fixed_costs: float64) -> boolean:
+        return fixed_costs / sum(self.static.year_energy_demand) / 1000 < self.fixed_costs_threshold # $/MWh_demand
 
-    def objective(self):        
+    def objective(self):
+        total_costs = self.calculate_fixed_costs()
+        if not self.check_fixed_costs(total_costs):
+            return self.lcoe, total_costs*PENALTY_MULTIPLIER # End early if fixed cost constraint breached
+
         reliability_check = self.balance_residual_load()
-
         if not reliability_check: 
             return self.lcoe, self.penalties # End early if reliability constraint breached
         
-        total_costs = self.calculate_costs()
+        total_costs += self.calculate_variable_costs()
 
         total_line_losses = network_m.calculate_lt_line_losses(self.network)
 
@@ -137,13 +164,19 @@ class Solution:
         self.evaluated=True 
         return self
 
+if JIT_ENABLED: 
+    Solution_InstanceType = Solution.class_type.instance_type
+else:
+    Solution_InstanceType = Solution
+
 @njit(parallel=True) 
-def parallel_wrapper(xs, 
-                    static,
-                    fleet,
-                    network,
-                    balancing_type,
-                    ):
+def parallel_wrapper(xs: float64[:,:], 
+                    static: ScenarioParameters_InstanceType,
+                    fleet: Fleet_InstanceType,
+                    network: Network_InstanceType,
+                    balancing_type: unicode_type,
+                    fixed_costs_threshold: float64,
+                    ) -> float64[:,:]:
     """
     parallel_wrapper, but also returns LCOE and penalty seperately
     """
@@ -156,6 +189,7 @@ def parallel_wrapper(xs,
                        fleet,
                        network,
                        balancing_type,
+                       fixed_costs_threshold
                        )
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
@@ -164,11 +198,12 @@ def parallel_wrapper(xs,
     return result
 
 #@njit
-def evaluate_vectorised_xs(xs,
-                           static,
-                           fleet,
-                           network,
-                           balancing_type,
+def evaluate_vectorised_xs(xs: float64[:,:],
+                           static: ScenarioParameters_InstanceType,
+                           fleet: Fleet_InstanceType,
+                           network: Network_InstanceType,
+                           balancing_type: unicode_type,
+                           fixed_costs_threshold: float64,
                            ):
     start_time = time.time()
     result = parallel_wrapper(xs,
@@ -176,6 +211,7 @@ def evaluate_vectorised_xs(xs,
                              fleet,
                              network,
                              balancing_type,
+                             fixed_costs_threshold
                              )  
     end_time = time.time()  
     print(f"Objective time: {NUM_THREADS*(end_time-start_time)/xs.shape[1]:.4f} seconds")

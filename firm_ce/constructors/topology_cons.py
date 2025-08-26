@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple
+from typing import Dict, List
 import numpy as np
 
 from firm_ce.system.topology import (
@@ -8,7 +8,6 @@ from firm_ce.system.topology import (
     )
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.io.validate import is_nan
-from firm_ce.common.constants import JIT_ENABLED
 from firm_ce.fast_methods import route_m
 from firm_ce.common.typing import TypedDict, TypedList, DictType, int64, UniTuple, ListType
 

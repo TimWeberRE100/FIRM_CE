@@ -8,3 +8,5 @@ id,name,value
 6,near_optimal_tol,0.1
 7,midpoint_count,3
 8,balancing_type,full
+9,simple_blocks_per_day,12
+10,fixed_costs_threshold,400

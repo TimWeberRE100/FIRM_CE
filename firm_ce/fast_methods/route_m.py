@@ -1,12 +1,13 @@
-from firm_ce.system.topology import Node_InstanceType, Line_InstanceType, Route
-from firm_ce.common.constants import JIT_ENABLED, FASTMATH, NP_FLOAT_MAX
-from firm_ce.common.typing import TypedList, DictType, int64
+from firm_ce.system.topology import Node_InstanceType, Line_InstanceType, Route, Route_InstanceType
+from firm_ce.common.constants import FASTMATH, NP_FLOAT_MAX
+from firm_ce.common.typing import TypedList, DictType, int64, boolean, float64
 from firm_ce.common.jit_overload import njit
 
 @njit(fastmath=FASTMATH)
-def create_dynamic_copy(route_instance,
+def create_dynamic_copy(route_instance: Route_InstanceType,
                         nodes_typed_dict: DictType(int64,Node_InstanceType),
-                        lines_typed_dict: DictType(int64,Line_InstanceType)):
+                        lines_typed_dict: DictType(int64,Line_InstanceType)
+                        ) -> Route_InstanceType:
     nodes_list_copy = TypedList.empty_list(Node_InstanceType)
     lines_list_copy = TypedList.empty_list(Line_InstanceType)
 
@@ -24,21 +25,21 @@ def create_dynamic_copy(route_instance,
                 route_instance.legs)
 
 @njit(fastmath=FASTMATH)
-def check_contains_line(route_instance, new_line: Line_InstanceType) -> bool:
+def check_contains_line(route_instance: Route_InstanceType, new_line: Line_InstanceType) -> boolean:
     for line in route_instance.lines:
         if new_line.order == line.order:
             return True
     return False
 
 @njit(fastmath=FASTMATH)
-def check_contains_node(route_instance, new_node: Node_InstanceType) -> bool:
+def check_contains_node(route_instance: Route_InstanceType, new_node: Node_InstanceType) -> boolean:
     for node in route_instance.nodes:
         if new_node.order == node.order:
             return True
     return False
 
 @njit(fastmath=FASTMATH)
-def get_max_flow_update(route_instance, interval):
+def get_max_flow_update(route_instance: Route_InstanceType, interval: int64) -> float64:
     max_flow = NP_FLOAT_MAX
     for leg in range(route_instance.legs+1):
         max_flow = min(
@@ -48,7 +49,7 @@ def get_max_flow_update(route_instance, interval):
     return max_flow
 
 @njit(fastmath=FASTMATH)
-def calculate_flow_update(route_instance, interval):
+def calculate_flow_update(route_instance: Route_InstanceType, interval: int64) -> None:
     route_instance.flow_update = min(
         route_instance.nodes[-1].surplus,
         get_max_flow_update(route_instance, interval)
@@ -61,7 +62,7 @@ def calculate_flow_update(route_instance, interval):
     return None
 
 @njit(fastmath=FASTMATH)
-def update_exports(route_instance, interval: int) -> None:
+def update_exports(route_instance: Route_InstanceType, interval: int64) -> None:
     route_instance.nodes[-1].exports[interval] -= route_instance.flow_update
     route_instance.nodes[-1].surplus -= route_instance.flow_update
     

@@ -8,5 +8,5 @@ NP_FLOAT_MAX = np.finfo(np.float64).max
 NP_FLOAT_MIN = np.finfo(np.float64).min
 NP_INT64_MAX = np.iinfo(np.int64).max
 PENALTY_MULTIPLIER = 1e6
-NUM_THREADS = 14
+NUM_THREADS = 6
 FASTMATH = True
