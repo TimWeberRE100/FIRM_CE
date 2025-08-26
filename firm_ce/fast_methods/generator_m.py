@@ -199,7 +199,7 @@ def calculate_variable_costs(generator_instance: Generator_InstanceType) -> floa
 
 @njit(fastmath=FASTMATH)    
 def calculate_fixed_costs(generator_instance: Generator_InstanceType, years_float: float64, year_count: int64) -> float64:
-    ltcosts_m.calculate_annualised_build(generator_instance.lt_costs, 0.0, generator_instance.capacity, 0.0, generator_instance.cost, year_count, 'generator')
+    ltcosts_m.calculate_annualised_build(generator_instance.lt_costs, 0.0, generator_instance.new_build, 0.0, generator_instance.cost, year_count, 'generator')
     ltcosts_m.calculate_fom(generator_instance.lt_costs, generator_instance.capacity, years_float, 0.0, generator_instance.cost, 'generator')
     return ltcosts_m.get_fixed(generator_instance.lt_costs)
 

@@ -140,7 +140,7 @@ class Solution:
         return total_costs
     
     def check_fixed_costs(self, fixed_costs: float64) -> boolean:
-        return fixed_costs / sum(self.static.year_energy_demand) / 1000 < self.fixed_costs_threshold # $/MWh_demand
+        return (fixed_costs / sum(self.static.year_energy_demand) / 1000) < self.fixed_costs_threshold # $/MWh_demand
 
     def objective(self):
         total_costs = self.calculate_fixed_costs()

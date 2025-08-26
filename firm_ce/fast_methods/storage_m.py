@@ -173,7 +173,7 @@ def calculate_variable_costs(storage_instance: Storage_InstanceType) -> float64:
 def calculate_fixed_costs(storage_instance: Storage_InstanceType, 
                           years_float: float64, 
                           year_count: int64) -> float64:
-    ltcosts_m.calculate_annualised_build(storage_instance.lt_costs, storage_instance.energy_capacity, storage_instance.power_capacity, 0.0, storage_instance.cost, year_count, 'storage')
+    ltcosts_m.calculate_annualised_build(storage_instance.lt_costs, storage_instance.new_build_e, storage_instance.new_build_p, 0.0, storage_instance.cost, year_count, 'storage')
     ltcosts_m.calculate_fom(storage_instance.lt_costs, storage_instance.power_capacity, years_float, 0.0, storage_instance.cost, 'storage')
     return ltcosts_m.get_fixed(storage_instance.lt_costs)
 
