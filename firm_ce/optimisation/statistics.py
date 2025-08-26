@@ -480,4 +480,4 @@ class Statistics:
         residual_load_header = [node.name for node in self.solution.network.nodes.values()]
         residual_load_data = np.array([node.residual_load for node in self.solution.network.nodes.values()], dtype=np.float64).T
         residual_load_dump = ResultFile('residual_load',self.results_directory,residual_load_header,residual_load_data).write()
-        block_lengths_dump = ResultFile('block_lengths',self.results_directory,residual_load_header,self.solution.static.block_lengths).write() # block_lengths typing does not match np.float64
+        block_lengths_dump = ResultFile('block_lengths',self.results_directory,['Intervals per Block'],self.solution.static.block_lengths.reshape(-1, 1)).write()

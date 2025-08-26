@@ -121,7 +121,7 @@ class ResultFile:
                  file_type: str, 
                  target_directory: str,
                  header: List[str],
-                 data_array: NDArray[np.float64],
+                 data_array: Union[NDArray[np.float64],NDArray[np.int64]],
                  decimals: Union[int, None] = None,
                  ):
         self.name = file_type + '.csv'

@@ -49,10 +49,8 @@ class Solver:
         self.initial_population = initial_population
 
         if polish_flag:
-            self.population = 10
-            self.iterations = int(parameters_static.iterations // 8)
+            self.iterations = int(config.iterations // 2)
         else:
-            self.population = config.population
             self.iterations = config.iterations
 
     def get_bounds(self) -> NDArray[np.float64]:
@@ -122,7 +120,7 @@ class Solver:
             args = self.get_differential_evolution_args(),
             tol=0,
             maxiter=self.iterations, 
-            popsize=self.population, 
+            popsize=self.config.population, 
             mutation=(0.2,self.config.mutation), 
             recombination=self.config.recombination,
             disp=True, 
@@ -177,7 +175,7 @@ class Solver:
                     args=args,  
                     tol=0,
                     maxiter=self.iterations, 
-                    popsize=self.population, 
+                    popsize=self.config.population, 
                     mutation=(0.2,self.config.mutation), 
                     recombination=self.config.recombination,
                     disp=True, 
@@ -239,7 +237,7 @@ class Solver:
                     args=args,
                     tol=0,
                     maxiter=self.iterations,
-                    popsize=self.population,
+                    popsize=self.config.population,
                     mutation=(0.2,self.config.mutation),
                     recombination=self.config.recombination,
                     disp=True,
