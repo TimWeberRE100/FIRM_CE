@@ -10,7 +10,6 @@ from firm_ce.common.exceptions import (
 )
 from firm_ce.fast_methods import node_m, ltcosts_m
 from firm_ce.common.jit_overload import njit
-from firm_ce.optimisation.simple import data_medoids_for_blocks
 from firm_ce.common.typing import DictType, int64, float64, unicode_type, boolean
 
 @njit(fastmath=FASTMATH)
@@ -202,11 +201,6 @@ def calculate_fixed_costs(generator_instance: Generator_InstanceType, years_floa
     ltcosts_m.calculate_annualised_build(generator_instance.lt_costs, 0.0, generator_instance.new_build, 0.0, generator_instance.cost, year_count, 'generator')
     ltcosts_m.calculate_fom(generator_instance.lt_costs, generator_instance.capacity, years_float, 0.0, generator_instance.cost, 'generator')
     return ltcosts_m.get_fixed(generator_instance.lt_costs)
-
-@njit(fastmath=FASTMATH)
-def convert_full_to_simple(generator_instance: Generator_InstanceType, block_first_intervals: int64[:], block_final_intervals: int64[:]) -> None:
-    generator_instance.data = data_medoids_for_blocks(generator_instance.data, block_first_intervals, block_final_intervals)
-    return None
 
 @njit(fastmath=FASTMATH)
 def initialise_deficit_block(generator_instance: Generator_InstanceType, interval: int64) -> None:

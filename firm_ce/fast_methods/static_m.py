@@ -1,4 +1,5 @@
 import numpy as np
+from numpy.typing import NDArray
 
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.common.constants import FASTMATH
@@ -51,3 +52,8 @@ def check_reliability_constraint(static_instance: ScenarioParameters_InstanceTyp
 def set_block_resolutions(static_instance: ScenarioParameters_InstanceType, block_durations: int64[:]) -> None:
     static_instance.interval_resolutions = block_durations*static_instance.resolution
     return None
+
+def get_block_intervals(block_lengths: NDArray[np.int64]):
+    block_final_intervals = np.cumsum(block_lengths, dtype=np.int64)
+    block_first_intervals = np.concatenate(([0], block_final_intervals[:-1]))
+    return block_first_intervals, block_final_intervals

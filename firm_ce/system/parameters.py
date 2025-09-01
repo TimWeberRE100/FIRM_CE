@@ -39,7 +39,7 @@ class ScenarioParameters:
                  node_count: int64,):        
 
         self.resolution = resolution # length of time interval in hours
-        self.interval_resolutions = resolution*np.ones(intervals_count, dtype=np.float64) # length of blocks in hours for 'simple' balancing_method
+        self.interval_resolutions = resolution*np.ones(intervals_count, dtype=np.float64) # length of blocks in hours, for future 'simple' balancing_method
         self.allowance = allowance # % annual demand allowed as unserved energy
         self.first_year = first_year # YYYY
         self.final_year = final_year # YYYY
@@ -68,5 +68,4 @@ class ModelConfig:
         self.near_optimal_tol = float(config_dict.get('near_optimal_tol', 0.0))
         self.midpoint_count = int(config_dict.get('midpoint_count', 0))
         self.balancing_type = str(config_dict['balancing_type'])
-        self.blocks_per_day = int(config_dict['simple_blocks_per_day'])
         self.fixed_costs_threshold = float(config_dict.get('fixed_costs_threshold', 500.0))

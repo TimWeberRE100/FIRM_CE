@@ -18,7 +18,6 @@ from firm_ce.constructors import (
     unload_data_from_network,
     )
 from firm_ce.fast_methods import static_m
-from firm_ce.optimisation.simple import convert_full_to_simple
 from firm_ce.system.parameters import ModelConfig
 
 class Scenario:
@@ -55,17 +54,12 @@ class Scenario:
         return f"Scenario({self.id!r} {self.name!r})"
     
     def load_datafiles(self, 
-                       all_datafiles: Dict[str, DataFile], 
-                       balancing_type: str,
-                       blocks_per_day: int | None = None) -> None:      
+                       all_datafiles: Dict[str, DataFile]) -> None:      
         datafiles = self._get_datafiles(all_datafiles)
 
         load_datafiles_to_network(self.network, datafiles)
 
         load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)        
-
-        if balancing_type == 'simple':
-            convert_full_to_simple(self.network, self.fleet, self.static, blocks_per_day)
 
         static_m.set_year_energy_demand(self.static, self.network.nodes)
 

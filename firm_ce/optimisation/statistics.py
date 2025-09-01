@@ -13,9 +13,8 @@ from firm_ce.common.helpers import safe_divide
 from firm_ce.fast_methods import (
     network_m,
     generator_m, fleet_m, 
-    ltcosts_m,
+    ltcosts_m, static_m
 )
-from firm_ce.optimisation.simple import get_block_intervals
 
 class Statistics:
     def __init__(self,
@@ -45,7 +44,7 @@ class Statistics:
         self.result_files = None
 
         self.full_intervals_count = self.solution.static.block_lengths.sum()
-        self.block_first_intervals, self.block_last_intervals = get_block_intervals(self.solution.static.block_lengths)
+        self.block_first_intervals, self.block_last_intervals = static_m.get_block_intervals(self.solution.static.block_lengths)
 
     def create_solution_directory(self, result_directory: str, solution_name: str) -> str:
         safe_name = re.sub(r'[^a-zA-Z0-9_\-]', '_', solution_name)
