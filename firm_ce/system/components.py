@@ -1,15 +1,34 @@
-from typing import Dict
-from firm_ce.io.file_manager import DataFile 
-from firm_ce.system.costs import UnitCost
-from firm_ce.system.topology import Line
 import numpy as np
 
+from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.system.costs import LTCosts, UnitCost_InstanceType, LTCosts_InstanceType
+from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
+from firm_ce.common.typing import DictType, int64, float64, unicode_type, boolean
+from firm_ce.common.jit_overload import jitclass
+
+if JIT_ENABLED:
+    fuel_spec = [
+        ('static_instance',boolean),
+        ('id',int64),
+        ('name',unicode_type),
+        ('cost',float64),
+        ('emissions',float64),
+    ]
+else:   
+    fuel_spec = []
+
+@jitclass(fuel_spec)
 class Fuel:
     """
     Represents a fuel type with associated cost and emissions.
     """
 
-    def __init__(self, id: int, fuel_dict: Dict[str, str]) -> None:
+    def __init__(self, 
+                 static_instance: boolean, 
+                 idx: int64, 
+                 name: unicode_type, 
+                 cost: float64, 
+                 emissions: float64) -> None:
         """
         Initialize a Fuel object.
 
@@ -18,15 +37,66 @@ class Fuel:
         id (int): Unique identifier for the fuel.
         fuel_dict (Dict[str, str]): Dictionary containing 'name', 'cost', and 'emissions' keys.
         """
+        
+        self.static_instance = static_instance
+        self.id = idx
+        self.name = name
+        self.cost = cost # $/GJ
+        self.emissions = emissions # kg/GJ
 
-        self.id = int(id)
-        self.name = str(fuel_dict['name'])
-        self.cost = float(fuel_dict['cost']) # $/GJ
-        self.emissions = float(fuel_dict['emissions']) # kg/GJ
+if JIT_ENABLED:
+    Fuel_InstanceType = Fuel.class_type.instance_type
+else:
+    Fuel_InstanceType = Fuel
 
-    def __repr__(self):
-        return f"<Fuel object [{self.id}]{self.name}>"
+if JIT_ENABLED:
+    generator_spec = [
+        ('static_instance',boolean),
+        ('id',int64),
+        ('order', int64),
+        ('name',unicode_type),
+        ('node',Node_InstanceType),
+        ('fuel',Fuel_InstanceType),
+        ('unit_size',float64),
+        ('max_build',float64),
+        ('min_build',float64),
+        ('initial_capacity',float64),
+        ('line',Line_InstanceType),
+        ('unit_type',unicode_type),
+        ('near_optimum_check',boolean),
+        ('group',unicode_type),
+        ('cost',UnitCost_InstanceType),
+        ('data_status',unicode_type),
+        ('data',float64[:]),
+        ('annual_constraints_data',float64[:]),
 
+        ('candidate_x_idx',int64),
+
+        # Dynamic
+        ('new_build',float64),
+        ('capacity',float64),
+        ('dispatch_power',float64[:]),
+        ('remaining_energy',float64[:]),
+        ('flexible_max_t',float64),   
+
+        ('lt_generation',float64),
+        ('unit_lt_hours',float64),
+
+        ('lt_costs', LTCosts_InstanceType),
+
+        # Precharging
+        ('remaining_energy_temp_reverse',float64),
+        ('remaining_energy_temp_forward',float64),
+        ('deficit_block_max_energy',float64),
+        ('deficit_block_min_energy',float64),
+        ('trickling_flag',boolean),
+        ('trickling_reserves',float64),
+        ('remaining_trickling_reserves',float64),
+    ]
+else:
+    generator_spec = []
+
+@jitclass(generator_spec)
 class Generator:
     """
     Represents a generator unit within the system.
@@ -36,7 +106,23 @@ class Generator:
     the 'data' folder and referenced in 'config/datafiles.csv'.
     """
 
-    def __init__(self, id: int, generator_dict: Dict[str, str], fuel: Fuel, line: Line) -> None:
+    def __init__(self, 
+                 static_instance: boolean,
+                 idx: int64, 
+                 order: int64,
+                 name: unicode_type,
+                 unit_size: float64,
+                 max_build: float64,
+                 min_build: float64,
+                 capacity: float64,
+                 unit_type: unicode_type,
+                 near_optimum_check: boolean,
+                 node: Node_InstanceType,
+                 fuel: Fuel_InstanceType, 
+                 line: Line_InstanceType,
+                 group: unicode_type,
+                 cost: UnitCost_InstanceType,
+                 ) -> None:
         """
         Initialize a Generator object.
 
@@ -49,75 +135,134 @@ class Generator:
                         Minor lines should have empty node_start and node_end values. They do not form part
                         of the network topology, but are used to estimate connection costs.
         """
-
-        self.id = id
-        self.name = str(generator_dict['name'])
-        self.node = str(generator_dict['node'])
+        self.static_instance = static_instance
+        self.id = idx
+        self.order = order # id specific to scenario
+        self.name = name
+        self.unit_size = unit_size # GW/unit
+        self.max_build = max_build  # GW/year
+        self.min_build = min_build  # GW/year
+        self.initial_capacity = capacity  # GW        
+        self.unit_type = unit_type
+        self.near_optimum_check = near_optimum_check        
+        self.node = node
         self.fuel = fuel
-        self.unit_size = float(generator_dict['unit_size']) # GW/unit
-        self.max_build = float(generator_dict['max_build'])  # GW/year
-        self.min_build = float(generator_dict['min_build'])  # GW/year
-        self.capacity = float(generator_dict['initial_capacity'])  # GW
         self.line = line
-        self.unit_type = str(generator_dict['unit_type'])
-        self.near_opt = str(generator_dict.get('near_optimum','')).lower() in ('true','1','yes')
-        
-        raw_group = generator_dict.get('range_group', '')
-        if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':
-            self.group = self.name  
-        else:
-            self.group = str(raw_group).strip()
-            
-        self.cost = UnitCost(capex_p=float(generator_dict['capex']),
-                              fom=float(generator_dict['fom']),
-                              vom=float(generator_dict['vom']),
-                              lifetime=int(generator_dict['lifetime']),
-                              discount_rate=float(generator_dict['discount_rate']),
-                              heat_rate_base=float(generator_dict['heat_rate_base']), # GJ/unit-h
-                              heat_rate_incr=float(generator_dict['heat_rate_incr']), # GJ/MWh
-                              fuel=fuel)
-        
-        self.data = None
-        self.annual_limit = 0
-    
-    def load_datafile(self, datafiles: Dict[str, DataFile]) -> None:
-        """
-        Load generation trace or annual generation limit data for this generator.
+        self.group = group            
+        self.cost = cost
 
-        Generation traces represent the interval capacity factor and annual generation 
-        limits should have units GWh/year.
+        self.data_status = "unloaded"
+        self.data = np.empty((0,), dtype=np.float64)
+        self.annual_constraints_data = np.empty((0,), dtype=np.float64)
 
-        Parameters:
-        -------
-        datafiles (Dict[str, DataFile]): A dictionary of named DataFile objects.
-        """
-        for key in datafiles:
-            if (datafiles[key].type != 'generation') and (datafiles[key].type != 'flexible_annual_limit'):
-                continue
-            if self.name not in datafiles[key].data.keys():
-                continue
-            if datafiles[key].type == 'generation':
-                self.data = list(datafiles[key].data[self.name])
-                break
-            elif datafiles[key].type == 'flexible_annual_limit':
-                self.annual_limit = list(datafiles[key].data[self.name])
-                break    
+        self.candidate_x_idx = -1
 
-    def unload_datafile(self) -> None:     
-        """
-        Unload any attached data to free memory.
-        """  
-        self.data = None
-        self.annual_limit = 0     
+        # Dynamic
+        self.new_build = 0.0 # GW
+        self.capacity = capacity  # GW 
+        self.dispatch_power = np.empty((0,), dtype=np.float64) # GW
+        self.remaining_energy = np.empty((0,), dtype=np.float64) # GWh
 
-    def __repr__(self):
-        return f"<Generator object [{self.id}]{self.name}>"
+        self.flexible_max_t = 0.0 # GW
+        self.lt_generation = 0.0 # GWh
+        self.unit_lt_hours = 0.0 # hours/unit
 
+        self.lt_costs = LTCosts()
+
+        # Precharging
+        self.remaining_energy_temp_reverse = 0.0 # GWh
+        self.remaining_energy_temp_forward = 0.0 # GWh
+        self.deficit_block_max_energy = 0.0 # GWh
+        self.deficit_block_min_energy = 0.0 # GWh
+        self.trickling_flag = False # Determines whether flexible generator can precharge storage systems
+        self.trickling_reserves = 0.0 # GWh
+        self.remaining_trickling_reserves = 0.0 # GWh
+
+if JIT_ENABLED:
+    Generator_InstanceType = Generator.class_type.instance_type 
+else:
+    Generator_InstanceType = Generator
+
+if JIT_ENABLED:
+    storage_spec = [
+        ('static_instance',boolean),
+        ('id',int64),
+        ('order',int64),
+        ('name',unicode_type),
+        ('node',Node_InstanceType),
+        ('initial_power_capacity',float64),
+        ('initial_energy_capacity',float64),
+        ('duration',int64),
+        ('charge_efficiency',float64),
+        ('discharge_efficiency',float64),
+        ('max_build_p',float64),
+        ('max_build_e',float64),
+        ('min_build_p',float64),
+        ('min_build_e',float64),        
+        ('line',Line_InstanceType),
+        ('unit_type',unicode_type),
+        ('near_optimum_check',boolean),
+        ('group',unicode_type),
+        ('cost',UnitCost_InstanceType),
+
+        ('candidate_p_x_idx',int64),
+        ('candidate_e_x_idx',int64),
+
+        # Dynamic
+        ('new_build_p',float64),
+        ('new_build_e',float64),
+        ('power_capacity',float64),
+        ('energy_capacity',float64),
+        ('dispatch_power',float64[:]),
+        ('stored_energy',float64[:]),
+
+        ('discharge_max_t',float64),
+        ('charge_max_t',float64),
+        ('lt_discharge',float64),
+
+        ('lt_costs',LTCosts_InstanceType),
+
+        # Precharging
+        ('deficit_block_min_storage',float64),
+        ('deficit_block_max_storage',float64),
+        ('stored_energy_temp_reverse',float64),
+        ('stored_energy_temp_forward',float64),
+        ('precharge_energy',float64),
+        ('trickling_reserves',float64),
+        ('remaining_trickling_reserves',float64),
+        ('precharge_flag',boolean),
+        ('trickling_flag',boolean),
+        ('remaining_discharge_max_t',float64),
+        ('remaining_charge_max_t',float64),
+    ]
+else:
+    storage_spec = []
+
+@jitclass(storage_spec)
 class Storage:
     """
     Represents an energy storage system unit in the system.
     """
-    def __init__(self, id: int, storage_dict: Dict[str, str], line: Line) -> None:
+    def __init__(self, 
+                 static_instance: boolean,
+                 idx: int64,
+                 order: int64,
+                 name: unicode_type,
+                 power_capacity: float64,
+                 energy_capacity: float64,
+                 duration: float64,
+                 charge_efficiency: float64,
+                 discharge_efficiency: float64,
+                 max_build_p: float64,
+                 max_build_e: float64,
+                 min_build_p: float64,
+                 min_build_e: float64,
+                 unit_type: unicode_type,
+                 near_optimum_check: boolean,
+                 node: Node_InstanceType,
+                 line: Line_InstanceType,
+                 group: unicode_type,
+                 cost: UnitCost_InstanceType,) -> None:
         """
         Initialize a Storage object.
 
@@ -130,36 +275,82 @@ class Storage:
                         of the network topology, but are used to estimate connection costs.
         """
 
-        self.id = id
-        self.name = str(storage_dict['name'])
-        self.node = str(storage_dict['node'])
-        self.power_capacity = float(storage_dict['initial_power_capacity'])  # GW
-        self.energy_capacity = float(storage_dict['initial_energy_capacity'])  # GWh
-        self.duration = int(storage_dict['duration']) if int(storage_dict['duration']) > 0 else 0
-        self.charge_efficiency = float(storage_dict['charge_efficiency'])  # %
-        self.discharge_efficiency = float(storage_dict['discharge_efficiency'])  # %
-        self.max_build_p = float(storage_dict['max_build_p'])  # GW/year
-        self.max_build_e = float(storage_dict['max_build_e'])  # GWh/year
-        self.min_build_p = float(storage_dict['min_build_p'])  # GW/year
-        self.min_build_e = float(storage_dict['min_build_e'])  # GWh/year
+        self.static_instance = static_instance
+        self.id = idx
+        self.order = order # id specific to scenario
+        self.name = name
+        self.initial_power_capacity = power_capacity  # GW
+        self.duration = duration # hours
+        self.initial_energy_capacity = energy_capacity if duration == 0 else duration*power_capacity # GWh
+        self.charge_efficiency = charge_efficiency  # %
+        self.discharge_efficiency = discharge_efficiency # %
+        self.max_build_p = max_build_p  # GW/year
+        self.max_build_e = max_build_e  # GWh/year
+        self.min_build_p = min_build_p  # GW/year
+        self.min_build_e = min_build_e  # GWh/year        
+        self.unit_type = unit_type
+        self.near_optimum_check = near_optimum_check
+        self.node = node
         self.line = line
-        self.unit_type = str(storage_dict['unit_type'])
-        self.near_opt = str(storage_dict.get('near_optimum','')).lower() in ('true','1','yes')
-        
-        raw_group = storage_dict.get('range_group', '')
-        if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == '':
-            self.group = self.name  
-        else:
-            self.group = str(raw_group).strip()
-            
-        self.cost = UnitCost(capex_p=float(storage_dict['capex_p']),
-                              fom=float(storage_dict['fom']),
-                              vom=float(storage_dict['vom']),
-                              lifetime=int(storage_dict['lifetime']),
-                              discount_rate=float(storage_dict['discount_rate']),
-                              capex_e=float(storage_dict['capex_e']),
-                              )
+        self.group = group            
+        self.cost = cost
 
-    def __repr__(self):
-        return f"<Storage object [{self.id}]{self.name}>"
+        self.candidate_p_x_idx = -1
+        self.candidate_e_x_idx = -1
 
+        # Dynamic
+        self.new_build_p = 0.0 # GW
+        self.new_build_e = 0.0 # GWh
+        self.power_capacity = power_capacity # GW
+        self.energy_capacity = energy_capacity if duration == 0 else duration*power_capacity  # GWh
+        self.dispatch_power = np.empty(0, dtype=np.float64) # GW
+        self.stored_energy = np.empty(0, dtype=np.float64) # GWh
+
+        self.discharge_max_t = 0.0 # GW
+        self.charge_max_t = 0.0 # GW
+        self.lt_discharge = 0.0 # GWh/year
+
+        self.lt_costs = LTCosts()
+
+        # Precharging
+        self.stored_energy_temp_reverse = 0.0 # GWh
+        self.stored_energy_temp_forward = 0.0 # GWh
+        self.deficit_block_min_storage = 0.0 # GWh
+        self.deficit_block_max_storage = 0.0 # GW  h
+        self.precharge_energy = 0.0 # GWh
+        self.trickling_reserves = 0.0 # GWh 
+        self.remaining_trickling_reserves = 0.0 # GWh
+        self.precharge_flag = False # Determines whether storage system can precharge
+        self.trickling_flag = False # Determines whether storage system can trickle-charge other storages
+
+        self.remaining_discharge_max_t = 0.0 # GW
+        self.remaining_charge_max_t = 0.0 # GW
+
+if JIT_ENABLED:
+    Storage_InstanceType = Storage.class_type.instance_type
+else:
+    Storage_InstanceType = Storage
+
+if JIT_ENABLED:
+    fleet_spec = [
+        ('static_instance',boolean),
+        ('generators', DictType(int64, Generator_InstanceType)),
+        ('storages', DictType(int64, Storage_InstanceType)),
+    ]
+else: 
+    fleet_spec = []
+
+@jitclass(fleet_spec)
+class Fleet:
+    def __init__(self,
+                 static_instance: boolean,
+                 generators: DictType(int64, Generator_InstanceType),
+                 storages: DictType(int64, Storage_InstanceType),):
+        self.static_instance = static_instance
+        self.generators = generators
+        self.storages = storages
+
+if JIT_ENABLED:
+    Fleet_InstanceType = Fleet.class_type.instance_type
+else:
+    Fleet_InstanceType = Fleet

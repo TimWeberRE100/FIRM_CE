@@ -1,14 +1,24 @@
 import numpy as np
 import os
 
-from firm_ce.io.file_manager import import_csv_data
+from firm_ce.io.file_manager import import_config_csvs
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.logging import init_model_logger
 
 class ModelData:
     def __init__(self) -> None:
-        objects = import_csv_data()
-        self.logger, self.results_dir = init_model_logger()
+        objects = import_config_csvs()
+
+        try:
+            config_dict = objects.get('config')
+            for v in config_dict.values():
+                if v.get('name') == 'model_name':
+                    model_name = v.get('value')
+                    break
+        except:
+            model_name = 'Model'
+
+        self.logger, self.results_dir = init_model_logger(model_name)
 
         self.scenarios = objects.get('scenarios')
         self.generators = objects.get('generators')
@@ -17,7 +27,7 @@ class ModelData:
         self.storages = objects.get('storages')
         self.config = objects.get('config')
         self.x0s = objects.get('initial_guess')
-        self.settings = objects.get('settings')
+        self.datafiles = objects.get('datafiles')
 
     def validate(self):
         return validate_config(self)
@@ -41,10 +51,8 @@ def validate_positive_int(val):
 def validate_enum(val, options):
     return val in options
 
-
 def parse_list(val):
     return parse_comma_separated(val) if not is_nan(val) else []
-
 
 def is_nan(val):
     return isinstance(val, float) and np.isnan(val)
@@ -57,9 +65,12 @@ def validate_model_config(config_dict, model_logger):
         'population': validate_positive_int,
         'recombination': lambda v: validate_range(v, 0, 1),
         'type': lambda v: validate_enum(v, ['single_time', 'capacity_expansion', 'near_optimum', 'midpoint_explore'],),
-        'global_optimal_lcoe': lambda v: validate_range(v, 0),
+        'model_name': None,
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
-        'midpoint_count': validate_positive_int
+        'midpoint_count': validate_positive_int,
+        'balancing_type': lambda v: validate_enum(v, ['simple', 'full'],),
+        'simple_blocks_per_day':validate_positive_int,
+        'fixed_costs_threshold': lambda v: validate_range(v, 0),
     }
 
     for item in config_dict.values():
@@ -68,6 +79,9 @@ def validate_model_config(config_dict, model_logger):
 
         if name not in validators:
             model_logger.warning(f"Unknown configuration name '%s'", name)
+            continue
+        
+        if not validators[name]:
             continue
 
         try:
@@ -322,7 +336,7 @@ def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenar
             + scenario_storages[scenario]
             + scenario_storages[scenario]
             + scenario_lines[scenario]
-        ) - len(scenario_baseload[scenario]) - len(scenario_minor_lines[scenario])
+        ) - len(scenario_minor_lines[scenario])
 
         if x0 and not (len(x0) == bound_length):
             model_logger.error("Initial guess 'x_0' for scenario %s contains %d elements, expected %d", scenario, len(x0), bound_length)

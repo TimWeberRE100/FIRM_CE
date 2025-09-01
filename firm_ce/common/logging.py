@@ -5,9 +5,10 @@ from typing import Tuple
 
 logging.getLogger('numba').setLevel(logging.WARNING)
 
-def init_model_logger() -> Tuple[logging.Logger, str]:
+def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.
+    Logger does not work within JIT compiled code.
 
     The logger writes:
     - All messages (DEBUG and above) to a log file in a new `results/Model_<timestamp>` directory.
@@ -19,7 +20,7 @@ def init_model_logger() -> Tuple[logging.Logger, str]:
     """
     
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    results_dir = os.path.join("results", f"Model_{timestamp}")
+    results_dir = os.path.join("results", f"{model_name}_{timestamp}")
     os.makedirs(results_dir, exist_ok=True)
 
     log_path = os.path.join(results_dir, "log.txt")

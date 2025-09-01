@@ -1,10 +1,11 @@
 id,name,value
 0,mutation,0.5
-1,iterations,10
+1,iterations,1000
 2,population,10
 3,recombination,0.3
-4,type,near_optimum
+4,type,single_time
 5,model_name,Validation
-6,global_optimal_lcoe,120
-7,near_optimal_tol,0.1
-8,midpoint_count,3
+6,near_optimal_tol,0.1
+7,midpoint_count,3
+8,balancing_type,full
+9,fixed_costs_threshold,400
