@@ -1,9 +1,12 @@
+import csv
+import os
 from pathlib import Path
-import pandas as pd
-from typing import Dict, Any, Union, List
+from typing import Any, Dict, List, Union
+
 import numpy as np
+import pandas as pd
 from numpy.typing import NDArray
-import os, csv
+
 
 class ImportCSV:
     """
@@ -20,14 +23,16 @@ class ImportCSV:
         """
 
         self.repository = Path(repository)
-        self.config_filenames = ('scenarios',
-                                'generators',
-                                'fuels',
-                                'lines',
-                                'storages',
-                                'config',
-                                'initial_guess',
-                                'datafiles',)
+        self.config_filenames = (
+            "scenarios",
+            "generators",
+            "fuels",
+            "lines",
+            "storages",
+            "config",
+            "initial_guess",
+            "datafiles",
+        )
 
         if not self.repository.is_dir():
             raise FileNotFoundError(f"Repository {repository} does not exist.")
@@ -48,14 +53,15 @@ class ImportCSV:
         filepath = self.repository.joinpath(filename)
         if not filepath.is_file():
             raise FileNotFoundError(f"File {filepath} does not exist.")
-        imported_dict = pd.read_csv(filepath, index_col="id").to_dict(orient='index')
+        imported_dict = pd.read_csv(filepath, index_col="id").to_dict(orient="index")
         for idx in imported_dict:
-            imported_dict[idx]['id'] = idx
+            imported_dict[idx]["id"] = idx
         return imported_dict
-    
+
     def get_config_dict(self) -> Dict[str, Dict[str, Any]]:
-        return {fn : self.get_data(fn+'.csv') for fn in self.config_filenames}
-        
+        return {fn: self.get_data(fn + ".csv") for fn in self.config_filenames}
+
+
 class ImportDatafile:
     """
     Class for importing a single CSV datafile into a dictionary of NDArrays.
@@ -76,7 +82,7 @@ class ImportDatafile:
 
         if not self.repository.is_dir():
             raise FileNotFoundError(f"Repository {repository} does not exist.")
-        
+
     def __repr__(self) -> str:
         return f"ImportDatafile ({self.filename!r})"
 
@@ -94,6 +100,7 @@ class ImportDatafile:
 
         df = pd.read_csv(filepath)
         return {col: df[col].to_numpy() for col in df.columns}
+
 
 class DataFile:
     """
@@ -116,15 +123,17 @@ class DataFile:
     def __repr__(self) -> str:
         return f"DataFile ({self.name!r}, {self.type!r}, {self.data!r})"
 
+
 class ResultFile:
-    def __init__(self, 
-                 file_type: str, 
-                 target_directory: str,
-                 header: List[str],
-                 data_array: Union[NDArray[np.float64],NDArray[np.int64]],
-                 decimals: Union[int, None] = None,
-                 ):
-        self.name = file_type + '.csv'
+    def __init__(
+        self,
+        file_type: str,
+        target_directory: str,
+        header: List[str],
+        data_array: Union[NDArray[np.float64], NDArray[np.int64]],
+        decimals: Union[int, None] = None,
+    ):
+        self.name = file_type + ".csv"
         self.type = file_type
         self.target_directory = target_directory
         self.header = header
@@ -132,17 +141,18 @@ class ResultFile:
         self.decimals = decimals
 
     def __repr__(self) -> str:
-        return f'ResultFile ({self.type!r})'
-    
+        return f"ResultFile ({self.type!r})"
+
     def write(self):
-        with open(os.path.join(self.target_directory, self.name), mode='w', newline='') as file:
+        with open(os.path.join(self.target_directory, self.name), mode="w", newline="") as file:
             writer = csv.writer(file)
             if self.header:
-                writer.writerow(self.header.split(',') if isinstance(self.header, str) else self.header)
+                writer.writerow(self.header.split(",") if isinstance(self.header, str) else self.header)
             for row in self.data:
                 writer.writerow(np.round(row, decimals=self.decimals) if self.decimals is not None else row)
         print(f"Saved {self.name} to {self.target_directory}")
         return None
+
 
 def import_config_csvs() -> Dict[str, Any]:
     """

@@ -5,6 +5,7 @@ from firm_ce.io.file_manager import import_config_csvs
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.logging import init_model_logger
 
+
 class ModelData:
     def __init__(self) -> None:
         objects = import_config_csvs()
@@ -31,7 +32,8 @@ class ModelData:
 
     def validate(self):
         return validate_config(self)
-    
+
+
 def validate_range(val, min_val, max_val=None, inclusive=True):
     try:
         val = float(val)
@@ -42,20 +44,25 @@ def validate_range(val, min_val, max_val=None, inclusive=True):
     except (TypeError, ValueError):
         return False
 
+
 def validate_positive_int(val):
     try:
         return int(val) > 0
     except (TypeError, ValueError):
         return False
 
+
 def validate_enum(val, options):
     return val in options
+
 
 def parse_list(val):
     return parse_comma_separated(val) if not is_nan(val) else []
 
+
 def is_nan(val):
     return isinstance(val, float) and np.isnan(val)
+
 
 def validate_model_config(config_dict, model_logger):
     flag = True
@@ -69,7 +76,7 @@ def validate_model_config(config_dict, model_logger):
         'near_optimal_tol': lambda v: validate_range(v, 0, 1),
         'midpoint_count': validate_positive_int,
         'balancing_type': lambda v: validate_enum(v, ['simple', 'full'],),
-        'simple_blocks_per_day':validate_positive_int,
+        'simple_blocks_per_day': validate_positive_int,
         'fixed_costs_threshold': lambda v: validate_range(v, 0),
     }
 
@@ -78,9 +85,9 @@ def validate_model_config(config_dict, model_logger):
         value = item.get('value')
 
         if name not in validators:
-            model_logger.warning(f"Unknown configuration name '%s'", name)
+            model_logger.warning(f"Unknown configuration name {name}")
             continue
-        
+
         if not validators[name]:
             continue
 
@@ -92,7 +99,8 @@ def validate_model_config(config_dict, model_logger):
             model_logger.exception("Exception during validation of '%s': %s", name, e)
             flag = False
 
-    return flag  
+    return flag
+
 
 def validate_scenarios(scenarios_dict, model_logger):
     flag = True
@@ -134,6 +142,7 @@ def validate_scenarios(scenarios_dict, model_logger):
 
     return scenarios_list, scenario_nodes, scenario_lines, flag
 
+
 def validate_fuels(fuels_dict, scenarios_list, model_logger):
     flag = True
     scenario_fuels = {scenario: [] for scenario in scenarios_list}
@@ -154,6 +163,7 @@ def validate_fuels(fuels_dict, scenarios_list, model_logger):
                 model_logger.warning("'scenario' %s for fuel.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_fuels, flag
+
 
 def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
     flag = True
@@ -212,13 +222,16 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
 
     return scenario_lines, scenario_minor_lines, flag
 
+
 def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenario_lines, scenario_nodes, model_logger):
     flag = True
     scenario_generators = {s: [] for s in scenarios_list}
     scenario_baseload = {s: [] for s in scenarios_list}
 
+    fields = ['capex', 'fom', 'vom', 'heat_rate_base', 'heat_rate_incr', 'initial_capacity', 'max_build', 'min_build']
+
     for idx, item in generators_dict.items():
-        for field in ['capex', 'fom', 'vom', 'heat_rate_base', 'heat_rate_incr', 'initial_capacity', 'max_build', 'min_build']:
+        for field in fields:
             if not validate_range(item[field], 0):
                 model_logger.error("'%s' must be float greater than or equal to 0", field)
                 flag = False
@@ -262,15 +275,26 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
 
     return scenario_generators, scenario_baseload, flag
 
+
 def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_lines, model_logger):
     flag = True
     scenario_storages = {s: [] for s in scenarios_list}
 
+    fields = [
+        'capex_p',
+        'capex_e',
+        'fom',
+        'vom',
+        'initial_power_capacity',
+        'initial_energy_capacity',
+        'max_build_p',
+        'min_build_p',
+        'max_build_e',
+        'min_build_e',
+    ]
+
     for idx, item in storages_dict.items():
-        for field in [
-            'capex_p', 'capex_e', 'fom', 'vom',
-            'initial_power_capacity', 'initial_energy_capacity',
-            'max_build_p', 'min_build_p', 'max_build_e', 'min_build_e']:
+        for field in fields:
             if not validate_range(item[field], 0):
                 model_logger.error("'%s' must be float >= 0", field)
                 flag = False
@@ -306,11 +330,21 @@ def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_li
                     scenario_storages[scenario].append(item['name'])
 
                 if item['node'] not in scenario_nodes[scenario]:
-                    model_logger.error("'node' %s for storage %s is not defined in scenario %s", item['node'], item['name'], scenario)
+                    model_logger.error(
+                        "'node' %s for storage %s is not defined in scenario %s",
+                        item['node'],
+                        item['name'],
+                        scenario,
+                    )
                     flag = False
 
                 if item['line'] not in scenario_lines[scenario]:
-                    model_logger.error("'line' %s for storage %s is not defined in scenario %s", item['line'], item['name'], scenario)
+                    model_logger.error(
+                        "'line' %s for storage %s is not defined in scenario %s",
+                        item['line'],
+                        item['name'],
+                        scenario
+                    )
                     flag = False
             else:
                 model_logger.warning("'scenario' %s for storage.id %s not defined in scenarios.csv", scenario, idx)
@@ -318,7 +352,16 @@ def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_li
     return scenario_storages, flag
 
 
-def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenario_storages, scenario_lines, scenario_baseload, scenario_minor_lines, model_logger):
+def validate_initial_guess(
+    x0s_dict,
+    scenarios_list,
+    scenario_generators,
+    scenario_storages,
+    scenario_lines,
+    scenario_baseload,
+    scenario_minor_lines,
+    model_logger
+):
     flag = True
     initial_guess_scenarios = []
 
@@ -339,7 +382,12 @@ def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenar
         ) - len(scenario_minor_lines[scenario])
 
         if x0 and not (len(x0) == bound_length):
-            model_logger.error("Initial guess 'x_0' for scenario %s contains %d elements, expected %d", scenario, len(x0), bound_length)
+            model_logger.error(
+                "Initial guess 'x_0' for scenario %s contains %d elements, expected %d",
+                scenario,
+                len(x0),
+                bound_length,
+            )
             flag = False
 
     for scenario in scenarios_list:
@@ -348,6 +396,7 @@ def validate_initial_guess(x0s_dict, scenarios_list, scenario_generators, scenar
             flag = False
 
     return flag
+
 
 def validate_datafiles_config(scenario_filenames, scenario_datafile_types, model_logger):
     valid_types = {'demand', 'generation', 'flexible_annual_limit'}
@@ -366,19 +415,23 @@ def validate_datafiles_config(scenario_filenames, scenario_datafile_types, model
 
     return flag
 
+
 def validate_electricity(node_list, model_logger):
     flag = True
     return flag
+
 
 def validate_generation(solar_list, wind_list, baseload_list, model_logger):
     flag = True
     return flag
 
+
 def validate_flexible_limits(flexible_list, model_logger):
     flag = True
-    return flag 
+    return flag
 
-def validate_config(model_data : ModelData) -> bool:
+
+def validate_config(model_data: ModelData) -> bool:
     config_flag = True
     model_logger = model_data.logger
 
@@ -402,34 +455,62 @@ def validate_config(model_data : ModelData) -> bool:
     else:
         model_logger.info("fuels.csv validated!")
 
-    scenario_lines, scenario_minor_lines, flag = validate_lines(model_data.lines, scenarios_list, scenario_nodes, model_logger)
+    scenario_lines, scenario_minor_lines, flag = validate_lines(
+        model_data.lines,
+        scenarios_list,
+        scenario_nodes,
+        model_logger
+    )
     if not flag:
         model_logger.error("lines.csv contains errors.")
         config_flag = False
     else:
         model_logger.info("lines.csv validated!")
 
-    scenario_generators, scenario_baseload, flag = validate_generators(model_data.generators, scenarios_list, scenario_fuels, scenario_lines, scenario_nodes, model_logger)
+    scenario_generators, scenario_baseload, flag = validate_generators(
+        model_data.generators,
+        scenarios_list,
+        scenario_fuels,
+        scenario_lines,
+        scenario_nodes,
+        model_logger,
+    )
     if not flag:
         model_logger.error("generators.csv contains errors.")
         config_flag = False
     else:
         model_logger.info("generators.csv validated!")
 
-    scenario_storages, flag = validate_storages(model_data.storages, scenarios_list, scenario_nodes, scenario_lines, model_logger)
+    scenario_storages, flag = validate_storages(
+        model_data.storages,
+        scenarios_list,
+        scenario_nodes,
+        scenario_lines,
+        model_logger,
+    )
     if not flag:
         model_logger.error("storages.csv contains errors.")
         config_flag = False
     else:
         model_logger.info("storages.csv validated!")
 
-    if not validate_initial_guess(model_data.x0s, scenarios_list, scenario_generators, scenario_storages, scenario_lines, scenario_baseload, scenario_minor_lines, model_logger):
+    if not validate_initial_guess(
+        model_data.x0s,
+        scenarios_list,
+        scenario_generators,
+        scenario_storages,
+        scenario_lines,
+        scenario_baseload,
+        scenario_minor_lines,
+        model_logger,
+    ):
         model_logger.error("initial_guess.csv contains errors.")
         config_flag = False
     else:
         model_logger.info("initial_guess.csv validated!")
 
     return config_flag
+
 
 def validate_data(all_datafiles, scenario_name, model_logger):
     flag = True

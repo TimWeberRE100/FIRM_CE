@@ -1,5 +1,6 @@
-from firm_ce import Model
 import time
+
+from firm_ce import Model
 
 start_time = time.time()
 model = Model()
