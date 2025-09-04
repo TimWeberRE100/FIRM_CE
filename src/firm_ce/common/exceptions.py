@@ -4,7 +4,8 @@ from firm_ce.common.jit_overload import njit
 @njit
 def raise_static_modification_error():
     raise ValueError(
-        "Attempting to modify a static jitclass instance. Use the create_dynamic_copy method within the worker process to modify attributes."
+        "Attempting to modify a static jitclass instance. Use the create_dynamic_copy method within the worker process "
+        "to modify attributes."
     )
 
 

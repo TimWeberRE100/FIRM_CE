@@ -212,7 +212,9 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
                 for endpoint in ['node_start', 'node_end']:
                     node_val = item.get(endpoint)
                     if (node_val not in scenario_nodes[scenario]) and not is_nan(node_val):
-                        model_logger.error("'%s' %s for line %s is not defined in scenario %s", endpoint, node_val, item['name'], scenario)
+                        model_logger.error(
+                            f"'{endpoint}' {endpoint} for line {item['name']} is not defined in scenario {scenario}"
+                        )
                         flag = False
 
                 if any(is_nan(item.get(n)) for n in ['node_start', 'node_end']):
@@ -260,18 +262,24 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
                     scenario_baseload[scenario].append(item['name'])
 
                 if item['node'] not in scenario_nodes[scenario]:
-                    model_logger.error("'node' %s for generator %s is not defined in scenario %s", item['node'], item['name'], scenario)
+                    model_logger.error(
+                        f"'node' {item['node']} for generator {item['name']} is not defined in scenario {scenario}"
+                    )
                     flag = False
 
                 if item['fuel'] not in scenario_fuels[scenario]:
-                    model_logger.error("'fuel' %s for generator %s is not defined in scenario %s", item['fuel'], item['name'], scenario)
+                    model_logger.error(
+                        f"'fuel' {item['fuel']} for generator {item['name']} is not defined in scenario {scenario}"
+                    )
                     flag = False
 
                 if item['line'] not in scenario_lines[scenario]:
-                    model_logger.error("'line' %s for generator %s is not defined in scenario %s", item['line'], item['name'], scenario)
+                    model_logger.error(
+                        f"'line' {item['line']} for generator {item['name']} is not defined in scenario {scenario}"
+                    )
                     flag = False
             else:
-                model_logger.warning("'scenario' %s for generator.id %s not defined in scenarios.csv", scenario, idx)
+                model_logger.warning(f"'scenario' {scenario} for generator.id {idx} not defined in scenarios.csv")
 
     return scenario_generators, scenario_baseload, flag
 

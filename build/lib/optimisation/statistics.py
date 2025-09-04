@@ -84,7 +84,7 @@ class Statistics:
                 shutil.copy(
                     os.path.join(temp_dir, "population_energies.csv"),
                     os.path.join(self.results_directory, "population_energies.csv"),
-                    )
+                )
         return None
 
     def expand_block_data(self, block_array: NDArray[np.float64]) -> NDArray[np.float64]:
@@ -129,7 +129,7 @@ class Statistics:
         data_array = np.empty(
             self.get_asset_column_count(include_minor_lines=True, include_energy_limits=False),
             dtype=np.float64,
-            )
+        )
 
         column_counter = 0
         for generator in self.solution.fleet.generators.values():

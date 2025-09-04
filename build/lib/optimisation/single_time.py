@@ -64,7 +64,7 @@ class Solution:
         self.network = network_m.create_dynamic_copy(network)  # Includes static reference to data
         self.fleet = fleet_m.create_dynamic_copy(
             fleet, self.network.nodes, self.network.minor_lines
-            )  # Includes static reference to data
+        )  # Includes static reference to data
 
         fleet_m.build_capacities(self.fleet, x, self.static.interval_resolutions)
         network_m.build_capacity(self.network, x)
@@ -118,7 +118,7 @@ class Solution:
             total_costs += line_m.calculate_fixed_costs(line, years_float, self.static.year_count)
 
         for line in self.network.minor_lines.values():
-            total_costs += line_m.calculate_fixed_costs(line,  years_float, self.static.year_count)
+            total_costs += line_m.calculate_fixed_costs(line, years_float, self.static.year_count)
 
         return total_costs
 

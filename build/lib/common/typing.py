@@ -17,14 +17,17 @@ else:
         @classmethod
         def __class_getitem__(cls, key):
             return NDArray[np.int64]
+
     class _Float64:
         @classmethod
         def __class_getitem__(cls, key):
             return NDArray[np.float64]
+
     class _Boolean:
         @classmethod
         def __class_getitem__(cls, key):
             return NDArray[np.bool_]
+
     class _Unicode:
         @classmethod
         def __class_getitem__(cls, key):
@@ -36,16 +39,24 @@ else:
     unicode_type = _Unicode
 
     def UniTuple(ty, n: int):
-        _map = { _Float64: float, _Int64: int, _Boolean: bool, _Unicode: str,
-                 float: float, int: int, bool: bool, str: str }
-        base = _map.get(ty, ty)  
-        return Tuple[tuple([base]*n)] 
+        _map = {
+            _Float64: float,
+            _Int64: int,
+            _Boolean: bool,
+            _Unicode: str,
+            float: float,
+            int: int,
+            bool: bool,
+            str: str
+        }
+        base = _map.get(ty, ty)
+        return Tuple[tuple([base]*n)]
 
     def DictType(key_ty, val_ty):
         try:
-            return Dict[key_ty, val_ty] 
+            return Dict[key_ty, val_ty]
         except Exception:
-            return Dict 
+            return Dict
 
     def ListType(val_ty):
         try:

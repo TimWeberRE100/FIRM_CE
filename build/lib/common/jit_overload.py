@@ -8,13 +8,14 @@ else:
         def decorator(cls):
             return cls
         return decorator
-    
+
     def njit(func=None, **kwargs):
         if func is not None:
             return func
+
         def wrapper(f):
             return f
         return wrapper
-    
+
     def prange(x):
         return range(x)

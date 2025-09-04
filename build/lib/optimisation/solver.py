@@ -221,7 +221,7 @@ class Solver:
         self.logger.info(f"[midpoint_explore] beginning midpoint exploration: {self.config.midpoint_count} per group")
         band_lcoe_max = self.get_band_lcoe_max()
         group_bands = read_broad_optimum_bands(self.scenario_name, self.broad_optimum_var_info)
-        csv_path = create_midpoint_csv(self.scenario_name,  self.broad_optimum_var_info)
+        csv_path = create_midpoint_csv(self.scenario_name, self.broad_optimum_var_info)
 
         for group_key, bands in group_bands.items():
             band_max, band_min = float(bands['max']), float(bands['min'])
@@ -232,7 +232,7 @@ class Solver:
 
             self.logger.info(
                 f"[midpoint_explore] group '{group_key}'  min={band_min:.3f}  max={band_max:.3f}  step={step_size:.3f}"
-                )
+            )
 
             for midpoint in range(1, self.config.midpoint_count+1):
                 evaluation_records = []
