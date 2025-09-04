@@ -89,15 +89,15 @@ def build_broad_optimum_var_info(
 
 
 def create_evaluation_record(
-    group_key:  str,
-    band_type:  str,
+    group_key: str,
+    band_type: str,
     population_lcoes: List[float],
     de_population_penalties: List[float],
     band_population_penalties: List[float],
     band_population_candidates: List[List[float]],
     solution_index: int,
     target_group_var_sum: float | None = None,
- ) -> EvaluationRecord_Type:
+) -> EvaluationRecord_Type:
     return (
         group_key,
         band_type,
@@ -216,7 +216,7 @@ def write_broad_optimum_bands(
     bands_path = get_broad_optimum_bands_path(scenario_name)
     near_optimal_asset_names = [
         asset_name for _, asset_name, near_optimum_check, _ in broad_optimum_var_info if near_optimum_check
-        ]
+    ]
     names_to_columns = {name: col for col, name in enumerate(near_optimal_asset_names)}
 
     with open(bands_path, 'w', newline='') as f_bands:
@@ -227,7 +227,7 @@ def write_broad_optimum_bands(
             'LCOE [$/MWh]',
             'Operational_Penalty',
             'Band_Penalty'
-            ] + near_optimal_asset_names
+        ] + near_optimal_asset_names
         writer_bands.writerow(header)
 
         for group, (candidate_x_min, candidate_x_max) in bands.items():

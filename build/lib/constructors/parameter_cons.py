@@ -4,11 +4,12 @@ from numpy.typing import NDArray
 
 from firm_ce.system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
 
+
 def determine_interval_parameters(
         first_year: int,
         year_count: int,
         resolution: float,
-    ) -> Tuple[int, NDArray, int]:
+) -> Tuple[int, NDArray, int]:
     year_first_t = np.zeros(year_count, dtype=np.int64)
 
     leap_days = 0
@@ -32,10 +33,11 @@ def determine_interval_parameters(
 
     return leap_days, year_first_t, intervals_count
 
+
 def construct_ScenarioParameters_object(
         scenario_data_dict: Dict[str, str],
         node_count: int,
-        ) -> ScenarioParameters_InstanceType:
+) -> ScenarioParameters_InstanceType:
     resolution = float(scenario_data_dict.get('resolution', 0.0))
     allowance = float(scenario_data_dict.get('allowance', 0.0))
     first_year = int(scenario_data_dict.get('firstyear', 0))
@@ -48,13 +50,13 @@ def construct_ScenarioParameters_object(
     )
 
     return ScenarioParameters(
-        resolution, 
+        resolution,
         allowance,
         first_year,
-        final_year, 
-        year_count, 
-        leap_year_count, 
+        final_year,
+        year_count,
+        leap_year_count,
         year_first_t,
-        intervals_count, 
+        intervals_count,
         node_count,
     )

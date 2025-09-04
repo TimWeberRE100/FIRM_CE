@@ -5,6 +5,7 @@ from typing import Tuple
 
 logging.getLogger('numba').setLevel(logging.WARNING)
 
+
 def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.
@@ -16,9 +17,10 @@ def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
 
     Returns:
     -------
-    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results directory.
+    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results
+    directory.
     """
-    
+
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     results_dir = os.path.join("results", f"{model_name}_{timestamp}")
     os.makedirs(results_dir, exist_ok=True)

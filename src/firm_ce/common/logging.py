@@ -17,7 +17,7 @@ def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
 
     Returns:
     -------
-    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results 
+    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results
         directory.
     """
 

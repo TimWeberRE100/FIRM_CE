@@ -16,7 +16,7 @@ from firm_ce.constructors import (
     load_datafiles_to_network,
     unload_data_from_generators,
     unload_data_from_network,
-    )
+)
 from firm_ce.fast_methods import static_m
 from firm_ce.system.parameters import ModelConfig
 
@@ -48,7 +48,7 @@ class Scenario:
             self._get_scenario_dicts(model_data.fuels),
             self.network.minor_lines,
             self.network.nodes,
-        )      
+        )
         self.statistics = None
 
         self.assign_x_indices()
