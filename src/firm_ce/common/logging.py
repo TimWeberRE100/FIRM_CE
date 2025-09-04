@@ -3,7 +3,8 @@ import os
 from datetime import datetime
 from typing import Tuple
 
-logging.getLogger('numba').setLevel(logging.WARNING)
+logging.getLogger("numba").setLevel(logging.WARNING)
+
 
 def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
     """
@@ -16,10 +17,11 @@ def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
 
     Returns:
     -------
-    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results directory.
+    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results 
+        directory.
     """
-    
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     results_dir = os.path.join("results", f"{model_name}_{timestamp}")
     os.makedirs(results_dir, exist_ok=True)
 
@@ -31,12 +33,12 @@ def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
 
     file_handler = logging.FileHandler(log_path)
     file_handler.setLevel(logging.DEBUG)
-    file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_format = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
     file_handler.setFormatter(file_format)
 
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(logging.Formatter('%(message)s'))
+    console_handler.setFormatter(logging.Formatter("%(message)s"))
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)

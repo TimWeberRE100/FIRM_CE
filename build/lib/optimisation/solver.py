@@ -3,7 +3,8 @@ from numpy.typing import NDArray
 from typing import Union, List, Tuple, Dict
 from itertools import chain
 from scipy.optimize import differential_evolution, OptimizeResult
-import csv, os
+import csv
+import os
 from logging import Logger
 
 from firm_ce.system.parameters import ModelConfig
@@ -13,7 +14,7 @@ from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType
 from firm_ce.system.topology import Network_InstanceType, Line_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.optimisation.broad_optimum import (
-    build_broad_optimum_var_info, 
+    build_broad_optimum_var_info,
     broad_optimum_objective,
     write_broad_optimum_records,
     write_broad_optimum_bands,
@@ -23,18 +24,29 @@ from firm_ce.optimisation.broad_optimum import (
     append_to_midpoint_csv,
 )
 
+
+DifferentialEvolutionArgs = Tuple[
+    ScenarioParameters_InstanceType,
+    Fleet_InstanceType,
+    Network_InstanceType,
+    str,
+    float,
+]
+
+
 class Solver:
-    def __init__(self, 
-                 config: ModelConfig, 
-                 initial_x_candidate: NDArray[np.float64],
-                 parameters_static: ScenarioParameters_InstanceType,
-                 fleet_static: Fleet_InstanceType,
-                 network_static: Network_InstanceType,
-                 scenario_logger: Logger,
-                 scenario_name: str,
-                 polish_flag: bool = False,
-                 initial_population: Union[NDArray[np.float64], None] = None,
-                 ) -> None:
+    def __init__(
+        self,
+        config: ModelConfig,
+        initial_x_candidate: NDArray[np.float64],
+        parameters_static: ScenarioParameters_InstanceType,
+        fleet_static: Fleet_InstanceType,
+        network_static: Network_InstanceType,
+        scenario_logger: Logger,
+        scenario_name: str,
+        polish_flag: bool = False,
+        initial_population: Union[NDArray[np.float64], None] = None,
+    ) -> None:
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
         self.parameters_static = parameters_static
@@ -54,9 +66,10 @@ class Solver:
             self.iterations = config.iterations
 
     def get_bounds(self) -> NDArray[np.float64]:
-        def power_capacity_bounds(asset_list: Union[List[Generator_InstanceType],List[Storage_InstanceType],List[Line_InstanceType]], 
-                                  build_cap_constraint: str
-                                  ) -> List[float]:
+        def power_capacity_bounds(
+            asset_list: Union[List[Generator_InstanceType], List[Storage_InstanceType], List[Line_InstanceType]],
+            build_cap_constraint: str
+        ) -> List[float]:
             return [
                 getattr(asset, build_cap_constraint)
                 for asset in asset_list
@@ -69,7 +82,7 @@ class Solver:
                 else 0.0
                 for s in storage_list
             ]
-        
+
         generators = list(self.fleet_static.generators.values())
         storages = list(self.fleet_static.storages.values())
         lines = list(self.network_static.major_lines.values())
@@ -100,7 +113,7 @@ class Solver:
         with open(os.path.join(temp_dir, "population_energies.csv"), 'w', newline='') as csvfile:
             csv.writer(csvfile)
 
-    def get_differential_evolution_args(self) -> Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float]:
+    def get_differential_evolution_args(self) -> DifferentialEvolutionArgs:
         args = (
             self.parameters_static,
             self.fleet_static,
@@ -116,40 +129,43 @@ class Solver:
         self.result = differential_evolution(
             x0=self.decision_x0,
             func=evaluate_vectorised_xs,
-            bounds=list(zip(self.lower_bounds, self.upper_bounds)), 
-            args = self.get_differential_evolution_args(),
+            bounds=list(zip(self.lower_bounds, self.upper_bounds)),
+            args=self.get_differential_evolution_args(),
             tol=0,
-            maxiter=self.iterations, 
-            popsize=self.config.population, 
-            mutation=(0.2,self.config.mutation), 
+            maxiter=self.iterations,
+            popsize=self.config.population,
+            mutation=(0.2, self.config.mutation),
             recombination=self.config.recombination,
-            disp=True, 
-            polish=False, 
+            disp=True,
+            polish=False,
             updating='deferred',
-            callback=callback, 
+            callback=callback,
             workers=1,
             vectorized=True,
         )
 
     def get_band_lcoe_max(self) -> float:
         solution = Solution(self.decision_x0,
-                            *self.get_differential_evolution_args()) 
-        
+                            *self.get_differential_evolution_args())
+
         if solution.penalties > 1:
-            self.logger.warning(f"Initial guess (assumed optimal solution) has a penalty of {solution.penalties}. It is recommended to double-check initial_guess.csv contains the correct optimal solution.")
+            self.logger.warning(
+                f"Initial guess (assumed optimal solution) has a penalty of {solution.penalties}. It is recommended to"
+                f"double-check initial_guess.csv contains the correct optimal solution."
+            )
 
         self.optimal_lcoe = solution.lcoe
-        band_lcoe_max = self.optimal_lcoe * (1 + self.config.near_optimal_tol)    
-        
+        band_lcoe_max = self.optimal_lcoe * (1 + self.config.near_optimal_tol)
+
         return band_lcoe_max
 
-    def find_near_optimal_band(self) -> Dict[str, Tuple[float]]:      
+    def find_near_optimal_band(self) -> Dict[str, Tuple[float]]:
         band_lcoe_max = self.get_band_lcoe_max()
         evaluation_records = []
         bands = {}
         groups = create_groups_dict(self.broad_optimum_var_info)
-    
-        for group_key, idx_list in groups.items():            
+
+        for group_key, idx_list in groups.items():
             self.logger.info(f"[near_optimum] exploring group '{group_key}'")
 
             bands_record = []
@@ -161,45 +177,46 @@ class Solver:
                         self.logger.info(f"[near_optimum] finding MAX for group '{group_key}'")
 
                 args = (
-                    self.get_differential_evolution_args(), 
+                    self.get_differential_evolution_args(),
                     group_key,
                     band_lcoe_max,
                     idx_list,
                     evaluation_records,
                     band_type
                 )
-            
+
                 result = differential_evolution(
                     broad_optimum_objective,
                     bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                    args=args,  
+                    args=args,
                     tol=0,
-                    maxiter=self.iterations, 
-                    popsize=self.config.population, 
-                    mutation=(0.2,self.config.mutation), 
+                    maxiter=self.iterations,
+                    popsize=self.config.population,
+                    mutation=(0.2, self.config.mutation),
                     recombination=self.config.recombination,
-                    disp=True, 
-                    polish=False, 
+                    disp=True,
+                    polish=False,
                     updating='deferred',
-                    callback=callback, 
+                    callback=callback,
                     workers=1,
                     vectorized=True
                 )
 
                 bands_record.append(result.x.copy())
-            
+
             bands[group_key] = tuple(bands_record)
 
         write_broad_optimum_records(self.scenario_name, evaluation_records, self.broad_optimum_var_info)
-        write_broad_optimum_bands(self.scenario_name, 
-                                  self.broad_optimum_var_info, 
-                                  bands, 
-                                  self.get_differential_evolution_args(),
-                                  band_lcoe_max,
-                                  groups
-                                  )
+        write_broad_optimum_bands(
+            self.scenario_name,
+            self.broad_optimum_var_info,
+            bands,
+            self.get_differential_evolution_args(),
+            band_lcoe_max,
+            groups,
+        )
         return bands
-    
+
     def explore_midpoints(self) -> None:
         self.logger.info(f"[midpoint_explore] beginning midpoint exploration: {self.config.midpoint_count} per group")
         band_lcoe_max = self.get_band_lcoe_max()
@@ -209,19 +226,24 @@ class Solver:
         for group_key, bands in group_bands.items():
             band_max, band_min = float(bands['max']), float(bands['min'])
             step_size = (band_max - band_min) / (self.config.midpoint_count + 1)
-            idx_list = [variable['idx'] 
-                        for variable in self.broad_optimum_var_info 
+            idx_list = [variable['idx']
+                        for variable in self.broad_optimum_var_info
                         if (variable[0] or variable[3]) == group_key]
-            
-            self.logger.info(f"[midpoint_explore] group '{group_key}'  min={band_min:.3f}  max={band_max:.3f}  step={step_size:.3f}")
-        
+
+            self.logger.info(
+                f"[midpoint_explore] group '{group_key}'  min={band_min:.3f}  max={band_max:.3f}  step={step_size:.3f}"
+                )
+
             for midpoint in range(1, self.config.midpoint_count+1):
                 evaluation_records = []
                 group_target = band_min + midpoint * step_size
-                self.logger.info(f"[midpoint_explore] midpoint {midpoint}/{self.config.midpoint_count}: target sum ≈ {group_target:.3f}")
+                self.logger.info(
+                    f"[midpoint_explore] midpoint {midpoint}/{self.config.midpoint_count}:"
+                    f"target sum ≈ {group_target:.3f}"
+                )
 
                 args = (
-                    self.get_differential_evolution_args(), 
+                    self.get_differential_evolution_args(),
                     group_key,
                     band_lcoe_max,
                     idx_list,
@@ -238,7 +260,7 @@ class Solver:
                     tol=0,
                     maxiter=self.iterations,
                     popsize=self.config.population,
-                    mutation=(0.2,self.config.mutation),
+                    mutation=(0.2, self.config.mutation),
                     recombination=self.config.recombination,
                     disp=True,
                     polish=False,
@@ -246,28 +268,32 @@ class Solver:
                     callback=callback,
                     workers=1,
                     vectorized=True
-                ) 
+                )
 
                 append_to_midpoint_csv(self.scenario_name, evaluation_records)
 
         self.logger.info(f"[midpoint_explore] finished; wrote {len(evaluation_records)} feasible points to {csv_path}")
-        
+
         return None
-    
+
     def capacity_expansion(self):
         pass
 
     def evaluate(self) -> None:
         if self.config.type == 'single_time':
-            self.single_time()            
+            self.single_time()
         elif self.config.type == 'near_optimum':
-            self.find_near_optimal_band()            
+            self.find_near_optimal_band()
         elif self.config.type == 'midpoint_explore':
-            self.explore_midpoints()            
+            self.explore_midpoints()
         elif self.config.type == 'capacity_expansion':
-            self.capacity_expansion() 
+            self.capacity_expansion()
         else:
-            raise Exception("Model type in config must be 'single_time' or 'capacity_expansion' or 'near_optimum' or 'midpoint_explore'")
+            raise Exception(
+                "Model type in config must be 'single_time' or 'capacity_expansion' or "
+                "'near_optimum' or 'midpoint_explore'"
+            )
+
 
 def callback(intermediate_result: OptimizeResult) -> None:
     results_dir = os.path.join("results", "temp")

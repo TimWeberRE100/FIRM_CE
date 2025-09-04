@@ -65,6 +65,11 @@ test = ["pytest>=8.4.1,<9"]
 [tool.flake8]
 max-line-length = "120"
 max-complexity = "10"
+ignore = [
+    "C901", 
+    "E226", 
+    "W503",
+]
 
 [tool.black]
 line-length = 120

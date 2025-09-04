@@ -1,5 +1,4 @@
 import numpy as np
-from numpy.typing import NDArray
 
 from typing import Dict
 from firm_ce.common.constants import JIT_ENABLED
@@ -20,46 +19,52 @@ if JIT_ENABLED:
         ('block_lengths', int64[:]),
         ('node_count', int64),
         ('fom_scalar', float64),
-        ('year_energy_demand',float64[:]),
+        ('year_energy_demand', float64[:]),
     ]
 else:
     scenario_parameters_spec = []
 
+
 @jitclass(scenario_parameters_spec)
 class ScenarioParameters:
-    def __init__(self,
-                 resolution: float64, 
-                 allowance: float64,
-                 first_year: int64,
-                 final_year: int64, 
-                 year_count: int64, 
-                 leap_year_count: int64, 
-                 year_first_t: int64[:],
-                 intervals_count: int64,
-                 node_count: int64,):        
-
-        self.resolution = resolution # length of time interval in hours
-        self.interval_resolutions = resolution*np.ones(intervals_count, dtype=np.float64) # length of blocks in hours, for future 'simple' balancing_method
-        self.allowance = allowance # % annual demand allowed as unserved energy
-        self.first_year = first_year # YYYY
-        self.final_year = final_year # YYYY
-        self.year_count = year_count 
+    def __init__(
+        self,
+        resolution: float64,
+        allowance: float64,
+        first_year: int64,
+        final_year: int64,
+        year_count: int64,
+        leap_year_count: int64,
+        year_first_t: int64[:],
+        intervals_count: int64,
+        node_count: int64,
+    ):
+        self.resolution = resolution  # length of time interval in hours
+        self.interval_resolutions = resolution*np.ones(
+            intervals_count, dtype=np.float64)  # length of blocks in hours, for future 'simple' balancing_method
+        self.allowance = allowance  # % annual demand allowed as unserved energy
+        self.first_year = first_year  # YYYY
+        self.final_year = final_year  # YYYY
+        self.year_count = year_count
         self.leap_year_count = leap_year_count
         self.year_first_t = year_first_t
         self.intervals_count = intervals_count
         self.block_lengths = np.ones(intervals_count, dtype=np.int64)
         self.node_count = node_count
-        self.fom_scalar = (year_count+leap_year_count/365)/year_count # Scale average annual fom to account for leap days for PLEXOS consistency
+        # Scale average annual fom to account for leap days for PLEXOS consistency
+        self.fom_scalar = (year_count+leap_year_count/365)/year_count
         self.year_energy_demand = np.zeros(self.year_count, dtype=np.float64)
+
 
 if JIT_ENABLED:
     ScenarioParameters_InstanceType = ScenarioParameters.class_type.instance_type
 else:
     ScenarioParameters_InstanceType = ScenarioParameters
 
+
 class ModelConfig:
     def __init__(self, config_dict: Dict[str, str]) -> None:
-        config_dict = { item['name']: item['value'] for item in config_dict.values() }
+        config_dict = {item['name']: item['value'] for item in config_dict.values()}
         self.type = config_dict['type']
         self.iterations = int(config_dict['iterations'])
         self.population = int(config_dict['population'])
