@@ -1,4 +1,0 @@
-Fix all docstrings
-
-Remove commented debug lines from broad_optimum module
-Fix broad_optimum for simple balancing method
