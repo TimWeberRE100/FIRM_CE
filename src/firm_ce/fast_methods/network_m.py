@@ -92,7 +92,7 @@ def calculate_period_unserved_energy(
 ) -> float64:
     unserved_energy = 0
     for node in network_instance.nodes.values():
-        unserved_energy += sum(node.deficits[first_t: last_t + 1] * interval_resolutions[first_t: last_t + 1])
+        unserved_energy += sum(node.deficits[first_t : last_t + 1] * interval_resolutions[first_t : last_t + 1])
     return unserved_energy
 
 
