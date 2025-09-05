@@ -4,9 +4,11 @@ on:
     types: [opened, synchronize, reopened]
     branches:
       - main
+      - feature/github_actions
   push:
     branches:
       - main
+      - feature/github_actions
 jobs:
   flake8_py312:
     runs-on: ubuntu-latest
