@@ -8,7 +8,7 @@ on:
     branches:
       - main
 jobs:
-  flake8_py311:
+  flake8_py312:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -17,7 +17,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Setup flake8 annotations
         uses: rbialon/flake8-annotations@v1
