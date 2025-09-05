@@ -15,13 +15,6 @@ if JIT_ENABLED:
         ("transformer_capex", float64),
     ]
 else:
-
-    def jitclass(spec):
-        def decorator(cls):
-            return cls
-
-        return decorator
-
     unitcost_spec = []
 
 
