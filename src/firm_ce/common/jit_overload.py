@@ -1,7 +1,7 @@
 from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
-    from numba import njit, prange, set_num_threads
+    from numba import njit, prange, set_num_threads  # noqa
     from numba.experimental import jitclass
 else:
 
