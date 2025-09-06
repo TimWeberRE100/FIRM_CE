@@ -342,7 +342,7 @@ def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_li
         # If lifetime or duration have a value less than 0, log this, set flag to false and continue
         for field in ["lifetime", "duration"]:
             if int(item[field]) < 0:
-                model_logger.error(f"{field}'' must be int >= 0")
+                model_logger.error(f"'{field}' must be int >= 0")
                 flag = False
 
         for efficiency in ["charge_efficiency", "discharge_efficiency"]:
