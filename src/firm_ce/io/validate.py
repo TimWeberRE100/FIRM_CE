@@ -8,10 +8,11 @@ from firm_ce.io.file_manager import import_config_csvs
 
 
 class ModelData:
-    def __init__(self) -> None:
+    def __init__(self, config_directory) -> None:
+        self.config_directory = config_directory
 
         # Get the config settings for the csvs
-        self.config = import_config_csvs()
+        self.config_data = import_config_csvs(config_directory=config_directory)
 
         # Get the model name
         model_name = self.get_model_name()
@@ -423,9 +424,9 @@ def validate_initial_guess(
     return flag
 
 
-def validate_datafiles_config(scenario_filenames, scenario_datafile_types, model_logger):
+def validate_datafiles_config(scenario_filenames, scenario_datafile_types, model_logger, datafiles_directory: str):
     valid_types = {"demand", "generation", "flexible_annual_limit"}
-    all_filenames = set(os.listdir("firm_ce/data"))
+    all_filenames = set(os.listdir(datafiles_directory))
     flag = True
 
     for fn in scenario_filenames:
@@ -525,7 +526,7 @@ def validate_config(model_data: ModelData) -> bool:
     return config_flag
 
 
-def validate_data(all_datafiles, scenario_name, model_logger):
+def validate_data(all_datafiles, scenario_name, model_logger, datafiles_directory: str):
     flag = True
     scenario_filenames = []
     scenario_datafile_types = []
@@ -536,7 +537,7 @@ def validate_data(all_datafiles, scenario_name, model_logger):
             scenario_filenames.append(item["filename"])
             scenario_datafile_types.append(item["datafile_type"])
 
-    if not validate_datafiles_config(scenario_filenames, scenario_datafile_types, model_logger):
+    if not validate_datafiles_config(scenario_filenames, scenario_datafile_types, model_logger, datafiles_directory):
         model_logger.error(f"datafiles.csv contains errors for scenario {scenario_name}.")
         flag = False
     else:
