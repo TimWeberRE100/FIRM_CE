@@ -9,30 +9,41 @@ from firm_ce.io.file_manager import import_config_csvs
 
 class ModelData:
     def __init__(self) -> None:
-        objects = import_config_csvs()
 
-        try:
-            config_dict = objects.get("config")
-            for v in config_dict.values():
-                if v.get("name") == "model_name":
-                    model_name = v.get("value")
-                    break
-        except:
-            model_name = "Model"
+        # Get the config settings for the csvs
+        self.config = import_config_csvs()
 
+        # Get the model name
+        model_name = self.get_model_name()
+
+        # Initialise the logger
         self.logger, self.results_dir = init_model_logger(model_name)
 
-        self.scenarios = objects.get("scenarios")
-        self.generators = objects.get("generators")
-        self.fuels = objects.get("fuels")
-        self.lines = objects.get("lines")
-        self.storages = objects.get("storages")
-        self.config = objects.get("config")
-        self.x0s = objects.get("initial_guess")
-        self.datafiles = objects.get("datafiles")
+        # Set all the relevant parameters
+        self.scenarios = self.config_data.get("scenarios")
+        self.generators = self.config_data.get("generators")
+        self.fuels = self.config_data.get("fuels")
+        self.lines = self.config_data.get("lines")
+        self.storages = self.config_data.get("storages")
+        self.config = self.config_data.get("config")
+        self.x0s = self.config_data.get("initial_guess")
+        self.datafiles = self.config_data.get("datafiles")
 
     def validate(self):
         return validate_config(self)
+
+    def get_model_name(self) -> str:
+        model_name = None
+
+        if "config" in self.config_data:
+            if "name" in self.config_data["config"].values():
+                if self.config_data["config"].values()["name"] == "model_name":
+                    model_name = self.config_data["config"].values()["value"]
+
+        if model_name is None:
+            model_name = "Model"
+
+        return model_name
 
 
 def validate_range(val, min_val, max_val=None, inclusive=True):
@@ -328,12 +339,10 @@ def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_li
                 model_logger.error("'%s' must be <= '%s'", bounded[0], bounded[1])
                 flag = False
 
+        # If lifetime or duration have a value less than 0, log this, set flag to false and continue
         for field in ["lifetime", "duration"]:
-            try:
-                if int(item[field]) < 0:
-                    raise ValueError
-            except:
-                model_logger.error("'%s' must be int >= 0", field)
+            if int(item[field]) < 0:
+                model_logger.error(f"{field}'' must be int >= 0")
                 flag = False
 
         for efficiency in ["charge_efficiency", "discharge_efficiency"]:
@@ -383,7 +392,7 @@ def validate_initial_guess(
     flag = True
     initial_guess_scenarios = []
 
-    for idx, item in x0s_dict.items():
+    for item in x0s_dict.values():
         scenario = item["scenario"]
 
         if scenario not in scenarios_list:
