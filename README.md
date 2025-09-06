@@ -17,7 +17,7 @@ For usage:
 
 For development:
 
-`pip install -e .[dev,test]`
+`pip install -e .[dev]`
 
 ## Python Tools
 
