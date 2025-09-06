@@ -76,7 +76,7 @@ jobs:
 
       - name: Run Pytest
         run: |
-          pip install -e .[test]
+          pip install -e .[dev]
       - name: Test
         run:
           pytest --junit-xml=.test_report.xml
