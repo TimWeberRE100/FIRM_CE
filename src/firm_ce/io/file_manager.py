@@ -107,7 +107,7 @@ class DataFile:
     Container for a named datafile and its content.
     """
 
-    def __init__(self, filename: str, datafile_type: str) -> None:
+    def __init__(self, filename: str, datafile_type: str, file_directory: str = "src/firm_ce/data") -> None:
         """
         Initialize the DataFile with a filename and its type.
 
@@ -118,7 +118,8 @@ class DataFile:
         """
         self.name = filename
         self.type = datafile_type
-        self.data = ImportDatafile("firm_ce/data", filename).get_data()
+        self.file_directory = file_directory
+        self.data = ImportDatafile(file_directory, filename).get_data()
 
     def __repr__(self) -> str:
         return f"DataFile ({self.name!r}, {self.type!r}, {self.data!r})"
@@ -154,7 +155,7 @@ class ResultFile:
         return None
 
 
-def import_config_csvs() -> Dict[str, Any]:
+def import_config_csvs(config_directory: str) -> Dict[str, Any]:
     """
     Load all model configuration CSVs into a single dictionary.
 
@@ -163,7 +164,7 @@ def import_config_csvs() -> Dict[str, Any]:
     Dict[str, Any]: A dictionary containing model configuration data.
     """
 
-    csv_importer = ImportCSV("firm_ce/config")
+    csv_importer = ImportCSV(config_directory)
     data = csv_importer.get_config_dict()
 
     return data
