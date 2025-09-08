@@ -27,10 +27,10 @@ These are the python tools conducting code checks.
 | --- | --- | --- | --- |
 | flake8 | setup.cfg |  Linter | https://flake8.pycqa.org/en/latest/ |
 | black | pyproject.toml | Formatter | https://github.com/psf/black |
-| isort | setup.cfg | Formats import statements | https://pypi.org/project/isort/ |
+| isort | pyproject.toml | Formats import statements | https://pypi.org/project/isort/ |
 | safety | - | Checks for known security vulnerabilities in imported modules | https://pypi.org/project/safety/ |
 | codespell | - | Spellchecker | https://pypi.org/project/codespell/ |
-| bandit | bandit.yml | Checks your code for security issues | https://github.com/PyCQA/bandit |
+| bandit | pyproject.toml | Checks your code for security issues | https://github.com/PyCQA/bandit |
 | pytest | pytest.ini | Testing Framework | https://docs.pytest.org/ |
 
 Some tools have a configuration settings. The table above indicates in which configuration file to look for settings for that tool. For example, the flake8 settings can be found in the `[flake8]` section of setup.cfg. Others can be find in pyproject.toml
