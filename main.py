@@ -2,7 +2,7 @@ from firm_ce import Model
 import time
 
 start_time = time.time()
-model = Model()
+model = Model(True)
 model_build_time = time.time()
 
 print(model.scenarios)
