@@ -108,6 +108,7 @@ def reset_transmission(network_instance: Network_InstanceType, interval: int64) 
     for node in network_instance.nodes.values():
         node.imports[interval] = 0.0
         node.exports[interval] = 0.0
+        node_m.update_netload_t(node, interval,  False)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -213,7 +214,7 @@ def set_node_fills_and_surpluses(network_instance: Network_InstanceType,
     if transmission_case == 'surplus':
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t, 0)
-            node.surplus = -1*min(node.netload_t, 0)
+            node.surplus = -min(node.netload_t, 0)
     elif transmission_case == 'storage_discharge':
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t - node.storage_power[interval], 0)
@@ -225,10 +226,7 @@ def set_node_fills_and_surpluses(network_instance: Network_InstanceType,
     elif transmission_case == 'storage_charge':
         for node in network_instance.nodes.values():
             node.fill = max(node.charge_max_t[-1] + node.storage_power[interval], 0)
-            node.surplus = -min(
-                node.netload_t - min(node.storage_power[interval], 0),
-                0.0
-            )
+            node.surplus = -min(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0.0)
     elif transmission_case == 'precharging_surplus':
         for node in network_instance.nodes.values(): 
             node.fill = node.precharge_fill

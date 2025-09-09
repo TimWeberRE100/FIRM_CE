@@ -52,6 +52,7 @@ def build_capacity(generator_instance: Generator_InstanceType, new_build_power_c
     generator_instance.capacity += new_build_power_capacity   
     generator_instance.new_build += new_build_power_capacity 
     generator_instance.line.capacity += new_build_power_capacity 
+    generator_instance.line.new_build += new_build_power_capacity 
 
     update_residual_load(generator_instance, new_build_power_capacity, interval_resolutions)     
     return None
@@ -226,6 +227,7 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
         0.0
     )
     generator_instance.trickling_flag = (generator_instance.remaining_trickling_reserves > 1e-6) and generator_instance.trickling_flag
+    #generator_instance.trickling_flag = False #### DEBUG
 
 @njit(fastmath=FASTMATH)
 def set_precharging_max_t(generator_instance: Generator_InstanceType, interval: int64, resolution: float64, merit_order_idx: int64) -> None:
@@ -260,7 +262,7 @@ def update_precharge_dispatch(generator_instance: Generator_InstanceType,
     generator_instance.flexible_max_t -= dispatch_power_update 
     generator_instance.node.flexible_max_t[:merit_order_idx+1] -= dispatch_power_update 
     generator_instance.node.precharge_surplus -= dispatch_power_update
-    generator_instance.trickling_reserves -= dispatch_energy_update
+    generator_instance.trickling_reserves += dispatch_energy_update
     return None
 
 @njit(fastmath=FASTMATH)

@@ -150,7 +150,7 @@ def check_remaining_netload(node_instance: Node_InstanceType, interval: int64, c
     if check_case == 'deficit':
         return node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval] > 1e-6
     elif check_case == 'spillage':
-        return node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval] < 1e-6
+        return node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval] < -1e-6
     elif check_case == 'both':
         return abs(node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]) > 1e-6
     return False

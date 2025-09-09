@@ -535,10 +535,7 @@ def perform_fill_adjustment(interval: int64,
                             ) -> None:
     for node in network.nodes.values():
         for storage_order in node.storage_merit_order:
-            dispatch_power_update = max(
-                min(node.fill, fleet.storages[storage_order].remaining_discharge_max_t),
-                -fleet.storages[storage_order].remaining_charge_max_t
-            )
+            dispatch_power_update = min(node.fill, fleet.storages[storage_order].remaining_charge_max_t)
             fleet.storages[storage_order].dispatch_power[interval] += dispatch_power_update
             node.storage_power[interval] += dispatch_power_update
             node.fill -= dispatch_power_update
@@ -561,7 +558,6 @@ def update_precharge_stored_energy(first_interval_precharge: int64,
         infeasible_flag = fleet_m.determine_feasible_storage_dispatch(solution.fleet, interval)
         if infeasible_flag:
             network_m.reset_transmission(solution.network, interval)
-
             balance_with_transmission(interval, solution.network, 'precharging_adjust_storage', False)
             balance_with_flexible(interval, solution.network, solution.fleet) # Local flexible
 
@@ -570,8 +566,8 @@ def update_precharge_stored_energy(first_interval_precharge: int64,
                 balance_with_flexible(interval, solution.network, solution.fleet) # Neighbouring and local flexible
         else:
             infeasible_flag = fleet_m.determine_feasible_flexible_dispatch(solution.fleet, interval)
-            if infeasible_flag:
-                network_m.reset_transmission(solution.network, interval)                
+            if infeasible_flag:     
+                network_m.reset_transmission(solution.network, interval)          
                 fleet_m.calculate_available_storage_dispatch(solution.fleet, interval)
 
                 balance_with_transmission(interval, solution.network, 'precharging_adjust_surplus', False)
