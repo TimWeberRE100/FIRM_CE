@@ -6,7 +6,7 @@ from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.logging import init_model_logger
 
 class ModelData:
-    def __init__(self) -> None:
+    def __init__(self, logging_flag: bool) -> None:
         objects = import_config_csvs()
 
         try:
@@ -18,7 +18,7 @@ class ModelData:
         except:
             model_name = 'Model'
 
-        self.logger, self.results_dir = init_model_logger(model_name)
+        self.logger, self.results_dir = init_model_logger(model_name, logging_flag)
 
         self.scenarios = objects.get('scenarios')
         self.generators = objects.get('generators')
@@ -192,7 +192,7 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
                 flag = False
 
         if float(item['min_build']) > float(item['max_build']):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get('scenarios')):
@@ -232,7 +232,7 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
             flag = False
 
         if float(item['min_build']) > float(item['max_build']):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get('scenarios')):

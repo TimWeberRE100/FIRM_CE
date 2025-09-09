@@ -1,3 +1,8 @@
+"""
+Numba functions are overloaded to allow for JIT to be switched off, 
+allowing for debugging with the Python interpreter instead.
+"""
+
 from firm_ce.common.constants import JIT_ENABLED
 
 if JIT_ENABLED:
