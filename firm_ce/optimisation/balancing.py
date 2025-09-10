@@ -1,6 +1,6 @@
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.fast_methods import (
     static_m,
     node_m, network_m,
@@ -189,7 +189,7 @@ def perform_local_surplus_transfers(interval: int64,
                                     ) -> None:
     for node in network.nodes.values():
         node.existing_surplus = -min(0, node.netload_t)
-        if node.existing_surplus < 1e-6:
+        if node.existing_surplus < TOLERANCE:
             continue
 
         for idx, storage_order in enumerate(node.storage_merit_order[::-1]):

@@ -1,6 +1,6 @@
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.system.components import Storage, Storage_InstanceType
 from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
 from firm_ce.common.exceptions import (
@@ -207,9 +207,8 @@ def assign_precharging_reserves(storage_instance: Storage_InstanceType) -> None:
 @njit(fastmath=FASTMATH)
 def initialise_precharging_flags(storage_instance: Storage_InstanceType, 
                                  interval: int64) -> None:
-    storage_instance.trickling_flag = (storage_instance.stored_energy[interval] - storage_instance.trickling_reserves > 1e-6) and (storage_instance.precharge_energy < 1e-6)
-    storage_instance.precharge_flag = (storage_instance.precharge_energy > 1e-6)
-    #storage_instance.trickling_flag = False # DEBUG
+    storage_instance.trickling_flag = (storage_instance.stored_energy[interval] - storage_instance.trickling_reserves > TOLERANCE) and (storage_instance.precharge_energy < TOLERANCE)
+    storage_instance.precharge_flag = (storage_instance.precharge_energy > TOLERANCE)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -219,8 +218,8 @@ def update_precharging_flags(storage_instance: Storage_InstanceType,
         storage_instance.stored_energy[interval] - storage_instance.trickling_reserves,
         0.0
     )
-    storage_instance.trickling_flag = (storage_instance.remaining_trickling_reserves > 1e-6) and storage_instance.trickling_flag
-    storage_instance.precharge_flag = (storage_instance.stored_energy[interval] + 1e-6 < storage_instance.energy_capacity) and (storage_instance.precharge_energy > 1e-6) and storage_instance.precharge_flag
+    storage_instance.trickling_flag = (storage_instance.remaining_trickling_reserves > TOLERANCE) and storage_instance.trickling_flag
+    storage_instance.precharge_flag = (storage_instance.stored_energy[interval] + TOLERANCE < storage_instance.energy_capacity) and (storage_instance.precharge_energy > TOLERANCE) and storage_instance.precharge_flag
     return None
 
 @njit(fastmath=FASTMATH)

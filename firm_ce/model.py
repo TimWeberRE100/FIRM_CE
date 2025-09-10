@@ -8,7 +8,7 @@ from firm_ce.io.validate import ModelData
 from firm_ce.common.constants import DEBUG
 
 class Model:
-    def __init__(self, logging_flag: bool) -> None:        
+    def __init__(self, logging_flag: bool = True) -> None:        
         model_data = ModelData(logging_flag)
         if not model_data.validate():
             exit()

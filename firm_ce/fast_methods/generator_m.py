@@ -3,7 +3,7 @@ from typing import Union
 
 from firm_ce.system.components import Generator, Generator_InstanceType
 from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import (
     raise_static_modification_error,
     raise_getting_unloaded_data_error,
@@ -217,7 +217,7 @@ def update_deficit_block_bounds(generator_instance: Generator_InstanceType, rema
 
 @njit(fastmath=FASTMATH)
 def initialise_precharging_flags(generator_instance: Generator_InstanceType, interval: int64) -> None:
-    generator_instance.trickling_flag = (generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > 1e-6)
+    generator_instance.trickling_flag = (generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > TOLERANCE)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -226,7 +226,7 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
         generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves,
         0.0
     )
-    generator_instance.trickling_flag = (generator_instance.remaining_trickling_reserves > 1e-6) and generator_instance.trickling_flag
+    generator_instance.trickling_flag = (generator_instance.remaining_trickling_reserves > TOLERANCE) and generator_instance.trickling_flag
     #generator_instance.trickling_flag = False #### DEBUG
 
 @njit(fastmath=FASTMATH)

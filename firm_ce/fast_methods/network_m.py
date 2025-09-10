@@ -7,7 +7,7 @@ from firm_ce.system.topology import (
     routes_key_type, 
     routes_list_type
 )
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.fast_methods import line_m, node_m, route_m
 from firm_ce.common.typing import TypedDict, TypedList, int64, float64, unicode_type, boolean
@@ -308,14 +308,14 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
     if interval == 0:
         return True    
     for node in network_instance.nodes.values():
-        if node.residual_load[interval-1] - node.imports[interval-1] - node.exports[interval-1] - node.storage_power[interval-1] - node.flexible_power[interval-1] > 1e-6:
+        if node.residual_load[interval-1] - node.imports[interval-1] - node.exports[interval-1] - node.storage_power[interval-1] - node.flexible_power[interval-1] > TOLERANCE:
             return False
     return True
 
 @njit(fastmath=FASTMATH)
 def check_existing_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.existing_surplus > 1e-6:
+        if node.existing_surplus > TOLERANCE:
             return True
     return False
 
@@ -343,13 +343,13 @@ def update_imports_exports_temp(network_instance: Network_InstanceType, interval
 @njit(fastmath=FASTMATH)
 def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_fill > 1e-6:
+        if node.precharge_fill > TOLERANCE:
             return True
     return False
 
 @njit(fastmath=FASTMATH)
 def check_precharge_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_surplus > 1e-6:
+        if node.precharge_surplus > TOLERANCE:
             return True
     return False
