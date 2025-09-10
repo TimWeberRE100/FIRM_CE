@@ -16,11 +16,13 @@ dependencies = [
 authors = [
     {name = "Timothy Webster", email = "Timothy.Weber@anu.edu.au"},
     {name = "Cheng Cheng", email = "Cheng.Cheng1@anu.edu.au"},
+    {name = "Harry Thawley", email = "Harry.Thawley@anu.edu.au"},
     {name = "Michael Thomas", email = "michael.thomas@anu.edu.au"},
 ]
 maintainers = [
     {name = "Timothy Webster", email = "Timothy.Weber@anu.edu.au"},
     {name = "Cheng Cheng", email = "Cheng.Cheng1@anu.edu.au"},
+    {name = "Harry Thawley", email = "Harry.Thawley@anu.edu.au"},
     {name = "Michael Thomas", email = "michael.thomas@anu.edu.au"},
 ]
 description = "Capacity Expansion Modelling using FIRM"
