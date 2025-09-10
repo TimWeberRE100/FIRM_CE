@@ -8,7 +8,7 @@ from firm_ce.io.file_manager import import_config_csvs
 
 
 class ModelData:
-    def __init__(self, config_directory) -> None:
+    def __init__(self, config_directory: str, logging_flag: bool) -> None:
         self.config_directory = config_directory
 
         # Get the config settings for the csvs
@@ -18,7 +18,7 @@ class ModelData:
         model_name = self.get_model_name()
 
         # Initialise the logger
-        self.logger, self.results_dir = init_model_logger(model_name)
+        self.logger, self.results_dir = init_model_logger(model_name, logging_flag)
 
         # Set all the relevant parameters
         self.scenarios = self.config_data.get("scenarios")
@@ -221,7 +221,7 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
                 flag = False
 
         if float(item["min_build"]) > float(item["max_build"]):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get("scenarios")):
@@ -277,7 +277,7 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
             flag = False
 
         if float(item["min_build"]) > float(item["max_build"]):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get("scenarios")):

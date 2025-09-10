@@ -70,6 +70,7 @@ class ModelConfig:
     def __init__(self, config_dict: Dict[str, str]) -> None:
         config_dict = {item["name"]: item["value"] for item in config_dict.values()}
         self.type = config_dict["type"]
+        self.model_name = config_dict['model_name']
         self.iterations = int(config_dict["iterations"])
         self.population = int(config_dict["population"])
         self.mutation = float(config_dict["mutation"])

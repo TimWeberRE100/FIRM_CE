@@ -473,10 +473,7 @@ def determine_precharge_powers(interval: int64, solution, year: int64) -> int64:
 def perform_fill_adjustment(interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType) -> None:
     for node in network.nodes.values():
         for storage_order in node.storage_merit_order:
-            dispatch_power_update = max(
-                min(node.fill, fleet.storages[storage_order].remaining_discharge_max_t),
-                -fleet.storages[storage_order].remaining_charge_max_t,
-            )
+            dispatch_power_update = min(node.fill, fleet.storages[storage_order].remaining_charge_max_t)
             fleet.storages[storage_order].dispatch_power[interval] += dispatch_power_update
             node.storage_power[interval] += dispatch_power_update
             node.fill -= dispatch_power_update

@@ -17,4 +17,5 @@ def parse_comma_separated(value: str) -> List[str]:
 
 
 def safe_divide(num: float, denom: float) -> float:
+    """Safe division for calculating levelised costs when total dispatch energy from the asset is 0."""
     return num / denom if denom != 0 else 0.0

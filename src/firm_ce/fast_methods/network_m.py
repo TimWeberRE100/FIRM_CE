@@ -1,6 +1,6 @@
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import TypedDict, TypedList, boolean, float64, int64, unicode_type
@@ -103,6 +103,7 @@ def reset_transmission(network_instance: Network_InstanceType, interval: int64) 
     for node in network_instance.nodes.values():
         node.imports[interval] = 0.0
         node.exports[interval] = 0.0
+        node_m.update_netload_t(node, interval,  False)
     return None
 
 
@@ -213,7 +214,7 @@ def set_node_fills_and_surpluses(
     if transmission_case == "surplus":
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t, 0)
-            node.surplus = -1 * min(node.netload_t, 0)
+            node.surplus = -min(node.netload_t, 0)
     elif transmission_case == "storage_discharge":
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t - node.storage_power[interval], 0)
@@ -227,7 +228,7 @@ def set_node_fills_and_surpluses(
     elif transmission_case == "storage_charge":
         for node in network_instance.nodes.values():
             node.fill = max(node.charge_max_t[-1] + node.storage_power[interval], 0)
-            node.surplus = -min(node.netload_t - min(node.storage_power[interval], 0), 0.0)
+            node.surplus = -min(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0.0)
 
     elif transmission_case == "precharging_surplus":
         for node in network_instance.nodes.values():
@@ -330,7 +331,7 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
             - node.exports[interval - 1]
             - node.storage_power[interval - 1]
             - node.flexible_power[interval - 1]
-            > 1e-6
+            > TOLERANCE
         ):
             return False
     return True
@@ -339,7 +340,7 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
 @njit(fastmath=FASTMATH)
 def check_existing_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.existing_surplus > 1e-6:
+        if node.existing_surplus > TOLERANCE:
             return True
     return False
 
@@ -373,7 +374,7 @@ def update_imports_exports_temp(network_instance: Network_InstanceType, interval
 @njit(fastmath=FASTMATH)
 def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_fill > 1e-6:
+        if node.precharge_fill > TOLERANCE:
             return True
     return False
 
@@ -381,6 +382,6 @@ def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
 @njit(fastmath=FASTMATH)
 def check_precharge_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_surplus > 1e-6:
+        if node.precharge_surplus > TOLERANCE:
             return True
     return False

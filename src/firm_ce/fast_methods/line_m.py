@@ -80,7 +80,7 @@ def calculate_variable_costs(line_instance: Line_InstanceType) -> float64:
 @njit(fastmath=FASTMATH)
 def calculate_fixed_costs(line_instance: Line_InstanceType, years_float: float64, year_count: int64) -> float64:
     ltcosts_m.calculate_annualised_build(
-        line_instance.lt_costs, 0.0, line_instance.new_build, 0.0, line_instance.cost, year_count, "line"
+        line_instance.lt_costs, 0.0, line_instance.new_build, line_instance.length, line_instance.cost, year_count, "line"
     )
     ltcosts_m.calculate_fom(
         line_instance.lt_costs, line_instance.capacity, years_float, 0.0, line_instance.cost, "line"

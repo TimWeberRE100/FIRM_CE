@@ -9,6 +9,9 @@ model_build_time = time.time()
 print(f"Model build time: {model_build_time - start_time:.4f} seconds")
 
 for scenario in model.scenarios.values():
+    if scenario.x0.size == 0:
+        continue
+
     scenario.load_datafiles(model.datafile_filenames_dict) 
     scenario.statistics = Statistics(
                         scenario.x0,

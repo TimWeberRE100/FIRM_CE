@@ -2,7 +2,7 @@ from typing import Union
 
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import (
     raise_getting_unloaded_data_error,
     raise_static_modification_error,
@@ -91,12 +91,12 @@ def update_netload_t(node_instance: Node_InstanceType, interval: int64, precharg
 
 @njit(fastmath=FASTMATH)
 def fill_required(node_instance: Node_InstanceType) -> boolean:
-    return node_instance.fill > 1e-6
+    return node_instance.fill > TOLERANCE
 
 
 @njit(fastmath=FASTMATH)
 def surplus_available(node_instance) -> bool:
-    return node_instance.surplus > 1e-6
+    return node_instance.surplus > TOLERANCE
 
 
 @njit(fastmath=FASTMATH)
@@ -163,19 +163,19 @@ def check_remaining_netload(node_instance: Node_InstanceType, interval: int64, c
     if check_case == "deficit":
         return (
             node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
-            > 1e-6
+            > TOLERANCE
         )
     elif check_case == "spillage":
         return (
             node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
-            < 1e-6
+            < -TOLERANCE
         )
     elif check_case == "both":
         return (
             abs(
                 node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
             )
-            > 1e-6
+            > TOLERANCE
         )
     return False
 

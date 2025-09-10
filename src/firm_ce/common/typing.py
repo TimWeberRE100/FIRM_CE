@@ -1,3 +1,8 @@
+"""
+Numba types and the TypedDict and TypedList classes are overloaded, enabling
+JIT to be switched off for debugging with the Python interpreter.
+"""
+
 from typing import Dict, List, Tuple
 
 import numpy as np

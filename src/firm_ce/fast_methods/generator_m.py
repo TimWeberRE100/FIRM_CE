@@ -2,7 +2,7 @@ from typing import Union
 
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import (
     raise_getting_unloaded_data_error,
     raise_static_modification_error,
@@ -58,6 +58,7 @@ def build_capacity(
     generator_instance.capacity += new_build_power_capacity
     generator_instance.new_build += new_build_power_capacity
     generator_instance.line.capacity += new_build_power_capacity
+    generator_instance.line.new_build += new_build_power_capacity 
 
     update_residual_load(generator_instance, new_build_power_capacity, interval_resolutions)
     return None
@@ -282,7 +283,7 @@ def update_deficit_block_bounds(generator_instance: Generator_InstanceType, rema
 @njit(fastmath=FASTMATH)
 def initialise_precharging_flags(generator_instance: Generator_InstanceType, interval: int64) -> None:
     generator_instance.trickling_flag = (
-        generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > 1e-6
+        generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > TOLERANCE
     )
     return None
 
@@ -293,7 +294,7 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
         generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves, 0.0
     )
     generator_instance.trickling_flag = (
-        generator_instance.remaining_trickling_reserves > 1e-6
+        generator_instance.remaining_trickling_reserves > TOLERANCE
     ) and generator_instance.trickling_flag
 
 
@@ -335,7 +336,7 @@ def update_precharge_dispatch(
     generator_instance.flexible_max_t -= dispatch_power_update
     generator_instance.node.flexible_max_t[: merit_order_idx + 1] -= dispatch_power_update
     generator_instance.node.precharge_surplus -= dispatch_power_update
-    generator_instance.trickling_reserves -= dispatch_energy_update
+    generator_instance.trickling_reserves += dispatch_energy_update
     return None
 
 

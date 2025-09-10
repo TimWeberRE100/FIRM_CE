@@ -1,4 +1,4 @@
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, TypedDict, boolean, float64, int64, unicode_type
@@ -236,7 +236,7 @@ def determine_feasible_storage_dispatch(fleet_instance: Fleet_InstanceType, inte
             max(original_dispatch_power, -storage.charge_max_t), 0.0
         )
         dispatch_power_adjustment = original_dispatch_power - storage.dispatch_power[interval]
-        if abs(dispatch_power_adjustment) > 1e-6:
+        if abs(dispatch_power_adjustment) > TOLERANCE:
             storage.node.storage_power[interval] -= dispatch_power_adjustment
             infeasible_flag = True
     return infeasible_flag
@@ -251,7 +251,7 @@ def determine_feasible_flexible_dispatch(fleet_instance: Fleet_InstanceType, int
         original_dispatch_power = generator.dispatch_power[interval]
         generator.dispatch_power[interval] = min(original_dispatch_power, generator.flexible_max_t)
         dispatch_power_adjustment = original_dispatch_power - generator.dispatch_power[interval]
-        if abs(dispatch_power_adjustment) > 1e-6:
+        if abs(dispatch_power_adjustment) > TOLERANCE:
             generator.node.flexible_power[interval] -= dispatch_power_adjustment
             infeasible_flag = True
     return infeasible_flag

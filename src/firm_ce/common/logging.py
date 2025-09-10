@@ -1,12 +1,11 @@
-import logging
-import os
+import logging, os
 from datetime import datetime
 from typing import Tuple
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 
 
-def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
+def init_model_logger(model_name: str, logging_flag: bool) -> Tuple[logging.Logger, str]:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.
     Logger does not work within JIT compiled code.
@@ -22,7 +21,10 @@ def init_model_logger(model_name: str) -> Tuple[logging.Logger, str]:
     """
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    results_dir = os.path.join("results", f"{model_name}_{timestamp}")
+    if logging_flag:
+        results_dir = os.path.join("results", f"{model_name}_{timestamp}")
+    else:
+        results_dir = os.path.join("results", "temp")
     os.makedirs(results_dir, exist_ok=True)
 
     log_path = os.path.join(results_dir, "log.txt")

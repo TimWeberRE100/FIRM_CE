@@ -9,9 +9,9 @@ from firm_ce.system.scenario import Scenario
 
 
 class Model:
-    def __init__(self, config_directory: str = "src/firm_ce/config") -> None:
+    def __init__(self, config_directory: str = "src/firm_ce/config", logging_flag: bool = True) -> None:
         self.config_directory = config_directory
-        model_data = ModelData(config_directory=self.config_directory)
+        model_data = ModelData(config_directory=self.config_directory, logging_flag=logging_flag)
         if not model_data.validate():
             exit()
 
