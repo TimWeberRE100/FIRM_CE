@@ -1,11 +1,10 @@
-from typing import Dict, Tuple
-
 import calendar
+from typing import Dict, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
+from ..system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
 
 
 def determine_interval_parameters(

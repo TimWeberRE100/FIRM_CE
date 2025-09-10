@@ -2,9 +2,9 @@ import os
 
 import numpy as np
 
-from firm_ce.common.helpers import parse_comma_separated
-from firm_ce.common.logging import init_model_logger
-from firm_ce.io.file_manager import import_config_csvs
+from ..common.helpers import parse_comma_separated
+from ..common.logging import init_model_logger
+from ..io.file_manager import import_config_csvs
 
 
 class ModelData:

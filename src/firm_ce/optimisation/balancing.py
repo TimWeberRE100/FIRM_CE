@@ -1,7 +1,7 @@
-from firm_ce.common.constants import FASTMATH
-from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import boolean, float64, int64, unicode_type
-from firm_ce.fast_methods import (
+from ..common.constants import FASTMATH
+from ..common.jit_overload import njit
+from ..common.typing import boolean, float64, int64, unicode_type
+from ..fast_methods import (
     fleet_m,
     generator_m,
     network_m,
@@ -9,8 +9,8 @@ from firm_ce.fast_methods import (
     static_m,
     storage_m,
 )
-from firm_ce.system.components import Fleet_InstanceType
-from firm_ce.system.topology import Network_InstanceType
+from ..system.components import Fleet_InstanceType
+from ..system.topology import Network_InstanceType
 
 
 @njit(fastmath=FASTMATH)

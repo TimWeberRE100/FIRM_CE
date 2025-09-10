@@ -5,21 +5,21 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult
 
-from firm_ce.common.helpers import parse_comma_separated
-from firm_ce.constructors.component_cons import construct_Fleet_object
-from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_object
-from firm_ce.constructors.topology_cons import construct_Network_object
-from firm_ce.constructors.traces_cons import (
+from ..common.helpers import parse_comma_separated
+from ..constructors.component_cons import construct_Fleet_object
+from ..constructors.parameter_cons import construct_ScenarioParameters_object
+from ..constructors.topology_cons import construct_Network_object
+from ..constructors.traces_cons import (
     load_datafiles_to_generators,
     load_datafiles_to_network,
     unload_data_from_generators,
     unload_data_from_network,
 )
-from firm_ce.fast_methods import static_m
-from firm_ce.io.file_manager import DataFile
-from firm_ce.io.validate import ModelData
-from firm_ce.optimisation.solver import Solver
-from firm_ce.system.parameters import ModelConfig
+from ..fast_methods import static_m
+from ..io.file_manager import DataFile
+from ..io.validate import ModelData
+from ..optimisation.solver import Solver
+from .parameters import ModelConfig
 
 
 class Scenario:

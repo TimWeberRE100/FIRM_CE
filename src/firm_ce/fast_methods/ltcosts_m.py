@@ -1,7 +1,7 @@
-from firm_ce.common.constants import FASTMATH
-from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import float64, int64, unicode_type
-from firm_ce.system.costs import LTCosts_InstanceType, UnitCost_InstanceType
+from ..common.constants import FASTMATH
+from ..common.jit_overload import njit
+from ..common.typing import float64, int64, unicode_type
+from ..system.costs import LTCosts_InstanceType, UnitCost_InstanceType
 
 
 @njit(fastmath=FASTMATH)

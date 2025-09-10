@@ -1,7 +1,7 @@
-from firm_ce.common.constants import FASTMATH, NP_FLOAT_MAX
-from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import DictType, TypedList, boolean, float64, int64
-from firm_ce.system.topology import Line_InstanceType, Node_InstanceType, Route, Route_InstanceType
+from ..common.constants import FASTMATH, NP_FLOAT_MAX
+from ..common.jit_overload import njit
+from ..common.typing import DictType, TypedList, boolean, float64, int64
+from ..system.topology import Line_InstanceType, Node_InstanceType, Route, Route_InstanceType
 
 
 @njit(fastmath=FASTMATH)

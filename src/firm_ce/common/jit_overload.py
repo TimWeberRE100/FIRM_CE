@@ -1,4 +1,4 @@
-from firm_ce.common.constants import JIT_ENABLED
+from .constants import JIT_ENABLED
 
 if JIT_ENABLED:
     from numba import njit, prange
