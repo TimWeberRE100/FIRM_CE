@@ -7,7 +7,7 @@ from firm_ce.system.topology import (
     routes_key_type, 
     routes_list_type
 )
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.fast_methods import line_m, node_m, route_m
 from firm_ce.common.typing import TypedDict, TypedList, int64, float64, unicode_type, boolean
@@ -108,6 +108,7 @@ def reset_transmission(network_instance: Network_InstanceType, interval: int64) 
     for node in network_instance.nodes.values():
         node.imports[interval] = 0.0
         node.exports[interval] = 0.0
+        node_m.update_netload_t(node, interval,  False)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -213,7 +214,7 @@ def set_node_fills_and_surpluses(network_instance: Network_InstanceType,
     if transmission_case == 'surplus':
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t, 0)
-            node.surplus = -1*min(node.netload_t, 0)
+            node.surplus = -min(node.netload_t, 0)
     elif transmission_case == 'storage_discharge':
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t - node.storage_power[interval], 0)
@@ -225,10 +226,7 @@ def set_node_fills_and_surpluses(network_instance: Network_InstanceType,
     elif transmission_case == 'storage_charge':
         for node in network_instance.nodes.values():
             node.fill = max(node.charge_max_t[-1] + node.storage_power[interval], 0)
-            node.surplus = -min(
-                node.netload_t - min(node.storage_power[interval], 0),
-                0.0
-            )
+            node.surplus = -min(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0.0)
     elif transmission_case == 'precharging_surplus':
         for node in network_instance.nodes.values(): 
             node.fill = node.precharge_fill
@@ -310,14 +308,14 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
     if interval == 0:
         return True    
     for node in network_instance.nodes.values():
-        if node.residual_load[interval-1] - node.imports[interval-1] - node.exports[interval-1] - node.storage_power[interval-1] - node.flexible_power[interval-1] > 1e-6:
+        if node.residual_load[interval-1] - node.imports[interval-1] - node.exports[interval-1] - node.storage_power[interval-1] - node.flexible_power[interval-1] > TOLERANCE:
             return False
     return True
 
 @njit(fastmath=FASTMATH)
 def check_existing_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.existing_surplus > 1e-6:
+        if node.existing_surplus > TOLERANCE:
             return True
     return False
 
@@ -345,13 +343,13 @@ def update_imports_exports_temp(network_instance: Network_InstanceType, interval
 @njit(fastmath=FASTMATH)
 def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_fill > 1e-6:
+        if node.precharge_fill > TOLERANCE:
             return True
     return False
 
 @njit(fastmath=FASTMATH)
 def check_precharge_surplus(network_instance: Network_InstanceType) -> boolean:
     for node in network_instance.nodes.values():
-        if node.precharge_surplus > 1e-6:
+        if node.precharge_surplus > TOLERANCE:
             return True
     return False

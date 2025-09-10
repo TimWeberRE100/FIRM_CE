@@ -1,6 +1,6 @@
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.system.components import Storage, Storage_InstanceType
 from firm_ce.system.topology import Node_InstanceType, Line_InstanceType
 from firm_ce.common.exceptions import (
@@ -55,6 +55,7 @@ def build_capacity(storage_instance: Storage_InstanceType,
         storage_instance.power_capacity += new_build_capacity
         storage_instance.new_build_p += new_build_capacity
         storage_instance.line.capacity += new_build_capacity
+        storage_instance.line.new_build += new_build_capacity 
 
         if storage_instance.duration > 0:
             storage_instance.energy_capacity += new_build_capacity * storage_instance.duration
@@ -125,13 +126,13 @@ def dispatch(storage_instance: Storage_InstanceType,
              merit_order_idx: int64) -> None:
     if merit_order_idx == 0:
         storage_instance.dispatch_power[interval] = (
-            max(min(storage_instance.node.netload_t, storage_instance.discharge_max_t), 0.0) +
-            min(max(storage_instance.node.netload_t, -storage_instance.charge_max_t), 0.0)
+            max(min(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval], storage_instance.discharge_max_t), 0.0) +
+            min(max(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval], -storage_instance.charge_max_t), 0.0)
         )
     else:
         storage_instance.dispatch_power[interval] = (
-            max(min(storage_instance.node.netload_t - storage_instance.node.discharge_max_t[merit_order_idx-1], storage_instance.discharge_max_t), 0.0) +
-            min(max(storage_instance.node.netload_t + storage_instance.node.charge_max_t[merit_order_idx-1], -storage_instance.charge_max_t), 0.0)
+            max(min(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval] - storage_instance.node.discharge_max_t[merit_order_idx-1], storage_instance.discharge_max_t), 0.0) +
+            min(max(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval] + storage_instance.node.charge_max_t[merit_order_idx-1], -storage_instance.charge_max_t), 0.0)
         )
     storage_instance.node.storage_power[interval] += storage_instance.dispatch_power[interval]
     return None
@@ -206,8 +207,8 @@ def assign_precharging_reserves(storage_instance: Storage_InstanceType) -> None:
 @njit(fastmath=FASTMATH)
 def initialise_precharging_flags(storage_instance: Storage_InstanceType, 
                                  interval: int64) -> None:
-    storage_instance.trickling_flag = (storage_instance.stored_energy[interval] - storage_instance.trickling_reserves > 1e-6) and (storage_instance.precharge_energy < 1e-6)
-    storage_instance.precharge_flag = (storage_instance.precharge_energy > 1e-6)
+    storage_instance.trickling_flag = (storage_instance.stored_energy[interval] - storage_instance.trickling_reserves > TOLERANCE) and (storage_instance.precharge_energy < TOLERANCE)
+    storage_instance.precharge_flag = (storage_instance.precharge_energy > TOLERANCE)
     return None
 
 @njit(fastmath=FASTMATH)
@@ -217,8 +218,8 @@ def update_precharging_flags(storage_instance: Storage_InstanceType,
         storage_instance.stored_energy[interval] - storage_instance.trickling_reserves,
         0.0
     )
-    storage_instance.trickling_flag = (storage_instance.remaining_trickling_reserves > 1e-6) and storage_instance.trickling_flag
-    storage_instance.precharge_flag = (storage_instance.stored_energy[interval] + 1e-6 < storage_instance.energy_capacity) and (storage_instance.precharge_energy > 1e-6) and storage_instance.precharge_flag
+    storage_instance.trickling_flag = (storage_instance.remaining_trickling_reserves > TOLERANCE) and storage_instance.trickling_flag
+    storage_instance.precharge_flag = (storage_instance.stored_energy[interval] + TOLERANCE < storage_instance.energy_capacity) and (storage_instance.precharge_energy > TOLERANCE) and storage_instance.precharge_flag
     return None
 
 @njit(fastmath=FASTMATH)
@@ -331,5 +332,5 @@ def update_precharge_dispatch(storage_instance: Storage_InstanceType,
 def calculate_available_dispatch(storage_instance: Storage_InstanceType, 
                                  interval: int64) -> None:
     storage_instance.remaining_discharge_max_t = storage_instance.discharge_max_t - storage_instance.dispatch_power[interval]
-    storage_instance.remaining_charge_max_t = storage_instance.charge_max_t - storage_instance.dispatch_power[interval]
+    storage_instance.remaining_charge_max_t = storage_instance.charge_max_t + storage_instance.dispatch_power[interval]
     return None

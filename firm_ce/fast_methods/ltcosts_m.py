@@ -1,5 +1,5 @@
 from firm_ce.system.costs import UnitCost_InstanceType, LTCosts_InstanceType
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import float64, unicode_type, int64
 
@@ -29,9 +29,9 @@ def calculate_annualised_build(ltcosts_instance: LTCosts_InstanceType,
                                 asset_type: unicode_type,) -> None:
     present_value = get_present_value(unit_costs.discount_rate, unit_costs.lifetime)
     if asset_type == 'generator' or asset_type == 'storage':
-        ltcosts_instance.annualised_build = year_count*(energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p) / present_value if present_value > 1e-6 else 0
+        ltcosts_instance.annualised_build = year_count*(energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p) / present_value if present_value > TOLERANCE else 0
     elif asset_type == 'line':
-        ltcosts_instance.annualised_build = year_count*(power_capacity * 1e3 * line_length * unit_costs.capex_p + power_capacity * 1e3 * unit_costs.transformer_capex) / present_value if present_value > 1e-6 else 0
+        ltcosts_instance.annualised_build = year_count*(power_capacity * 1e3 * line_length * unit_costs.capex_p + power_capacity * 1e3 * unit_costs.transformer_capex) / present_value if present_value > TOLERANCE else 0
     return None
 
 @njit(fastmath=FASTMATH)
