@@ -1,14 +1,14 @@
 import numpy as np
 
-from ..common.constants import FASTMATH
-from ..common.exceptions import (
+from firm_ce.common.constants import FASTMATH
+from firm_ce.common.exceptions import (
     raise_static_modification_error,
 )
-from ..common.jit_overload import njit
-from ..common.typing import DictType, boolean, float64, int64, unicode_type
-from ..system.components import Storage, Storage_InstanceType
-from ..system.topology import Line_InstanceType, Node_InstanceType
-from . import ltcosts_m
+from firm_ce.common.jit_overload import njit
+from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.system.components import Storage, Storage_InstanceType
+from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
+from firm_ce.fast_methods import ltcosts_m
 
 
 @njit(fastmath=FASTMATH)

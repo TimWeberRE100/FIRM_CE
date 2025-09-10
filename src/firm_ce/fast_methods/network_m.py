@@ -1,10 +1,10 @@
 import numpy as np
 
-from ..common.constants import FASTMATH
-from ..common.exceptions import raise_static_modification_error
-from ..common.jit_overload import njit
-from ..common.typing import TypedDict, TypedList, boolean, float64, int64, unicode_type
-from ..system.topology import (
+from firm_ce.common.constants import FASTMATH
+from firm_ce.common.exceptions import raise_static_modification_error
+from firm_ce.common.jit_overload import njit
+from firm_ce.common.typing import TypedDict, TypedList, boolean, float64, int64, unicode_type
+from firm_ce.system.topology import (
     Line_InstanceType,
     Network,
     Network_InstanceType,
@@ -13,7 +13,7 @@ from ..system.topology import (
     routes_key_type,
     routes_list_type,
 )
-from . import line_m, node_m, route_m
+from firm_ce.fast_methods import line_m, node_m, route_m
 
 
 @njit(fastmath=FASTMATH)

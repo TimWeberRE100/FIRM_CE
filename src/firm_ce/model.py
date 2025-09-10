@@ -1,11 +1,11 @@
 import time
 from datetime import datetime
 
-from .common.constants import DEBUG
-from .io.validate import ModelData
-from .optimisation.statistics import Statistics
-from .system.parameters import ModelConfig
-from .system.scenario import Scenario
+from firm_ce.common.constants import DEBUG
+from firm_ce.io.validate import ModelData
+from firm_ce.optimisation.statistics import Statistics
+from firm_ce.system.parameters import ModelConfig
+from firm_ce.system.scenario import Scenario
 
 
 class Model:

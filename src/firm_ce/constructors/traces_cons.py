@@ -3,10 +3,10 @@ from typing import Dict
 import numpy as np
 from numpy.typing import NDArray
 
-from ..fast_methods import generator_m, node_m
-from ..io.file_manager import DataFile
-from ..system.components import Fleet_InstanceType
-from ..system.topology import Network_InstanceType
+from firm_ce.fast_methods import generator_m, node_m
+from firm_ce.io.file_manager import DataFile
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
 
 
 def select_datafile(

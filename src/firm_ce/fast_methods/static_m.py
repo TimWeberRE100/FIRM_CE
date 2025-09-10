@@ -1,12 +1,12 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from ..common.constants import FASTMATH
-from ..common.jit_overload import njit
-from ..common.typing import DictType, boolean, float64, int64
-from ..system.parameters import ScenarioParameters_InstanceType
-from ..system.topology import Node_InstanceType
-from . import node_m
+from firm_ce.common.constants import FASTMATH
+from firm_ce.common.jit_overload import njit
+from firm_ce.common.typing import DictType, boolean, float64, int64
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
+from firm_ce.system.topology import Node_InstanceType
+from firm_ce.fast_methods import node_m
 
 
 @njit(fastmath=FASTMATH)

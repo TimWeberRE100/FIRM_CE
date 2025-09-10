@@ -2,10 +2,10 @@ from typing import List, Tuple
 
 import numpy as np
 
-from ..common.constants import JIT_ENABLED
-from ..common.jit_overload import jitclass
-from ..common.typing import DictType, ListType, UniTuple, boolean, float64, int64, unicode_type
-from .costs import LTCosts, LTCosts_InstanceType, UnitCost_InstanceType
+from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.jit_overload import jitclass
+from firm_ce.common.typing import DictType, ListType, UniTuple, boolean, float64, int64, unicode_type
+from firm_ce.system.costs import LTCosts, LTCosts_InstanceType, UnitCost_InstanceType
 
 if JIT_ENABLED:
     node_spec = [

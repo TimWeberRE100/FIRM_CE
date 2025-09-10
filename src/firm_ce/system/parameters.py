@@ -2,9 +2,9 @@ from typing import Dict
 
 import numpy as np
 
-from ..common.constants import JIT_ENABLED
-from ..common.jit_overload import jitclass
-from ..common.typing import float64, int64
+from firm_ce.common.constants import JIT_ENABLED
+from firm_ce.common.jit_overload import jitclass
+from firm_ce.common.typing import float64, int64
 
 if JIT_ENABLED:
     scenario_parameters_spec = [

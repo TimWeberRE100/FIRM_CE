@@ -1,7 +1,7 @@
 from typing import Optional
 
-from ..system.components import Fuel
-from ..system.costs import UnitCost, UnitCost_InstanceType
+from firm_ce.system.components import Fuel
+from firm_ce.system.costs import UnitCost, UnitCost_InstanceType
 
 
 def construct_UnitCost_object(

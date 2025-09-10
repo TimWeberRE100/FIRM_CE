@@ -1,4 +1,4 @@
-from .jit_overload import njit
+from firm_ce.common.jit_overload import njit
 
 
 @njit

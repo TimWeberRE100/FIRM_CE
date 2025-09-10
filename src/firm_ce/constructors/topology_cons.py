@@ -2,10 +2,10 @@ from typing import Dict, List
 
 import numpy as np
 
-from ..common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, int64
-from ..fast_methods import route_m
-from ..io.validate import is_nan
-from ..system.topology import (
+from firm_ce.common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, int64
+from firm_ce.fast_methods import route_m
+from firm_ce.io.validate import is_nan
+from firm_ce.system.topology import (
     Line,
     Line_InstanceType,
     Network,
@@ -15,7 +15,7 @@ from ..system.topology import (
     Route,
     Route_InstanceType,
 )
-from .cost_cons import construct_UnitCost_object
+from firm_ce.constructors.cost_cons import construct_UnitCost_object
 
 
 def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:

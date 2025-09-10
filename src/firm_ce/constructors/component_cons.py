@@ -2,8 +2,8 @@ from typing import Dict
 
 import numpy as np
 
-from ..common.typing import DictType, TypedDict, int64
-from ..system.components import (
+from firm_ce.common.typing import DictType, TypedDict, int64
+from firm_ce.system.components import (
     Fleet,
     Fleet_InstanceType,
     Fuel,
@@ -13,8 +13,8 @@ from ..system.components import (
     Storage,
     Storage_InstanceType,
 )
-from ..system.topology import Line_InstanceType, Node_InstanceType
-from .cost_cons import construct_UnitCost_object
+from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
+from firm_ce.constructors.cost_cons import construct_UnitCost_object
 
 
 def construct_Fuel_object(fuel_dict: Dict[str, str]) -> Fuel_InstanceType:

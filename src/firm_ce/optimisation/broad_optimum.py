@@ -4,15 +4,15 @@ from typing import Dict, List
 
 import numpy as np
 
-from ..common.constants import PENALTY_MULTIPLIER
-from ..common.typing import (
+from firm_ce.common.constants import PENALTY_MULTIPLIER
+from firm_ce.common.typing import (
     BandCandidates_Type,
     BroadOptimumVars_Type,
     EvaluationRecord_Type,
 )
-from ..system.components import Fleet_InstanceType
-from ..system.topology import Network_InstanceType
-from .single_time import Solution, parallel_wrapper
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.optimisation.single_time import Solution, parallel_wrapper
 
 
 def near_optimum_path(root: str, scenario_name: str):

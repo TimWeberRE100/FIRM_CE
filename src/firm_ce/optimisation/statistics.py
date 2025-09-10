@@ -6,14 +6,14 @@ import time
 import numpy as np
 from numpy.typing import NDArray
 
-from ..common.constants import PENALTY_MULTIPLIER, SAVE_POPULATION
-from ..common.helpers import safe_divide
-from ..fast_methods import fleet_m, generator_m, ltcosts_m, network_m, static_m
-from ..io.file_manager import ResultFile
-from ..system.components import Fleet_InstanceType
-from ..system.parameters import ScenarioParameters_InstanceType
-from ..system.topology import Network_InstanceType
-from .single_time import Solution
+from firm_ce.common.constants import PENALTY_MULTIPLIER, SAVE_POPULATION
+from firm_ce.common.helpers import safe_divide
+from firm_ce.fast_methods import fleet_m, generator_m, ltcosts_m, network_m, static_m
+from firm_ce.io.file_manager import ResultFile
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.parameters import ScenarioParameters_InstanceType
+from firm_ce.system.topology import Network_InstanceType
+from firm_ce.optimisation.single_time import Solution
 
 
 class Statistics:
