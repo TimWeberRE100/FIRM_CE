@@ -147,3 +147,4 @@ dmypy.json
 
 # Temporarily add .git/coverage*yml so that it can be merged into main
 .github/workflows/coverage*yml
+git 
