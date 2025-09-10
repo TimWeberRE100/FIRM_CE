@@ -1,5 +1,7 @@
 from typing import Dict, Tuple
 
+import calendar
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -18,13 +20,12 @@ def determine_interval_parameters(
         year = first_year + i
         first_t = i * (8760 // resolution)
 
-        leap_days_so_far = sum(1 for y in range(first_year, year) if y % 4 == 0 and (y % 100 != 0 or y % 400 == 0))
+        leap_days_so_far = calendar.leapdays(first_year, year)
 
         leap_adjust = leap_days_so_far * (24 // resolution)
         year_first_t[i] = first_t + leap_adjust
 
-        if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0):
-            leap_days += 1
+        leap_days += calendar.leapdays(year, year + 1)
 
     hours_total = year_count * 8760 + leap_days * 24
     intervals_count = int(hours_total // resolution)
