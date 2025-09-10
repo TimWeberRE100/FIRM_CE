@@ -146,4 +146,4 @@ dmypy.json
 .vscode/
 
 # Temporarily add .git/coverage*yml so that it can be merged into main
-.github/coverage*yml
+.github/workflows/coverage*yml
