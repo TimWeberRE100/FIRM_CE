@@ -27,9 +27,9 @@ if JIT_ENABLED:
         ("flexible_max_t", float64[:]),
         ("fill", float64),
         ("surplus", float64),
+        ("temp_surplus", float64),
         ("available_imports", float64),
-        ("imports", float64[:]),
-        ("exports", float64[:]),
+        ("imports_exports", float64[:]),
         ("deficits", float64[:]),
         ("spillage", float64[:]),
         ("flexible_power", float64[:]),
@@ -82,10 +82,10 @@ class Node:
 
         self.fill = 0.0  # GW, power attempting to import
         self.surplus = 0.0  # GW, power available for exports
+        self.temp_surplus = 0.0  # GW, power remaining for exports in the current transmission leg
         self.available_imports = 0.0  # GW, maximum power that could be imported from other node surpluses
 
-        self.imports = np.empty((0,), dtype=np.float64)
-        self.exports = np.empty((0,), dtype=np.float64)
+        self.imports_exports = np.empty((0,), dtype=np.float64)
         self.deficits = np.empty((0,), dtype=np.float64)
         self.spillage = np.empty((0,), dtype=np.float64)
 

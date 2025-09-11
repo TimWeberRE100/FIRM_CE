@@ -9,9 +9,9 @@ from firm_ce.common.exceptions import (
 )
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.fast_methods import generator_m
 from firm_ce.system.components import Generator_InstanceType, Storage_InstanceType
 from firm_ce.system.topology import Node, Node_InstanceType
-from firm_ce.fast_methods import generator_m
 
 
 @njit(fastmath=FASTMATH)
@@ -57,8 +57,7 @@ def get_data(node_instance: Node_InstanceType, data_type: unicode_type) -> Union
 def allocate_memory(node_instance: Node_InstanceType, intervals_count: int64) -> None:
     if node_instance.static_instance:
         raise_static_modification_error()
-    node_instance.imports = np.zeros(intervals_count, dtype=np.float64)
-    node_instance.exports = np.zeros(intervals_count, dtype=np.float64)
+    node_instance.imports_exports = np.zeros(intervals_count, dtype=np.float64)
     node_instance.deficits = np.zeros(intervals_count, dtype=np.float64)
     node_instance.spillage = np.zeros(intervals_count, dtype=np.float64)
 
@@ -79,9 +78,7 @@ def initialise_netload_t(node_instance: Node_InstanceType, interval: int64) -> N
 def update_netload_t(node_instance: Node_InstanceType, interval: int64, precharging_flag: boolean) -> None:
     # Note: exports are negative, so they add to load
     node_instance.netload_t = (
-        get_data(node_instance, "residual_load")[interval]
-        - node_instance.imports[interval]
-        - node_instance.exports[interval]
+        get_data(node_instance, "residual_load")[interval] - node_instance.imports_exports[interval]
     )
 
     if precharging_flag:
@@ -182,7 +179,7 @@ def check_remaining_netload(node_instance: Node_InstanceType, interval: int64, c
 
 @njit(fastmath=FASTMATH)
 def set_imports_exports_temp(node_instance: Node_InstanceType, interval: int64) -> None:
-    node_instance.imports_exports_temp = node_instance.imports[interval] + node_instance.exports[interval]
+    node_instance.imports_exports_temp = node_instance.imports_exports[interval]
     return None
 
 

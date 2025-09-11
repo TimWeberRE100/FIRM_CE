@@ -9,9 +9,9 @@ from firm_ce.common.exceptions import (
 )
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.fast_methods import ltcosts_m, node_m
 from firm_ce.system.components import Generator, Generator_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
-from firm_ce.fast_methods import ltcosts_m, node_m
 
 
 @njit(fastmath=FASTMATH)
@@ -58,7 +58,7 @@ def build_capacity(
     generator_instance.capacity += new_build_power_capacity
     generator_instance.new_build += new_build_power_capacity
     generator_instance.line.capacity += new_build_power_capacity
-    generator_instance.line.new_build += new_build_power_capacity 
+    generator_instance.line.new_build += new_build_power_capacity
 
     update_residual_load(generator_instance, new_build_power_capacity, interval_resolutions)
     return None

@@ -16,11 +16,13 @@ def determine_interval_parameters(
     Calculate parameters associated with time intervals, accounting for leap years. The first_year
     and last_year in `config/scenarios.csv` determines whether or not an interval is considered
     a leap year
+
     Parameters:
     -------
     first_year (int): The first year of the scenario, specified in `config/scenarios.csv`.
     year_count (int): The total number of years in the scenario.
     resolution (float): The time resolution of each interval for the input data [hours/interval].
+
     Returns:
     -------
     Tuple[int, NDArray, int]: A tuple containing the number of leap days in the scenario,
@@ -52,14 +54,16 @@ def construct_ScenarioParameters_object(
     node_count: int,
 ) -> ScenarioParameters_InstanceType:
     """
-    Takes data required to initialise the ScenarioParameters object, casts values into Numba-compatible 
+    Takes data required to initialise the ScenarioParameters object, casts values into Numba-compatible
     types, and returns an instance of the ScenarioParameters jitclass. The ScenarioParameters are static
     data referenced by the unit committment model.
+
     Parameters:
     -------
     scenario_data_dict (Dict[str, str]): A dictionary containing data for a single scenario,
         imported from `config/scenarios.csv`.
     node_count (int): The number of nodes (buses) in the network for the scenario.
+
     Returns:
     -------
     ScenarioParameters_InstanceType: A static instance of the ScenarioParameters jitclass.

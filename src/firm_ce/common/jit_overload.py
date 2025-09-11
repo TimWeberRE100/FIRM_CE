@@ -1,5 +1,5 @@
 """
-Numba functions are overloaded to allow for JIT to be switched off, 
+Numba functions are overloaded to allow for JIT to be switched off,
 allowing for debugging with the Python interpreter instead.
 """
 

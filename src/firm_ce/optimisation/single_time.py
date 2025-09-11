@@ -6,10 +6,10 @@ from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIE
 from firm_ce.common.jit_overload import jitclass, njit, prange
 from firm_ce.common.typing import boolean, float64, unicode_type
 from firm_ce.fast_methods import fleet_m, generator_m, line_m, network_m, static_m, storage_m
+from firm_ce.optimisation.balancing import balance_for_period
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.system.topology import Network_InstanceType
-from firm_ce.optimisation.balancing import balance_for_period
 
 if JIT_ENABLED:
     from numba import set_num_threads

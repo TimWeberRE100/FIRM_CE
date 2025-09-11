@@ -4,6 +4,7 @@ from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import TypedDict, TypedList, boolean, float64, int64, unicode_type
+from firm_ce.fast_methods import line_m, node_m, route_m
 from firm_ce.system.topology import (
     Line_InstanceType,
     Network,
@@ -13,7 +14,6 @@ from firm_ce.system.topology import (
     routes_key_type,
     routes_list_type,
 )
-from firm_ce.fast_methods import line_m, node_m, route_m
 
 
 @njit(fastmath=FASTMATH)
@@ -101,9 +101,8 @@ def reset_transmission(network_instance: Network_InstanceType, interval: int64) 
     for line in network_instance.major_lines.values():
         line.flows[interval] = 0.0
     for node in network_instance.nodes.values():
-        node.imports[interval] = 0.0
-        node.exports[interval] = 0.0
-        node_m.update_netload_t(node, interval,  False)
+        node.imports_exports[interval] = 0.0
+        node_m.update_netload_t(node, interval, False)
     return None
 
 
@@ -166,7 +165,7 @@ def update_transmission_flows(
     network_instance: Network_InstanceType, fill_node: Node_InstanceType, leg: int64, interval: int64
 ) -> None:
     for route in network_instance.routes[fill_node.order, leg]:
-        fill_node.imports[interval] += route.flow_update
+        fill_node.imports_exports[interval] += route.flow_update
         fill_node.fill -= route.flow_update
         route_m.update_exports(route, interval)
     return None
@@ -187,6 +186,13 @@ def reset_line_temp_flows(network_instance: Network_InstanceType) -> None:
 
 
 @njit(fastmath=FASTMATH)
+def reset_node_temp_surpluses(network_instance: Network_InstanceType) -> None:
+    for node in network_instance.nodes.values():
+        node.temp_surplus = node.surplus
+    return None
+
+
+@njit(fastmath=FASTMATH)
 def fill_with_transmitted_surpluses(network_instance: Network_InstanceType, interval: int64) -> None:
     reset_flow_updates(network_instance)
     if not (check_network_surplus(network_instance) and check_network_fill(network_instance)):
@@ -201,6 +207,7 @@ def fill_with_transmitted_surpluses(network_instance: Network_InstanceType, inte
             if not check_route_surpluses(network_instance, node, leg):
                 continue
             reset_line_temp_flows(network_instance)
+            reset_node_temp_surpluses(network_instance)
             calculate_node_flow_updates(network_instance, node, leg, interval)
             scale_flow_updates_to_fill(network_instance, node, leg)
             update_transmission_flows(network_instance, node, leg, interval)
@@ -327,8 +334,7 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
     for node in network_instance.nodes.values():
         if (
             node.residual_load[interval - 1]
-            - node.imports[interval - 1]
-            - node.exports[interval - 1]
+            - node.imports_exports[interval - 1]
             - node.storage_power[interval - 1]
             - node.flexible_power[interval - 1]
             > TOLERANCE
@@ -364,9 +370,7 @@ def set_flexible_precharge_fills_and_surpluses(network_instance: Network_Instanc
 @njit(fastmath=FASTMATH)
 def update_imports_exports_temp(network_instance: Network_InstanceType, interval: int64) -> None:
     for node in network_instance.nodes.values():
-        node.imports_exports_update = (
-            node.imports_exports_temp - node.imports[interval] - node.exports[interval]
-        )  # Is this minus or plus?
+        node.imports_exports_update = node.imports_exports_temp - node.imports_exports[interval]
         node_m.set_imports_exports_temp(node, interval)
     return None
 

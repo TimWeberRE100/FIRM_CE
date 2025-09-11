@@ -10,10 +10,10 @@ from firm_ce.common.constants import PENALTY_MULTIPLIER, SAVE_POPULATION
 from firm_ce.common.helpers import safe_divide
 from firm_ce.fast_methods import fleet_m, generator_m, ltcosts_m, network_m, static_m
 from firm_ce.io.file_manager import ResultFile
+from firm_ce.optimisation.single_time import Solution
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.system.topology import Network_InstanceType
-from firm_ce.optimisation.single_time import Solution
 
 
 class Statistics:
@@ -114,54 +114,59 @@ class Statistics:
         )
 
     def generate_capacities_file(self) -> ResultFile:
-        header = ['Asset Name']
-        row_labels = np.array([
-            'Total Capacity',
-            'New Build Capacity',
-            'Min Build',
-            'Max Build',
-        ], dtype=object)
-        data_array = np.empty((4, self.get_asset_column_count(include_minor_lines=True,include_energy_limits=False)), dtype=np.float64)
+        header = ["Asset Name"]
+        row_labels = np.array(
+            [
+                "Total Capacity",
+                "New Build Capacity",
+                "Min Build",
+                "Max Build",
+            ],
+            dtype=object,
+        )
+        data_array = np.empty(
+            (4, self.get_asset_column_count(include_minor_lines=True, include_energy_limits=False)), dtype=np.float64
+        )
 
         column_counter = 0
         for generator in self.solution.fleet.generators.values():
             header.append(generator.name + " [GW]")
-            data_array[0, column_counter] = round(generator.capacity,3)
-            data_array[1, column_counter] = round(generator.new_build,3)
-            data_array[2, column_counter] = round(generator.min_build,3)
-            data_array[3, column_counter] = round(generator.max_build,3)
+            data_array[0, column_counter] = round(generator.capacity, 3)
+            data_array[1, column_counter] = round(generator.new_build, 3)
+            data_array[2, column_counter] = round(generator.min_build, 3)
+            data_array[3, column_counter] = round(generator.max_build, 3)
             column_counter += 1
 
         for storage in self.solution.fleet.storages.values():
             header.append(storage.name + " [GW]")
-            data_array[0, column_counter] = round(storage.power_capacity,3)
-            data_array[1, column_counter] = round(storage.new_build_p,3)
-            data_array[2, column_counter] = round(storage.min_build_p,3)
-            data_array[3, column_counter] = round(storage.max_build_p,3)
+            data_array[0, column_counter] = round(storage.power_capacity, 3)
+            data_array[1, column_counter] = round(storage.new_build_p, 3)
+            data_array[2, column_counter] = round(storage.min_build_p, 3)
+            data_array[3, column_counter] = round(storage.max_build_p, 3)
             column_counter += 1
 
         for storage in self.solution.fleet.storages.values():
             header.append(storage.name + " [GWh]")
-            data_array[0, column_counter] = round(storage.energy_capacity,3)
-            data_array[1, column_counter] = round(storage.new_build_e,3)
-            data_array[2, column_counter] = round(storage.min_build_e,3)
-            data_array[3, column_counter] = round(storage.max_build_e,3)
+            data_array[0, column_counter] = round(storage.energy_capacity, 3)
+            data_array[1, column_counter] = round(storage.new_build_e, 3)
+            data_array[2, column_counter] = round(storage.min_build_e, 3)
+            data_array[3, column_counter] = round(storage.max_build_e, 3)
             column_counter += 1
 
         for line in self.solution.network.major_lines.values():
             header.append(line.name + " [GW]")
-            data_array[0, column_counter] = round(line.capacity,3)
-            data_array[1, column_counter] = round(line.new_build,3)
-            data_array[2, column_counter] = round(line.min_build,3)
-            data_array[3, column_counter] = round(line.max_build,3)
+            data_array[0, column_counter] = round(line.capacity, 3)
+            data_array[1, column_counter] = round(line.new_build, 3)
+            data_array[2, column_counter] = round(line.min_build, 3)
+            data_array[3, column_counter] = round(line.max_build, 3)
             column_counter += 1
 
         for line in self.solution.network.minor_lines.values():
             header.append(line.name + " [GW]")
-            data_array[0, column_counter] = round(line.capacity,3)
-            data_array[1, column_counter] = round(line.new_build,3)
-            data_array[2, column_counter] = round(line.min_build,3)
-            data_array[3, column_counter] = round(line.max_build,3)
+            data_array[0, column_counter] = round(line.capacity, 3)
+            data_array[1, column_counter] = round(line.new_build, 3)
+            data_array[2, column_counter] = round(line.min_build, 3)
+            data_array[3, column_counter] = round(line.max_build, 3)
             column_counter += 1
 
         labelled_data_array = np.column_stack((row_labels, data_array))
@@ -406,14 +411,24 @@ class Statistics:
             )
             * 1000
         )
-        total_generation = sum(            
-            sum(generator.dispatch_power) for generator in self.solution.fleet.generators.values()
-            if generator.unit_type == 'flexible'
-        )*self.solution.static.resolution*1000
-        total_generation += sum(
-            sum(generator.data*generator.capacity) for generator in self.solution.fleet.generators.values()
-            if generator.unit_type != 'flexible'
-        )*self.solution.static.resolution*1000
+        total_generation = (
+            sum(
+                sum(generator.dispatch_power)
+                for generator in self.solution.fleet.generators.values()
+                if generator.unit_type == "flexible"
+            )
+            * self.solution.static.resolution
+            * 1000
+        )
+        total_generation += (
+            sum(
+                sum(generator.data * generator.capacity)
+                for generator in self.solution.fleet.generators.values()
+                if generator.unit_type != "flexible"
+            )
+            * self.solution.static.resolution
+            * 1000
+        )
 
         # LCOE and Total Levelised Values
         for generator in self.solution.fleet.generators.values():
@@ -443,12 +458,12 @@ class Statistics:
             data_array[0] += ltcosts_m.get_total(line.lt_costs)
             data_array[4] += ltcosts_m.get_total(line.lt_costs)
 
-        data_array[0] /= total_energy # LCOE
-        data_array[1] /= total_generation # LCOG
-        data_array[2] = data_array[0] - data_array[1] # LCOB
-        data_array[3] /= total_energy # LCOB_storage
-        data_array[4] /= total_energy # LCOB_transmission
-        data_array[5] = data_array[2] - data_array[3] - data_array[4] # LCOB_spillage_losses
+        data_array[0] /= total_energy  # LCOE
+        data_array[1] /= total_generation  # LCOG
+        data_array[2] = data_array[0] - data_array[1]  # LCOB
+        data_array[3] /= total_energy  # LCOB_storage
+        data_array[4] /= total_energy  # LCOB_transmission
+        data_array[5] = data_array[2] - data_array[3] - data_array[4]  # LCOB_spillage_losses
 
         # LCOG, LCOS and LCOT
         for generator in self.solution.fleet.generators.values():

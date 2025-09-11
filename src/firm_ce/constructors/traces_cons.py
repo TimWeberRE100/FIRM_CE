@@ -15,8 +15,9 @@ def select_datafile(
     datafiles_imported_dict: Dict[str, DataFile],
 ) -> NDArray[np.float64]:
     """
-    Locates and returns the a data trace of a specified datafile_type associated with 
+    Locates and returns the a data trace of a specified datafile_type associated with
     either a Generator or Node object based upon the object's name.
+
     Parameters:
     -------
     datafile_type (str): The type of datafile. Either 'generation', 'flexible_annual_limit',
@@ -24,9 +25,10 @@ def select_datafile(
     object_name (str): The name attribute of the Generator or Node instance.
     datafiles_imported_dict (Dict[str, DataFile]): A dictionary of DataFile instances, where
         the key is a str of the id in `config/datafiles.csv`.
+
     Returns:
     -------
-    NDArray[np.float64]: A 1-dimensional numpy array containing the data trace for the 
+    NDArray[np.float64]: A 1-dimensional numpy array containing the data trace for the
         specified datafile_type and object_name. If no trace was found, an empty array
         is returned.
     """
@@ -53,22 +55,24 @@ def load_datafiles_to_generators(
     traces defining their capacity factor in each time interval, and the flexible generators
     are expected to have a 'flexible_annual_limit' trace defining their maximum generation
     in each year.
+
     Parameters:
     -------
     fleet (Fleet_InstanceType): A static instance of the Fleet jitclass.
     datafiles_imported_dict (Dict[str, DataFile]): A dictionary of DataFile instances, where
         the key is the id in `config/datafiles.csv`.
     resolution (float): The time resolution of each interval for the input data [hours/interval].
+
     Returns:
     -------
     None.
-    
+
     Side-effects:
     -------
-    The data_status, data, and annual_constraints_data attributes of each generator object are 
+    The data_status, data, and annual_constraints_data attributes of each generator object are
     modified.
-    
-    The residual_load at the node where each generator is located is also updated. The update 
+
+    The residual_load at the node where each generator is located is also updated. The update
     to residual load is based upon the initial capacity, resolution, and generation trace. This
     means that load_datafiles_to_network must be run before load_datafiles_to_generators.
     """
@@ -89,19 +93,21 @@ def load_datafiles_to_network(
     """
     Iterates through all nodes in the network and loads their time-series 'demand' data to each
     instance. The demand data is in units of MW.
+
     Parameters:
     -------
     network (Network_InstanceType): A static instance of the Network jitclass.
     datafiles_imported_dict (Dict[str, DataFile]): A dictionary of DataFile instances, where
         the key is the id in `config/datafiles.csv`.
+
     Returns:
     -------
     None.
-    
+
     Side-effects:
     -------
     The data_status and data attributes of each node object are modified.
-    
+
     The residual_load at the node where each generator is located is initialised with a copy
     of the demand trace.
     """
@@ -116,18 +122,20 @@ def load_datafiles_to_network(
 
 def unload_data_from_generators(fleet: Fleet_InstanceType):
     """
-    Iterates through all generators and unloads time-series data. Allows large amounts of 
+    Iterates through all generators and unloads time-series data. Allows large amounts of
     memory to be cleared before running an optimisation for a new scenario.
+
     Parameters:
     -------
     fleet (Fleet_InstanceType): A static instance of the Fleet jitclass.
+
     Returns:
     -------
     None.
-    
+
     Side-effects:
     -------
-    The data_status, data, and annual_constraints_data attributes of each generator object are 
+    The data_status, data, and annual_constraints_data attributes of each generator object are
     modified.
     """
     for generator in fleet.generators.values():
@@ -137,15 +145,17 @@ def unload_data_from_generators(fleet: Fleet_InstanceType):
 
 def unload_data_from_network(network: Network_InstanceType):
     """
-    Iterates through all nodes and unloads time-series data. Allows large amounts of 
+    Iterates through all nodes and unloads time-series data. Allows large amounts of
     memory to be cleared before running an optimisation for a new scenario.
+
     Parameters:
     -------
     network (Network_InstanceType): A static instance of the Network jitclass.
+
     Returns:
     -------
     None.
-    
+
     Side-effects:
     -------
     The data_status and data attributes of each node object are modified.

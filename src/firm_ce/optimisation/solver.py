@@ -9,9 +9,6 @@ from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult, differential_evolution
 
 from firm_ce.common.constants import SAVE_POPULATION
-from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
-from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
-from firm_ce.system.topology import Line_InstanceType, Network_InstanceType
 from firm_ce.optimisation.broad_optimum import (
     append_to_midpoint_csv,
     broad_optimum_objective,
@@ -23,6 +20,9 @@ from firm_ce.optimisation.broad_optimum import (
     write_broad_optimum_records,
 )
 from firm_ce.optimisation.single_time import Solution, evaluate_vectorised_xs
+from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
+from firm_ce.system.topology import Line_InstanceType, Network_InstanceType
 
 
 class Solver:

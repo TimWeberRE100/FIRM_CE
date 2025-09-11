@@ -60,8 +60,14 @@ def get_max_flow_update(route_instance: Route_InstanceType, interval: int64) -> 
 
 @njit(fastmath=FASTMATH)
 def calculate_flow_update(route_instance: Route_InstanceType, interval: int64) -> None:
-    route_instance.flow_update = min(route_instance.nodes[-1].surplus, get_max_flow_update(route_instance, interval))
+    route_instance.flow_update = min(
+        route_instance.nodes[-1].temp_surplus, get_max_flow_update(route_instance, interval)
+    )
+
     route_instance.initial_node.available_imports += route_instance.flow_update
+
+    # If multiple routes on the same leg end with the same node, they must be constrained by surplus committed for that leg
+    route_instance.nodes[-1].temp_surplus -= route_instance.flow_update
 
     # If multiple routes on the same leg use the same lines, they must be constrained by capacity committed for that leg
     for leg in range(route_instance.legs + 1):
@@ -71,7 +77,7 @@ def calculate_flow_update(route_instance: Route_InstanceType, interval: int64) -
 
 @njit(fastmath=FASTMATH)
 def update_exports(route_instance: Route_InstanceType, interval: int64) -> None:
-    route_instance.nodes[-1].exports[interval] -= route_instance.flow_update
+    route_instance.nodes[-1].imports_exports[interval] -= route_instance.flow_update
     route_instance.nodes[-1].surplus -= route_instance.flow_update
 
     for leg in range(route_instance.legs + 1):

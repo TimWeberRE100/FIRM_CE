@@ -12,17 +12,17 @@ for scenario in model.scenarios.values():
     if scenario.x0.size == 0:
         continue
 
-    scenario.load_datafiles(model.datafile_filenames_dict) 
+    scenario.load_datafiles(model.datafile_filenames_dict)
     scenario.statistics = Statistics(
-                        scenario.x0,
-                        scenario.static,
-                        scenario.fleet,
-                        scenario.network,
-                        scenario.results_dir,
-                        scenario.name,
-                        model.config.balancing_type,
-                        model.config.fixed_costs_threshold,
-                        False 
+        scenario.x0,
+        scenario.static,
+        scenario.fleet,
+        scenario.network,
+        scenario.results_dir,
+        scenario.name,
+        model.config.balancing_type,
+        model.config.fixed_costs_threshold,
+        False,
     )
     scenario.statistics.generate_result_files()
     scenario.statistics.write_results()

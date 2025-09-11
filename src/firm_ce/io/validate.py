@@ -35,11 +35,11 @@ class ModelData:
 
     def get_model_name(self) -> str:
         model_name = None
-        
+
         if "config" in self.config_data:
             for record in self.config_data["config"].values():
-                if record.get('name') == "model_name":
-                    model_name = record.get('value')
+                if record.get("name") == "model_name":
+                    model_name = record.get("value")
                     break
 
         if model_name is None:

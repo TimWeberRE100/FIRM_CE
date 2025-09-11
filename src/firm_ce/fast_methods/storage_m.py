@@ -6,9 +6,9 @@ from firm_ce.common.exceptions import (
 )
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.fast_methods import ltcosts_m
 from firm_ce.system.components import Storage, Storage_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
-from firm_ce.fast_methods import ltcosts_m
 
 
 @njit(fastmath=FASTMATH)
@@ -58,7 +58,7 @@ def build_capacity(
         storage_instance.power_capacity += new_build_capacity
         storage_instance.new_build_p += new_build_capacity
         storage_instance.line.capacity += new_build_capacity
-        storage_instance.line.new_build += new_build_capacity 
+        storage_instance.line.new_build += new_build_capacity
 
         if storage_instance.duration > 0:
             storage_instance.energy_capacity += new_build_capacity * storage_instance.duration
@@ -136,18 +136,32 @@ def set_dispatch_max_t(
 def dispatch(storage_instance: Storage_InstanceType, interval: int64, merit_order_idx: int64) -> None:
     if merit_order_idx == 0:
         storage_instance.dispatch_power[interval] = max(
-            min(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval], storage_instance.discharge_max_t), 0.0
-        ) + min(max(storage_instance.node.netload_t - storage_instance.node.flexible_power[interval], -storage_instance.charge_max_t), 0.0)
-    else:
-        storage_instance.dispatch_power[interval] = max(
             min(
-                storage_instance.node.netload_t - storage_instance.node.flexible_power[interval] - storage_instance.node.discharge_max_t[merit_order_idx - 1],
+                storage_instance.node.netload_t - storage_instance.node.flexible_power[interval],
                 storage_instance.discharge_max_t,
             ),
             0.0,
         ) + min(
             max(
-                storage_instance.node.netload_t - storage_instance.node.flexible_power[interval] + storage_instance.node.charge_max_t[merit_order_idx - 1],
+                storage_instance.node.netload_t - storage_instance.node.flexible_power[interval],
+                -storage_instance.charge_max_t,
+            ),
+            0.0,
+        )
+    else:
+        storage_instance.dispatch_power[interval] = max(
+            min(
+                storage_instance.node.netload_t
+                - storage_instance.node.flexible_power[interval]
+                - storage_instance.node.discharge_max_t[merit_order_idx - 1],
+                storage_instance.discharge_max_t,
+            ),
+            0.0,
+        ) + min(
+            max(
+                storage_instance.node.netload_t
+                - storage_instance.node.flexible_power[interval]
+                + storage_instance.node.charge_max_t[merit_order_idx - 1],
                 -storage_instance.charge_max_t,
             ),
             0.0,

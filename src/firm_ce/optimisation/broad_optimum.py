@@ -10,9 +10,9 @@ from firm_ce.common.typing import (
     BroadOptimumVars_Type,
     EvaluationRecord_Type,
 )
+from firm_ce.optimisation.single_time import Solution, parallel_wrapper
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
-from firm_ce.optimisation.single_time import Solution, parallel_wrapper
 
 
 def near_optimum_path(root: str, scenario_name: str):

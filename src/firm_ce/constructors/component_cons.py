@@ -3,6 +3,7 @@ from typing import Dict
 import numpy as np
 
 from firm_ce.common.typing import DictType, TypedDict, int64
+from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.system.components import (
     Fleet,
     Fleet_InstanceType,
@@ -14,17 +15,18 @@ from firm_ce.system.components import (
     Storage_InstanceType,
 )
 from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
-from firm_ce.constructors.cost_cons import construct_UnitCost_object
 
 
 def construct_Fuel_object(fuel_dict: Dict[str, str]) -> Fuel_InstanceType:
     """
-    Takes a fuel_dict, casts values into Numba-compatible types, and 
+    Takes a fuel_dict, casts values into Numba-compatible types, and
     returns an instance of the Fuel jitclass.
+
     Parameters:
     -------
     fuel_dict (Dict[str,str]): A dictionary containing the attributes of
         a single fuel object in `config/fules.csv`.
+
     Returns:
     -------
     Fuel_InstanceType: A static instance of the Fuel jitclass.
@@ -44,20 +46,22 @@ def construct_Generator_object(
     order: int,
 ) -> Generator_InstanceType:
     """
-    Takes data required to initialise a single generator object, 
-    casts values into Numba-compatible types, and returns an 
+    Takes data required to initialise a single generator object,
+    casts values into Numba-compatible types, and returns an
     instance of the Generator jitclass.
+
     Parameters:
     -------
     generator_dict (Dict[str,str]): A dictionary containing the attributes of
         a single generator object in `config/generators.csv`.
     fuels_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all fuels
         imported from `config/fules.csv`.
-    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of 
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
-    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of 
+    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
         all Line jitclass instances for the scenario. Key defined as Line.order.
     order (int): The scenario-specific id for the Generator instance.
+
     Returns:
     -------
     Generator_InstanceType: A static instance of the Generator jitclass.
@@ -123,18 +127,20 @@ def construct_Storage_object(
     order: int,
 ) -> Storage_InstanceType:
     """
-    Takes data required to initialise a single storage object, 
-    casts values into Numba-compatible types, and returns an 
+    Takes data required to initialise a single storage object,
+    casts values into Numba-compatible types, and returns an
     instance of the Storage jitclass.
+
     Parameters:
     -------
     storage_dict (Dict[str,str]): A dictionary containing the attributes of
         a single storage object in `config/storages.csv`.
-    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of 
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
-    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of 
+    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
         all Line jitclass instances for the scenario. Key defined as Line.order.
     order (int): The scenario-specific id for the Storage instance.
+
     Returns:
     -------
     Storage_InstanceType: A static instance of the Storage jitclass.
@@ -208,21 +214,23 @@ def construct_Fleet_object(
     nodes_object_dict: DictType(int64, Node_InstanceType),
 ) -> Fleet_InstanceType:
     """
-    Takes data required to initialise a single fleet object, casts values into Numba-compatible 
-    types, and returns an instance of the Fleet jitclass. The Fleet consists of all assets that 
+    Takes data required to initialise a single fleet object, casts values into Numba-compatible
+    types, and returns an instance of the Fleet jitclass. The Fleet consists of all assets that
     can be dispatched in the energy balance.
+
     Parameters:
     -------
-    generators_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all 
+    generators_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
         generators imported from `config/generators.csv`.
-    storages_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all 
+    storages_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
         storages imported from `config/storages.csv`.
     fuels_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all fuels
         imported from `config/fules.csv`.
-    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of 
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
-    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of 
+    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
         all Line jitclass instances for the scenario. Key defined as Line.order.
+
     Returns:
     -------
     Fleet_InstanceType: A static instance of the Fleet jitclass.
