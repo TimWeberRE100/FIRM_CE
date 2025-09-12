@@ -297,6 +297,8 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
         generator_instance.remaining_trickling_reserves > TOLERANCE
     ) and generator_instance.trickling_flag
 
+    return None
+
 
 @njit(fastmath=FASTMATH)
 def set_precharging_max_t(
@@ -304,7 +306,7 @@ def set_precharging_max_t(
 ) -> None:
     if generator_instance.trickling_flag:
         generator_instance.flexible_max_t = min(
-            generator_instance.trickling_reserves / resolution,
+            generator_instance.remaining_trickling_reserves / resolution,
             generator_instance.capacity - generator_instance.dispatch_power[interval],
         )
     else:
@@ -334,7 +336,7 @@ def update_precharge_dispatch(
     generator_instance.node.flexible_power[interval] += dispatch_power_update
 
     generator_instance.flexible_max_t -= dispatch_power_update
-    generator_instance.node.flexible_max_t[: merit_order_idx + 1] -= dispatch_power_update
+    generator_instance.node.flexible_max_t[merit_order_idx:] -= dispatch_power_update
     generator_instance.node.precharge_surplus -= dispatch_power_update
     generator_instance.trickling_reserves += dispatch_energy_update
     return None

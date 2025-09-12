@@ -249,8 +249,9 @@ def set_node_fills_and_surpluses(
 
     elif transmission_case == "precharging_adjust_storage":
         for node in network_instance.nodes.values():
-            node.fill = max(node.netload_t - node.storage_power[interval], 0)
-            node.surplus = -min(node.netload_t - node.storage_power[interval], 0)
+            node.fill = max(node.netload_t - max(node.storage_power[interval], 0), 0)
+            node.surplus = -min(node.netload_t - max(node.storage_power[interval], 0), 0)
+
     elif transmission_case == "precharging_adjust_surplus":
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t - max(node.storage_power[interval], 0.0) - node.flexible_power[interval], 0)
@@ -317,6 +318,13 @@ def calculate_net_residual_load(network_instance: Network_InstanceType) -> float
     for node in network_instance.nodes.values():
         net_residual_load += node.residual_load
     return net_residual_load
+
+
+@njit(fastmath=FASTMATH)
+def reset_flexible(network_instance: Network_InstanceType, interval: int64) -> None:
+    for node in network_instance.nodes.values():
+        node.flexible_power[interval] = 0.0
+    return None
 
 
 @njit(fastmath=FASTMATH)

@@ -274,6 +274,7 @@ def update_precharging_flags(storage_instance: Storage_InstanceType, interval: i
         and (storage_instance.precharge_energy > TOLERANCE)
         and storage_instance.precharge_flag
     )
+
     return None
 
 
@@ -284,14 +285,14 @@ def set_precharging_max_t(
     # Set discharge_max_t for trickle chargers
     if storage_instance.trickling_flag:
         charge_reduction_constraint_power = min(
-            storage_instance.trickling_reserves / storage_instance.charge_efficiency / resolution,
+            storage_instance.remaining_trickling_reserves / storage_instance.charge_efficiency / resolution,
             -min(storage_instance.dispatch_power[interval], 0.0),
         )
         charge_reduction_constraint_energy = (
             charge_reduction_constraint_power * storage_instance.charge_efficiency * resolution
         )
         discharge_increase_constraint_power = min(
-            (storage_instance.trickling_reserves - charge_reduction_constraint_energy)
+            (storage_instance.remaining_trickling_reserves - charge_reduction_constraint_energy)
             * storage_instance.discharge_efficiency
             / resolution,
             storage_instance.power_capacity - max(storage_instance.dispatch_power[interval], 0.0),
@@ -394,12 +395,12 @@ def update_precharge_dispatch(
 
     if precharging_flag:
         storage_instance.charge_max_t += dispatch_power_update
-        storage_instance.node.charge_max_t[: merit_order_idx + 1] += dispatch_power_update
+        storage_instance.node.charge_max_t[merit_order_idx:] += dispatch_power_update
         storage_instance.node.precharge_fill += dispatch_power_update
         storage_instance.precharge_energy -= dispatch_energy_update
     else:
         storage_instance.discharge_max_t -= dispatch_power_update
-        storage_instance.node.discharge_max_t[: merit_order_idx + 1] -= dispatch_power_update
+        storage_instance.node.discharge_max_t[merit_order_idx:] -= dispatch_power_update
         storage_instance.node.precharge_surplus -= dispatch_power_update
         storage_instance.trickling_reserves += dispatch_energy_update
     return None

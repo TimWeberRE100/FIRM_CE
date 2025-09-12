@@ -1,4 +1,4 @@
-from firm_ce.common.constants import FASTMATH
+from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import boolean, float64, int64, unicode_type
 from firm_ce.fast_methods import (
@@ -137,7 +137,7 @@ def balance_for_period(
 
         if perform_precharge and (
             not network_m.check_remaining_netloads(solution.network, t, "deficit") or t == end_t - 1
-        ):  # and t<500: # DEBUG 500
+        ):
             precharge_storage(solution, t, year)
             perform_precharge = False
     return None
@@ -205,19 +205,21 @@ def perform_local_surplus_transfers(
     interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
 ) -> None:
     for node in network.nodes.values():
-        node.existing_surplus = -min(0, node.netload_t)
-        if node.existing_surplus < 1e-6:
+        node.existing_surplus = min(0, node.netload_t)
+        if node.existing_surplus > -TOLERANCE:
             continue
 
-        for idx, storage_order in enumerate(node.storage_merit_order[::-1]):
+        for idx_reverse, storage_order in enumerate(node.storage_merit_order[::-1]):
             if not fleet.storages[storage_order].precharge_flag:
                 continue
 
-            dispatch_power_update = min(max(-node.existing_surplus, -fleet.storages[storage_order].charge_max_t), 0.0)
+            idx = len(node.storage_merit_order) - idx_reverse - 1
+
+            dispatch_power_update = min(max(node.existing_surplus, -fleet.storages[storage_order].charge_max_t), 0.0)
             storage_m.update_precharge_dispatch(
                 fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
             )
-            node.existing_surplus += dispatch_power_update
+            node.existing_surplus -= dispatch_power_update
     return None
 
 
@@ -231,9 +233,11 @@ def perform_transmitted_surplus_transfers(
     balance_with_transmission(interval, network, "precharging_surplus", True)
 
     for node in network.nodes.values():
-        for idx, storage_order in enumerate(node.storage_merit_order[::-1]):
+        for idx_reverse, storage_order in enumerate(node.storage_merit_order[::-1]):
             if not fleet.storages[storage_order].precharge_flag:
                 continue
+
+            idx = len(node.storage_merit_order) - idx_reverse - 1
 
             dispatch_power_update = min(
                 max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
@@ -254,9 +258,11 @@ def perform_intranode_interstorage_transfers(
         intranode_trickle = intranode_transfer_power
         intranode_precharge = -intranode_transfer_power
 
-        for idx, storage_order in enumerate(node.storage_merit_order[::-1]):
+        for idx_reverse, storage_order in enumerate(node.storage_merit_order[::-1]):
             if not fleet.storages[storage_order].precharge_flag and not fleet.storages[storage_order].trickling_flag:
                 continue
+
+            idx = len(node.storage_merit_order) - idx_reverse - 1
 
             if fleet.storages[storage_order].trickling_flag:
                 dispatch_power_update = max(min(intranode_trickle, fleet.storages[storage_order].discharge_max_t), 0.0)
@@ -285,9 +291,11 @@ def perform_internode_interstorage_transfers(
 
     for node in network.nodes.values():
 
-        for idx, storage_order in enumerate(node.storage_merit_order[::-1]):
+        for idx_reverse, storage_order in enumerate(node.storage_merit_order[::-1]):
             if not fleet.storages[storage_order].precharge_flag and not fleet.storages[storage_order].trickling_flag:
                 continue
+
+            idx = len(node.storage_merit_order) - idx_reverse - 1
 
             if fleet.storages[storage_order].trickling_flag:
                 dispatch_power_update = max(
@@ -361,25 +369,26 @@ def perform_internode_flexible_transfers(
             )
             node.imports_exports_update -= dispatch_power_update
 
-        for idx, storage_order in enumerate(node.storage_merit_order[::-1]):
+        for idx_reverse, storage_order in enumerate(node.storage_merit_order[::-1]):
             if not fleet.storages[storage_order].precharge_flag:
                 continue
-            if fleet.storages[storage_order].precharge_flag:
-                dispatch_power_update = min(
-                    max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
-                )
-                storage_m.update_precharge_dispatch(
-                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
-                )
-                node.imports_exports_update -= dispatch_power_update
+            idx = len(node.storage_merit_order) - idx_reverse - 1
+
+            dispatch_power_update = min(
+                max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
+            )
+            storage_m.update_precharge_dispatch(
+                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+            )
+            node.imports_exports_update -= dispatch_power_update
     return None
 
 
 @njit(fastmath=FASTMATH)
 def perform_flexible_precharging(solution, interval: int64) -> None:  # Solution_InstanceType
-    network_m.set_flexible_precharge_fills_and_surpluses(solution.network)
     for node in solution.network.nodes.values():
         node_m.set_imports_exports_temp(node, interval)
+    network_m.set_flexible_precharge_fills_and_surpluses(solution.network)
 
     perform_intranode_flexible_transfers(
         interval,
@@ -446,16 +455,12 @@ def determine_precharge_powers(interval: int64, solution, year: int64) -> int64:
             solution.static.interval_resolutions[interval],
         )
 
-        fleet_m.update_precharging_flags(solution.fleet, interval)
-
         perform_internode_interstorage_transfers(
             interval,
             solution.network,
             solution.fleet,
             solution.static.interval_resolutions[interval],
         )
-
-        fleet_m.update_precharging_flags(solution.fleet, interval)
 
         if fleet_m.check_precharge_remaining(solution.fleet):
             perform_flexible_precharging(solution, interval)
@@ -496,6 +501,8 @@ def update_precharge_stored_energy(
         infeasible_flag = fleet_m.determine_feasible_storage_dispatch(solution.fleet, interval)
         if infeasible_flag:
             network_m.reset_transmission(solution.network, interval)
+            network_m.reset_flexible(solution.network, interval)
+            fleet_m.reset_flexible(solution.fleet, interval)
 
             balance_with_transmission(interval, solution.network, "precharging_adjust_storage", False)
             balance_with_flexible(interval, solution.network, solution.fleet)  # Local flexible

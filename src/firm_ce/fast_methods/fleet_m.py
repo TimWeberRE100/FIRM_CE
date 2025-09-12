@@ -137,12 +137,18 @@ def initialise_deficit_block(fleet_instance: Fleet_InstanceType, interval_after_
 
 
 @njit(fastmath=FASTMATH)
-def reset_dispatch(fleet_instance: Fleet_InstanceType, interval: int64) -> None:
-    for storage in fleet_instance.storages.values():
-        storage.dispatch_power[interval] = 0.0
+def reset_flexible(fleet_instance: Fleet_InstanceType, interval: int64) -> None:
     for generator in fleet_instance.generators.values():
         if generator_m.check_unit_type(generator, "flexible"):
             generator.dispatch_power[interval] = 0.0
+    return None
+
+
+@njit(fastmath=FASTMATH)
+def reset_dispatch(fleet_instance: Fleet_InstanceType, interval: int64) -> None:
+    for storage in fleet_instance.storages.values():
+        storage.dispatch_power[interval] = 0.0
+    reset_flexible(fleet_instance, interval)
     return None
 
 
