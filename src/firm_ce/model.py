@@ -9,7 +9,9 @@ from firm_ce.system.scenario import Scenario
 
 
 class Model:
-    def __init__(self, config_directory: str = "inputs/config", data_directory: str = "inputs/data",  logging_flag: bool = True) -> None:
+    def __init__(
+        self, config_directory: str = "inputs/config", data_directory: str = "inputs/data", logging_flag: bool = True
+    ) -> None:
         self.config_directory = config_directory
         self.data_directory = data_directory
         model_data = ModelData(config_directory=self.config_directory, logging_flag=logging_flag)

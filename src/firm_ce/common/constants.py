@@ -1,5 +1,6 @@
-import numpy as np
 import os
+
+import numpy as np
 
 JIT_ENABLED = True
 SAVE_POPULATION = True
