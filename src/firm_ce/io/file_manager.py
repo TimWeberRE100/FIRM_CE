@@ -107,7 +107,7 @@ class DataFile:
     Container for a named datafile and its content.
     """
 
-    def __init__(self, filename: str, datafile_type: str, file_directory: str = "src/firm_ce/data") -> None:
+    def __init__(self, filename: str, datafile_type: str, file_directory: str) -> None:
         """
         Initialize the DataFile with a filename and its type.
 

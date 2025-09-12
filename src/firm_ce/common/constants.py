@@ -1,4 +1,5 @@
 import numpy as np
+import os
 
 JIT_ENABLED = True
 SAVE_POPULATION = True
@@ -9,5 +10,5 @@ NP_FLOAT_MIN = np.finfo(np.float64).min
 NP_INT64_MAX = np.iinfo(np.int64).max
 PENALTY_MULTIPLIER = 1e6
 TOLERANCE = 1e-6
-NUM_THREADS = 1
+NUM_THREADS = int(os.getenv("NUM_THREADS", os.cpu_count()))
 FASTMATH = True

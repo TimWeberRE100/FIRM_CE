@@ -2,12 +2,10 @@ __pycache__
 */__pycache__
 results
 preprocessing
-src/firm_ce/config/Backup
-src/firm_ce/config_isp
-src/firm_ce/data_isp
-src/firm_ce/config_validation
-src/firm_ce/data_validation
-!results/temp/*
+inputs/*
+!inputs/config
+!inputs/data
+project
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

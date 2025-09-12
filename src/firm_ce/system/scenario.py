@@ -53,8 +53,8 @@ class Scenario:
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
 
-    def load_datafiles(self, all_datafiles: Dict[str, DataFile]) -> None:
-        datafiles = self._get_datafiles(all_datafiles)
+    def load_datafiles(self, all_datafiles: Dict[str, DataFile], data_directory: str) -> None:
+        datafiles = self._get_datafiles(all_datafiles, data_directory)
 
         load_datafiles_to_network(self.network, datafiles)
 
@@ -87,10 +87,10 @@ class Scenario:
             if self.name in parse_comma_separated(imported_dict[idx]["scenarios"])
         }
 
-    def _get_datafiles(self, all_datafiles: Dict[str, Dict[str, str]]) -> Dict[str, DataFile]:
+    def _get_datafiles(self, all_datafiles: Dict[str, Dict[str, str]], data_directory: str) -> Dict[str, DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
         return {
-            idx: DataFile(all_datafiles[idx]["filename"], all_datafiles[idx]["datafile_type"])
+            idx: DataFile(all_datafiles[idx]["filename"], all_datafiles[idx]["datafile_type"], data_directory)
             for idx in all_datafiles
             if self.name in parse_comma_separated(all_datafiles[idx]["scenarios"])
         }
