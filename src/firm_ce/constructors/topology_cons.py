@@ -2,10 +2,11 @@ from typing import Dict, List
 
 import numpy as np
 
-from ..common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, int64
-from ..fast_methods import route_m
-from ..io.validate import is_nan
-from ..system.topology import (
+from firm_ce.common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, int64
+from firm_ce.constructors.cost_cons import construct_UnitCost_object
+from firm_ce.fast_methods import route_m
+from firm_ce.io.validate import is_nan
+from firm_ce.system.topology import (
     Line,
     Line_InstanceType,
     Network,
@@ -15,16 +16,50 @@ from ..system.topology import (
     Route,
     Route_InstanceType,
 )
-from .cost_cons import construct_UnitCost_object
 
 
 def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:
+    """
+    Takes data required to initialise a single node object and returns an instance of the Node jitclass.
+    The nodes (also called buses) represent a spatial location that is treated as a copper-plate. All
+    Generator and Storage assets are located at a particular node in the network.
+    Although constructor does not do much at this stage, it has been implemented for future-proofing
+    in case nodes become more complex later on.
+
+    Parameters:
+    -------
+    idx (int): The model-level id associated with the node. Currently the same as Node.order since nodes
+        are defined at the scenario-level in `config/scenarios.csv`. May change in future.
+    order (int): The scenario-level id associated with the node.
+    node_name (str): A name associated with the node.
+
+    Returns:
+    -------
+    Node_InstanceType: A static instance of the Node jitclass.
+    """
     return Node(True, idx, order, node_name)
 
 
 def construct_Line_object(
     line_dict: Dict[str, str], nodes_object_dict: DictType(int64, Node_InstanceType), order: int
 ) -> Line_InstanceType:
+    """
+    Takes data required to initialise a single line object, casts values into Numba-compatible
+    types, and returns an instance of the Line jitclass. The Lines define interconnections
+    between nodes (buses) in the network.
+
+    Parameters:
+    -------
+    line_dict (Dict[str,str]): A dictionary containing the attributes of
+        a single line object in `config/lines.csv`.
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
+        all Node jitclass instances for the scenario. Key defined as Node.order.
+    order (int): The scenario-specific id for the Storage instance.
+
+    Returns:
+    -------
+    Line_InstanceType: A static instance of the Line jitclass.
+    """
     idx = int(line_dict["id"])
     name = str(line_dict["name"])
     length = float(line_dict["length"])
@@ -95,7 +130,26 @@ def construct_new_Route_object(
     new_line: Line_InstanceType,
     line_direction: int,
     leg: int,
-):
+) -> Route_InstanceType:
+    """
+    Initialises a single route object with the first line in the route. Routes are
+    later extended after the Route instance has been created. A Route defines a
+    possible sequence of steps through the network.
+
+    Parameters:
+    -------
+    initial_node (Node_InstanceType): The node where the route begins.
+    new_node (Node_InstanceType): The node at the other end of the first line in the route.
+    new_line (Line_InstanceType): The first line in the route, connecting the initial_node
+        and new_node.
+    line_direction (int): Defines the direction of initial_node -> new_node relative to
+        line.start_node -> line.end_node. Same direction is +1, different direction is -1.
+    leg (int): The total number of steps (i.e., lines) in the route object.
+
+    Returns:
+    -------
+    Route_InstanceType: A static instance of the Route jitclass.
+    """
     route_nodes = TypedList.empty_list(Node_InstanceType)
     route_lines = TypedList.empty_list(Line_InstanceType)
 
@@ -108,6 +162,24 @@ def construct_new_Route_object(
 def extend_route(
     route: Route_InstanceType, new_node: Node_InstanceType, new_line: Line_InstanceType, line_direction: int, leg: int
 ) -> Route_InstanceType:
+    """
+    Takes an existing route, extends it by a single leg, and returns the extended
+    Route instance.
+
+    Parameters:
+    -------
+    route (Route_InstanceType): An existing Route instance to be extended.
+    new_node (Node_InstanceType): The node at the other end of the new_line in the route.
+    new_line (Line_InstanceType): The new line in the route, connecting the final node
+        in the existing route to the new_node.
+    line_direction (int): Defines the direction of route.nodes[-1] -> new_node relative to
+        line.start_node -> line.end_node. Same direction is +1, different direction is -1.
+    leg (int): The total number of steps (i.e., lines) along the extended route object.
+
+    Returns:
+    -------
+    Route_InstanceType: A static instance of the Route jitclass.
+    """
     route_nodes = route.nodes.copy()
     route_nodes.append(new_node)
 
@@ -128,10 +200,34 @@ def get_routes_for_node(
     lines_object_dict: DictType(int64, Line_InstanceType),
     leg: int,
 ) -> ListType(Route_InstanceType):
+    """
+    Builds a list of routes with length 'leg' to an initial_node. Routes can only use
+    each node and line in the network once.
+    If no routes have yet been added to the routes_typed_dict for the initial_node,
+    the first routes are initialised. Otherwise, the previous leg of each route is
+    extended to form the new list.
+
+    Parameters:
+    -------
+    initial_node (Node_InstanceType): The destination of the route.
+    routes_typed_dict (DictType(UniTuple(int64,2), ListType(Route_InstanceType))):
+        A typed dictionary where values are lists of routes to the initial_node. The key
+        is a tuple (intial_node.order, leg) so that routes of a specified length to a node
+        can quickly be accessed.
+    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
+        all Line jitclass instances for the scenario. Key defined as Line.order.
+    leg (int): The total number of steps (i.e., lines) along the route objects for the
+        list returned by this function.
+
+    Returns:
+    -------
+    ListType(Route_InstanceType): A typed list of Route instances. Typed list required for
+        JIT-compatibility.
+    """
     routes_to_node_curr_leg = TypedList.empty_list(Route_InstanceType)
     key = (initial_node.order, leg - 1)
     if key in routes_typed_dict:
-        routes_to_node_prev_leg = routes_typed_dict[initial_node.order, leg - 1].copy()
+        routes_to_node_prev_leg = routes_typed_dict[key].copy()
         for route in routes_to_node_prev_leg:
             for line in lines_object_dict.values():
                 if route_m.check_contains_line(route, line):  # Remove loops
@@ -163,7 +259,26 @@ def build_routes_typed_dict(
     nodes_object_dict: DictType(int64, Node_InstanceType),
     lines_object_dict: DictType(int64, Line_InstanceType),
 ) -> DictType(UniTuple(int64, 2), ListType(Route_InstanceType)):
+    """
+    Builds a typed dictionary where values are lists of routes to the initial_node. The key
+    is a tuple (intial_node.order, leg) so that routes of a specified length to a node
+    can quickly be accessed.
 
+    Parameters:
+    -------
+    networksteps_max (int): The maximum number of legs allowed in a route for a given scenario.
+        Can be adjusted in `config/scenarios.csv`.
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
+        all Node jitclass instances for the scenario. Key defined as Node.order.
+    lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
+        all Line jitclass instances for the scenario. Key defined as Line.order.
+
+    Returns:
+    -------
+    DictType(UniTuple(int64,2), ListType(Route_InstanceType)): A typed dictionary where values are
+        lists of routes to the initial_node. The key is a tuple (intial_node.order, leg) so that
+        routes of a specified length to a node can quickly be accessed.
+    """
     routes_typed_dict = TypedDict.empty(key_type=UniTuple(int64, 2), value_type=ListType(Route_InstanceType))
 
     for leg in range(networksteps_max):
@@ -184,12 +299,33 @@ def construct_Network_object(
     lines_imported_dict: Dict[str, Dict[str, str]],
     networksteps_max: int,
 ) -> Network_InstanceType:
+    """
+    Takes data required to initialise a single network object, casts values into Numba-compatible
+    types, builds Node and Line jitclasses, builds transmission routes, and returns an instance of
+    the Network jitclass.
+
+    The Network consists of all objects related to network topology and transmission.
+    The major_lines are those associated with transmission topology, while minor_lines are those
+    required to link Generator and Storage objects to the main transmission network.
+
+    Parameters:
+    -------
+    nodes_imported_list (List[str]): A list of all node names imported from `config/scenarios.csv`.
+    lines_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
+        lines imported from `config/lines.csv`.
+    networksteps_max (int): The maximum number of legs allowed in a route for a given scenario.
+        Can be adjusted in `config/scenarios.csv`.
+
+    Returns:
+    -------
+    Network_InstanceType: A static instance of the Network jitclass.
+    """
 
     nodes = TypedDict.empty(key_type=int64, value_type=Node_InstanceType)
     for idx in range(len(nodes_imported_list)):
         nodes[idx] = construct_Node_object(
             idx, idx, nodes_imported_list[idx]
-        )  # Separate idx from order in fture version for consistency?
+        )  # Separate idx from order in future version for consistency?
 
     major_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)
     minor_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)

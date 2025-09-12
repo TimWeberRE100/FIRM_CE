@@ -2,16 +2,16 @@ from typing import Union
 
 import numpy as np
 
-from ..common.constants import FASTMATH
-from ..common.exceptions import (
+from firm_ce.common.constants import FASTMATH, TOLERANCE
+from firm_ce.common.exceptions import (
     raise_getting_unloaded_data_error,
     raise_static_modification_error,
 )
-from ..common.jit_overload import njit
-from ..common.typing import DictType, boolean, float64, int64, unicode_type
-from ..system.components import Generator, Generator_InstanceType
-from ..system.topology import Line_InstanceType, Node_InstanceType
-from . import ltcosts_m, node_m
+from firm_ce.common.jit_overload import njit
+from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.fast_methods import ltcosts_m, node_m
+from firm_ce.system.components import Generator, Generator_InstanceType
+from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
 
 
 @njit(fastmath=FASTMATH)
@@ -58,6 +58,7 @@ def build_capacity(
     generator_instance.capacity += new_build_power_capacity
     generator_instance.new_build += new_build_power_capacity
     generator_instance.line.capacity += new_build_power_capacity
+    generator_instance.line.new_build += new_build_power_capacity
 
     update_residual_load(generator_instance, new_build_power_capacity, interval_resolutions)
     return None
@@ -282,7 +283,7 @@ def update_deficit_block_bounds(generator_instance: Generator_InstanceType, rema
 @njit(fastmath=FASTMATH)
 def initialise_precharging_flags(generator_instance: Generator_InstanceType, interval: int64) -> None:
     generator_instance.trickling_flag = (
-        generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > 1e-6
+        generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves > TOLERANCE
     )
     return None
 
@@ -293,8 +294,10 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
         generator_instance.remaining_energy[interval] - generator_instance.trickling_reserves, 0.0
     )
     generator_instance.trickling_flag = (
-        generator_instance.remaining_trickling_reserves > 1e-6
+        generator_instance.remaining_trickling_reserves > TOLERANCE
     ) and generator_instance.trickling_flag
+
+    return None
 
 
 @njit(fastmath=FASTMATH)
@@ -303,7 +306,7 @@ def set_precharging_max_t(
 ) -> None:
     if generator_instance.trickling_flag:
         generator_instance.flexible_max_t = min(
-            generator_instance.trickling_reserves / resolution,
+            generator_instance.remaining_trickling_reserves / resolution,
             generator_instance.capacity - generator_instance.dispatch_power[interval],
         )
     else:
@@ -333,9 +336,9 @@ def update_precharge_dispatch(
     generator_instance.node.flexible_power[interval] += dispatch_power_update
 
     generator_instance.flexible_max_t -= dispatch_power_update
-    generator_instance.node.flexible_max_t[: merit_order_idx + 1] -= dispatch_power_update
+    generator_instance.node.flexible_max_t[merit_order_idx:] -= dispatch_power_update
     generator_instance.node.precharge_surplus -= dispatch_power_update
-    generator_instance.trickling_reserves -= dispatch_energy_update
+    generator_instance.trickling_reserves += dispatch_energy_update
     return None
 
 

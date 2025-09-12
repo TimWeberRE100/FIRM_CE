@@ -1,9 +1,14 @@
+"""
+Numba types and the TypedDict and TypedList classes are overloaded, enabling
+JIT to be switched off for debugging with the Python interpreter.
+"""
+
 from typing import Dict, List, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
 
-from .constants import JIT_ENABLED
+from firm_ce.common.constants import JIT_ENABLED
 
 EvaluationRecord_Type = Tuple[str, str, float, float, float, NDArray[np.float64]]
 BroadOptimumVars_Type = Tuple[int, str, bool, str]

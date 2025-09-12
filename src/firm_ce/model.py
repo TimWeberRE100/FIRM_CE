@@ -1,17 +1,20 @@
 import time
 from datetime import datetime
 
-from .common.constants import DEBUG
-from .io.validate import ModelData
-from .optimisation.statistics import Statistics
-from .system.parameters import ModelConfig
-from .system.scenario import Scenario
+from firm_ce.common.constants import DEBUG
+from firm_ce.io.validate import ModelData
+from firm_ce.optimisation.statistics import Statistics
+from firm_ce.system.parameters import ModelConfig
+from firm_ce.system.scenario import Scenario
 
 
 class Model:
-    def __init__(self, config_directory: str = "src/firm_ce/config") -> None:
+    def __init__(
+        self, config_directory: str = "inputs/config", data_directory: str = "inputs/data", logging_flag: bool = True
+    ) -> None:
         self.config_directory = config_directory
-        model_data = ModelData(config_directory=self.config_directory)
+        self.data_directory = data_directory
+        model_data = ModelData(config_directory=self.config_directory, logging_flag=logging_flag)
         if not model_data.validate():
             exit()
 
@@ -28,7 +31,7 @@ class Model:
             start_time_str = datetime.fromtimestamp(start_time).strftime("%d/%m/%Y %H:%M:%S")
             scenario.logger.info(f"Started scenario {scenario.name} at {start_time_str}.")
 
-            scenario.load_datafiles(self.datafile_filenames_dict)
+            scenario.load_datafiles(self.datafile_filenames_dict, self.data_directory)
             datafile_loadtime = time.time()
             datafile_loadtime_str = datetime.fromtimestamp(datafile_loadtime).strftime("%d/%m/%Y %H:%M:%S")
             scenario.logger.info(

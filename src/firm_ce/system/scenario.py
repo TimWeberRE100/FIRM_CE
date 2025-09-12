@@ -5,21 +5,21 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult
 
-from ..common.helpers import parse_comma_separated
-from ..constructors.component_cons import construct_Fleet_object
-from ..constructors.parameter_cons import construct_ScenarioParameters_object
-from ..constructors.topology_cons import construct_Network_object
-from ..constructors.traces_cons import (
+from firm_ce.common.helpers import parse_comma_separated
+from firm_ce.constructors.component_cons import construct_Fleet_object
+from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_object
+from firm_ce.constructors.topology_cons import construct_Network_object
+from firm_ce.constructors.traces_cons import (
     load_datafiles_to_generators,
     load_datafiles_to_network,
     unload_data_from_generators,
     unload_data_from_network,
 )
-from ..fast_methods import static_m
-from ..io.file_manager import DataFile
-from ..io.validate import ModelData
-from ..optimisation.solver import Solver
-from .parameters import ModelConfig
+from firm_ce.fast_methods import static_m
+from firm_ce.io.file_manager import DataFile
+from firm_ce.io.validate import ModelData
+from firm_ce.optimisation.solver import Solver
+from firm_ce.system.parameters import ModelConfig
 
 
 class Scenario:
@@ -53,8 +53,8 @@ class Scenario:
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
 
-    def load_datafiles(self, all_datafiles: Dict[str, DataFile]) -> None:
-        datafiles = self._get_datafiles(all_datafiles)
+    def load_datafiles(self, all_datafiles: Dict[str, DataFile], data_directory: str) -> None:
+        datafiles = self._get_datafiles(all_datafiles, data_directory)
 
         load_datafiles_to_network(self.network, datafiles)
 
@@ -87,10 +87,10 @@ class Scenario:
             if self.name in parse_comma_separated(imported_dict[idx]["scenarios"])
         }
 
-    def _get_datafiles(self, all_datafiles: Dict[str, Dict[str, str]]) -> Dict[str, DataFile]:
+    def _get_datafiles(self, all_datafiles: Dict[str, Dict[str, str]], data_directory: str) -> Dict[str, DataFile]:
         """Filter or prepare datafiles specific to this scenario."""
         return {
-            idx: DataFile(all_datafiles[idx]["filename"], all_datafiles[idx]["datafile_type"])
+            idx: DataFile(all_datafiles[idx]["filename"], all_datafiles[idx]["datafile_type"], data_directory)
             for idx in all_datafiles
             if self.name in parse_comma_separated(all_datafiles[idx]["scenarios"])
         }
