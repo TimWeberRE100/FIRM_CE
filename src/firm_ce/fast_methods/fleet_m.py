@@ -14,7 +14,7 @@ def create_dynamic_copy(
     lines_typed_dict: DictType(int64, Line_InstanceType),
 ) -> Fleet_InstanceType:
     """
-    A 'static' instance of the Fleet jitclass (Fleet.static_instance=True) is copied 
+    A 'static' instance of the Fleet jitclass (Fleet.static_instance=True) is copied
     and marked as a 'dynamic' instance (Fleet.static_instance=False).
 
     Static instances are created during Model initialisation and supplied as arguments
@@ -25,9 +25,9 @@ def create_dynamic_copy(
 
     Instead, each worker must create a deep copy of the referenced instance that is safe to modify
     within that worker process. Not all attributes within a dynamic instance are safe to modify.
-    Only attributes that are required to be modified when testing the candidate solution are 
+    Only attributes that are required to be modified when testing the candidate solution are
     copied in order to save memory. If an attribute is unsafe to modify after copying, it will
-    be marked with a comment that says "This remains static" in the create_dynamic_copy fast_method for 
+    be marked with a comment that says "This remains static" in the create_dynamic_copy fast_method for
     that jitclass.
 
     Parameters:
@@ -66,7 +66,7 @@ def build_capacities(
 ) -> None:
     """
     The candidate solution defines new build capacity for each Generator, Storage, and Line (major_lines) object. This
-    function modifies each Generator and Storage object in the Fleet to build new capacity and updates the 
+    function modifies each Generator and Storage object in the Fleet to build new capacity and updates the
     residual_load at corresponding nodes.
 
     Parameters:
@@ -76,8 +76,8 @@ def build_capacities(
         evolution. The candidate solution defines new build capacity for each decision variable (either power
         or energy capacity).
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
-        in the unit committment formulation (hours per time interval). An array is used instead of a single scalar value to allow for
-        variable time step simplified balancing methods to be developed in future.
+        in the unit committment formulation (hours per time interval). An array is used instead of a single
+        scalar value to allow for variable time step simplified balancing methods to be developed in future.
 
     Returns:
     -------
@@ -107,8 +107,9 @@ def build_capacities(
 @njit(fastmath=FASTMATH)
 def allocate_memory(fleet_instance: Fleet_InstanceType, intervals_count: int64) -> None:
     """
-    Memory associated with time-series data for flexible generators and storage systems is only allocated after a dynamic copy of the Fleet instance
-    is created. This is to minimise memory usage of the static instances.
+    Memory associated with time-series data for flexible generators and storage systems is only
+    allocated after a dynamic copy of the Fleet instance is created. This is to minimise memory
+    usage of the static instances.
 
     Parameters:
     -------
@@ -171,9 +172,9 @@ def initialise_annual_limits(fleet_instance: Fleet_InstanceType, year: int64, fi
     Parameters:
     -------
     fleet_instance (Fleet_InstanceType): A dynamic instance of the Fleet jitclass.
-    year (int64): Defines the number of years that have completed balancing since the start of the 
+    year (int64): Defines the number of years that have completed balancing since the start of the
         optimisation. Used as the index for the Generator.annual_constraints_data array.
-    first_t (int64): Index for the first time interval in the year.   
+    first_t (int64): Index for the first time interval in the year.
 
     Returns:
     -------
@@ -216,7 +217,7 @@ def update_stored_energies(
     fleet_instance: Fleet_InstanceType, interval: int64, resolution: float64, forward_time_flag: boolean
 ) -> None:
     """
-    Once the dispatch_power for the Storage objects have been determined for a time interval, the stored_energy 
+    Once the dispatch_power for the Storage objects have been determined for a time interval, the stored_energy
     for each Storage system is updated. During precharging actions, a temporary value is updated to track stored_energy
     constraints for dispatching.
 
@@ -234,7 +235,7 @@ def update_stored_energies(
 
     Side-effects
     -------
-    Attributes modified for each Storage instance in Fleet.storages: stored_energy (forwards_time_flag = True) or 
+    Attributes modified for each Storage instance in Fleet.storages: stored_energy (forwards_time_flag = True) or
         stored_energy_temp_reverse (forwards_time_flag = False).
     """
     for storage in fleet_instance.storages.values():
@@ -251,9 +252,9 @@ def update_remaining_flexible_energies(
     previous_year_flag: boolean,
 ) -> None:
     """
-    Once the dispatch_power for the flexible Generator objects have been determined for a time interval, the remaining_energy 
-    for each flexible Generator system is updated. During precharging actions, a temporary value is updated to track remaining_energy
-    constraints for dispatching.
+    Once the dispatch_power for the flexible Generator objects have been determined for a time interval, the remaining_energy
+    for each flexible Generator system is updated. During precharging actions, a temporary value is updated to track
+    remaining_energy constraints for dispatching.
 
     Parameters:
     -------
@@ -271,7 +272,7 @@ def update_remaining_flexible_energies(
 
     Side-effects
     -------
-    Attributes modified for each flexible Generator instance in Fleet.generators: remaining_energy (forwards_time_flag = True) or 
+    Attributes modified for each flexible Generator instance in Fleet.generators: remaining_energy (forwards_time_flag = True) or
         remaining_energy_temp_reverse (forwards_time_flag = False).
     """
     for generator in fleet_instance.generators.values():
@@ -284,15 +285,15 @@ def update_remaining_flexible_energies(
 @njit(fastmath=FASTMATH)
 def calculate_lt_generations(fleet_instance: Fleet_InstanceType, interval_resolutions: float64[:]) -> None:
     """
-    The total energy generated by each flexible Generator and discharged from each Storage system during 
+    The total energy generated by each flexible Generator and discharged from each Storage system during
     unit committment is calculated from the interval values.
 
     Parameters:
     -------
     fleet_instance (Fleet_InstanceType): An instance of the Fleet jitclass.
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
-        in the unit committment formulation (hours per time interval). An array is used instead of a single scalar value to allow for
-        variable time step simplified balancing methods to be developed in future.
+        in the unit committment formulation (hours per time interval). An array is used instead of a single
+        scalar value to allow for variable time step simplified balancing methods to be developed in future.
 
     Returns:
     -------
@@ -335,8 +336,8 @@ def initialise_deficit_block(fleet_instance: Fleet_InstanceType, interval_after_
     -------
     Attributes modified for each Storage instance in Fleet.storages: stored_energy_temp_reverse, deficit_block_min_storage,
         deficit_block_max_storage.
-    Attributes modified for each flexible Generator instance in Fleet.generators: remaining_energy_temp_reverse, deficit_block_min_energy,
-        deficit_block_max_energy.
+    Attributes modified for each flexible Generator instance in Fleet.generators: remaining_energy_temp_reverse,
+        deficit_block_min_energy, deficit_block_max_energy.
     """
     for storage in fleet_instance.storages.values():
         storage_m.initialise_deficit_block(storage, interval_after_deficit_block)
@@ -416,7 +417,8 @@ def update_deficit_block(fleet_instance: Fleet_InstanceType) -> None:
     Side-effects
     -------
     Attributes modified for each Storage instance in Fleet.storages: deficit_block_min_storage, deficit_block_max_storage.
-    Attributes modified for each flexible Generator instance in Fleet.generators: deficit_block_min_energy, deficit_block_max_energy.
+    Attributes modified for each flexible Generator instance in Fleet.generators: deficit_block_min_energy,
+        deficit_block_max_energy.
     """
     for storage in fleet_instance.storages.values():
         storage_m.update_deficit_block_bounds(storage, storage.stored_energy_temp_reverse)
@@ -433,7 +435,7 @@ def assign_precharging_values(
 ) -> None:
     """
     Once the first time interval in a deficit block is located (during reverse-time precharging),
-    the precharging energy for Storage prechargers and trickling reserves for Storage tricklers and 
+    the precharging energy for Storage prechargers and trickling reserves for Storage tricklers and
     flexible Generators are defined. These parameters are used to constrain discharging from trickle
     chargers (ensuring they maintain enough energy to dispatch during deficit block) and charging from
     prechargers (ensuring they stop precharging once sufficient energy has been stored to dispatch during the
@@ -444,7 +446,7 @@ def assign_precharging_values(
     fleet_instance (Fleet_InstanceType): An instance of the Fleet jitclass.
     interval (int64): Index for the current time interval.
     resolution (float64): Resolution of the interval (hours per time interval).
-    year (int64): Defines the number of years that have completed balancing since the start of the 
+    year (int64): Defines the number of years that have completed balancing since the start of the
         optimisation. Used as the index for the Generator.annual_constraints_data array.
 
     Returns:
@@ -662,7 +664,7 @@ def determine_feasible_flexible_dispatch(fleet_instance: Fleet_InstanceType, int
 def calculate_available_storage_dispatch(fleet_instance: Fleet_InstanceType, interval: int64) -> None:
     """
     Calculates the maximum amount that dispatch_power for each Storage system in a particular time interval can be adjusted.
-    The remaining_discharge_max_t accounts for charging power reduction and discharging power increases. Vice versa for 
+    The remaining_discharge_max_t accounts for charging power reduction and discharging power increases. Vice versa for
     remaining_charge_max_t.
 
     Parameters:
@@ -685,7 +687,7 @@ def calculate_available_storage_dispatch(fleet_instance: Fleet_InstanceType, int
 @njit(fastmath=FASTMATH)
 def reset_flexible_reserves(fleet_instance: Fleet_InstanceType) -> None:
     """
-    Resets the trickling reserves for all flexible Generators to 0. Required when 
+    Resets the trickling reserves for all flexible Generators to 0. Required when
     the precharging period crosses into the previous calendar year.
 
     Parameters:

@@ -5,7 +5,7 @@ from firm_ce.common.exceptions import (
     raise_static_modification_error,
 )
 from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
+from firm_ce.common.typing import DictType, float64, int64, unicode_type
 from firm_ce.fast_methods import ltcosts_m
 from firm_ce.system.topology import Line, Line_InstanceType, Node, Node_InstanceType
 
@@ -15,7 +15,7 @@ def create_dynamic_copy(
     line_instance: Line_InstanceType, nodes_typed_dict: DictType(int64, Node_InstanceType), line_type: unicode_type
 ) -> Line_InstanceType:
     """
-    A 'static' instance of the Line jitclass (Line.static_instance=True) is copied 
+    A 'static' instance of the Line jitclass (Line.static_instance=True) is copied
     and marked as a 'dynamic' instance (Line.static_instance=False).
 
     Static instances are created during Model initialisation and supplied as arguments
@@ -26,9 +26,9 @@ def create_dynamic_copy(
 
     Instead, each worker must create a deep copy of the referenced instance that is safe to modify
     within that worker process. Not all attributes within a dynamic instance are safe to modify.
-    Only attributes that are required to be modified when testing the candidate solution are 
+    Only attributes that are required to be modified when testing the candidate solution are
     copied in order to save memory. If an attribute is unsafe to modify after copying, it will
-    be marked with a comment that says "This remains static" in the create_dynamic_copy fast_method for 
+    be marked with a comment that says "This remains static" in the create_dynamic_copy fast_method for
     that jitclass.
 
     Dynamic copies of Node instances are required for major_lines. For minor_lines, a generic Node instance
@@ -89,7 +89,7 @@ def build_capacity(line_instance: Line_InstanceType, new_build_power_capacity: f
 
     Side-effects:
     -------
-    Attributes modified for the Line instance: capacity, new_build. 
+    Attributes modified for the Line instance: capacity, new_build.
     """
     if line_instance.static_instance:
         raise_static_modification_error()

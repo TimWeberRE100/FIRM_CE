@@ -86,7 +86,7 @@ def initialise_stored_energy(storage_instance: Storage_InstanceType) -> None:
         raise_static_modification_error()
     # Make it possible for user to define custom value for initial stored energy in future
     # Stored in final time interval for simplicity. Overwritten upon performing balancing for final time interval.
-    storage_instance.stored_energy[-1] = 0.5 * storage_instance.energy_capacity 
+    storage_instance.stored_energy[-1] = 0.5 * storage_instance.energy_capacity
     return None
 
 
