@@ -8,5 +8,6 @@ def test_end_to_end_integration():
     model = Model(
         config_directory="tests/inputs/test_1hr_config_data/config",
         data_directory="tests/inputs/test_1hr_config_data/data",
+        logging_flag=False,
     )
     model.solve()

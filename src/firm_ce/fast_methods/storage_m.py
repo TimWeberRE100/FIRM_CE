@@ -84,7 +84,9 @@ def allocate_memory(storage_instance: Storage_InstanceType, intervals_count: int
 def initialise_stored_energy(storage_instance: Storage_InstanceType) -> None:
     if storage_instance.static_instance:
         raise_static_modification_error()
-    storage_instance.stored_energy[-1] = 0.5 * storage_instance.energy_capacity
+    # Make it possible for user to define custom value for initial stored energy in future
+    # Stored in final time interval for simplicity. Overwritten upon performing balancing for final time interval.
+    storage_instance.stored_energy[-1] = 0.5 * storage_instance.energy_capacity 
     return None
 
 

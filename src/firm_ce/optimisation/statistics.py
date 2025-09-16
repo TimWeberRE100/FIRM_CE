@@ -513,43 +513,67 @@ class Statistics:
         )
         return result_file
 
-    def calculate_annual_average_energy(self, arr: NDArray[np.float64]) -> float:
-        return sum(arr) * self.solution.static.resolution / self.solution.static.year_count
+    def calculate_annual_energies(self, arr: NDArray[np.float64], decimals: int = 3) -> float:
+        annual_energies_arr = np.zeros(self.solution.static.year_count + 1, dtype=np.float64)
+        for year in range(self.solution.static.year_count):
+            first_t, last_t = static_m.get_year_t_boundaries(self.solution.static, year)
+            annual_energies_arr[year] = round(
+                sum(arr[first_t : last_t + 1] * self.solution.static.interval_resolutions[first_t : last_t + 1]),
+                decimals,
+            )
+        annual_energies_arr[-1] = round(sum(arr * self.solution.static.interval_resolutions), decimals)
+        return annual_energies_arr
 
     def generate_summary_file(self) -> ResultFile:
-        header = []
-        data_array = []
+        header = ["Year"]
+        row_labels = np.array(
+            list(range(self.solution.static.first_year, self.solution.static.final_year + 1)) + ["Total"], dtype=object
+        )
+        column_count = (
+            3 * len(self.solution.network.nodes)
+            + len(self.solution.fleet.generators)
+            + len(self.solution.fleet.storages)
+            + len(self.solution.network.major_lines)
+        )
+        data_array = np.zeros((len(row_labels), column_count), dtype=np.float64)
+        col = 0
 
         for node in self.solution.network.nodes.values():
-            header.append(node.name + " Average Annual Demand [GWh]")
-            data_array.append(self.calculate_annual_average_energy(node.data))
+            header.append(node.name + " Annual Demand [GWh]")
+            data_array[:, col] = self.calculate_annual_energies(node.data)
+            col += 1
 
         for generator in self.solution.fleet.generators.values():
-            header.append(generator.name + " Average Annual Gen [GWh]")
+            header.append(generator.name + " Annual Gen [GWh]")
             if generator_m.check_unit_type(generator, "flexible"):
-                data_array.append(self.calculate_annual_average_energy(generator.dispatch_power))
+                data_array[:, col] = self.calculate_annual_energies(generator.dispatch_power)
             else:
-                data_array.append(self.calculate_annual_average_energy(generator.data * generator.capacity))
+                data_array[:, col] = self.calculate_annual_energies(generator.data * generator.capacity)
+            col += 1
 
         for storage in self.solution.fleet.storages.values():
-            header.append(storage.name + " Average Annual Discharge [GWh]")
-            data_array.append(self.calculate_annual_average_energy(np.maximum(storage.dispatch_power, 0)))
+            header.append(storage.name + " Annual Discharge [GWh]")
+            data_array[:, col] = self.calculate_annual_energies(np.maximum(storage.dispatch_power, 0))
+            col += 1
 
         for node in self.solution.network.nodes.values():
-            header.append(node.name + " Average Annual Spillage [GWh]")
-            data_array.append(self.calculate_annual_average_energy(node.spillage))
+            header.append(node.name + " Annual Spillage [GWh]")
+            data_array[:, col] = self.calculate_annual_energies(node.spillage)
+            col += 1
 
         for node in self.solution.network.nodes.values():
-            header.append(node.name + " Average Annual Deficit [GWh]")
-            data_array.append(self.calculate_annual_average_energy(node.deficits))
+            header.append(node.name + " Annual Deficit [GWh]")
+            data_array[:, col] = self.calculate_annual_energies(node.deficits)
+            col += 1
 
         for line in self.solution.network.major_lines.values():
-            header.append(line.name + " Average Annual Flows [GWh]")
-            data_array.append(self.calculate_annual_average_energy(np.abs(line.flows)))
+            header.append(line.name + " Annual Flows [GWh]")
+            data_array[:, col] = self.calculate_annual_energies(np.abs(line.flows))
+            col += 1
 
-        result_file = ResultFile(
-            "summary", self.results_directory, header, [np.array(data_array, dtype=np.float64)], decimals=3
-        )
+        labelled_data_array = np.column_stack((row_labels, data_array))
+
+        result_file = ResultFile("summary", self.results_directory, header, labelled_data_array, decimals=None)
         return result_file
 
     def generate_x_file(self) -> ResultFile:
