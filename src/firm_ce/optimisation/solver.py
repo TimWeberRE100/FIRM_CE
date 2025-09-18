@@ -304,6 +304,11 @@ def callback(intermediate_result: OptimizeResult) -> None:
                 for individual in intermediate_result.population:
                     writer.writerow(list(individual))
 
+            with open(os.path.join(results_dir, "latest_population.csv"), "w", newline="") as f:
+                writer = csv.writer(f)
+                for individual in intermediate_result.population:
+                    writer.writerow(list(individual))
+
         # Save population energies from last iteration
         if hasattr(intermediate_result, "population_energies"):
             with open(os.path.join(results_dir, "population_energies.csv"), "a", newline="") as f:
