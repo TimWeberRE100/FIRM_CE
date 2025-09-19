@@ -102,6 +102,10 @@ def build_capacity(
     Attributes modified for the Generator instance: capacity, new_build, line, node, lt_generation.
     Attributes modified for the referenced Generator.line: capacity, new_build, lt_flows.
     Attributes modified for the referenced Generator.node: residual_load.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if generator_instance.static_instance:
         raise_static_modification_error()
@@ -195,7 +199,7 @@ def get_data(generator_instance: Generator_InstanceType, data_type: unicode_type
     Raises:
     -------
     RuntimeError: Raised if data_status is "unloaded" or if data_type does not correspond
-        to any data arrays for the Generator class.
+        to any data arrays for the Generator jitclass.
     """
     if generator_instance.data_status == "unloaded":
         raise_getting_unloaded_data_error()
@@ -211,13 +215,13 @@ def get_data(generator_instance: Generator_InstanceType, data_type: unicode_type
 @njit(fastmath=FASTMATH)
 def allocate_memory(generator_instance: Generator_InstanceType, intervals_count: int64) -> None:
     """
-    Memory associated with time-series data for a flexible Generator is only allocated after a dynamic copy of
+    Memory associated with endogenous time-series data for a flexible Generator is only allocated after a dynamic copy of
     the Generator instance is created. This is to minimise memory usage of the static instances.
 
     Parameters:
     -------
     generator_instance (Generator_InstanceType): A dynamic instance of the Generator jitclass.
-    intervals_count (int64): Total number of time intervals in the unit committment formulation.
+    intervals_count (int64): Total number of time intervals over the modelling horizon.
 
     Returns:
     -------
@@ -226,6 +230,10 @@ def allocate_memory(generator_instance: Generator_InstanceType, intervals_count:
     Side-effects:
     -------
     Attributes modified for the flexible Generator instance: dispatch_power, remaining_energy.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if generator_instance.static_instance:
         raise_static_modification_error()
@@ -325,7 +333,13 @@ def initialise_annual_limit(
     -------
     Attributes modified for the Generator instance: remaining_energy. The final interval of the previous year (final
     interval of the entire array in year 0) is overwritten in remaining_energy with the initial value for simplicity.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
+    if generator_instance.static_instance:
+        raise_static_modification_error()
     if len(get_data(generator_instance, "annual_constraints_data")) > 0:
         generator_instance.remaining_energy[first_t - 1] = get_data(generator_instance, "annual_constraints_data")[year]
     return None
@@ -519,7 +533,7 @@ def update_remaining_energy(
 @njit(fastmath=FASTMATH)
 def calculate_lt_generation(generator_instance: Generator_InstanceType, interval_resolutions: float64[:]) -> None:
     """
-    Calculate the total generation over the modelling horizon for a flexible Generator. Also
+    Calculate the total generation over the long-term modelling horizon for a flexible Generator. Also
     calculate the hours of operation for each unit of the Generator over the modelling horizon.
 
     Parameters:

@@ -90,6 +90,10 @@ def build_capacity(line_instance: Line_InstanceType, new_build_power_capacity: f
     Side-effects:
     -------
     Attributes modified for the Line instance: capacity, new_build.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if line_instance.static_instance:
         raise_static_modification_error()
@@ -116,6 +120,10 @@ def allocate_memory(line_instance: Line_InstanceType, intervals_count: int64) ->
     Side-effects:
     -------
     Attributes modified for the Line instance: flows.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if line_instance.static_instance:
         raise_static_modification_error()

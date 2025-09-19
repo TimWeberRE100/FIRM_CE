@@ -1,5 +1,3 @@
-import numpy as np
-
 from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.jit_overload import njit
@@ -96,6 +94,10 @@ def build_capacity(network_instance: Network_InstanceType, decision_x: float64[:
     Side-effects:
     -------
     Attributes modified for each Line instance in Network.major_lines: new_build, capacity.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if network_instance.static_instance:
         raise_static_modification_error()
@@ -149,6 +151,10 @@ def allocate_memory(network_instance: Network_InstanceType, intervals_count: int
     Attributes modified for each Node instance in Network.nodes: imports_exports, spillage, deficits, flexible_power,
         storage_power, flexible_energy, storage_energy.
     Attributes modified for each Line instance in Network.major_lines: flows.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
     """
     if network_instance.static_instance:
         raise_static_modification_error()
@@ -177,7 +183,7 @@ def check_remaining_netloads(
 
     Returns:
     -------
-    None.
+    boolean: True if any Node has unbalanced netload according to the check case, otherwise False.
     """
     for node in network_instance.nodes.values():
         if node_m.check_remaining_netload(node, interval, check_case):
@@ -415,7 +421,7 @@ def update_transmission_flows(
     Parameters:
     -------
     network_instance (Network_InstanceType): An instance of the Network jitclass.
-    fill_node (Node_InstanceType): The first node in the Route instances in the route list.
+    fill_node (Node_InstanceType): The initial node in the Route instances in the route list.
     leg (int64): The length of the Route instances in the route list (corresponding to the number of lines in the
         Route).
 
@@ -667,6 +673,28 @@ def calculate_spillage_and_deficit(network_instance: Network_InstanceType, inter
 def assign_storage_merit_orders(
     network_instance: Network_InstanceType, storages_typed_dict  # DictType(int64, Storage_InstanceType)
 ) -> None:
+    """
+    For each Node, finds all Storage instances at that Node. Sorts the Storage systems at that Node from
+    shortest to longest duration. Builds a storage merit order array for that Node where the values are
+    the Storage.order integers of the sorted Storage instances. That is, it is assumed that short-duration
+    storage systems are dispatched first, with long-duration/seasonal storage dispatched last.
+
+    Note that when balancing a deficit block in reverse time, the merit order is reversed.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    storages_typed_dict (DictType(int64, Storage_InstanceType)): Typed dictionary of Storage instances within
+        the scenario, keyed by Storage.order.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: storage_merit_order.
+    """
     for node in network_instance.nodes.values():
         node_m.assign_storage_merit_order(node, storages_typed_dict)
     return None
@@ -676,6 +704,26 @@ def assign_storage_merit_orders(
 def assign_flexible_merit_orders(
     network_instance: Network_InstanceType, generators_typed_dict  # DictType(int64, Generators_InstanceType)
 ) -> None:
+    """
+    For each Node, finds all flexible Generator instances at that Node. Sorts the flexible Generators at that Node from
+    cheapest to most expensive marginal variable costs. Builds a flexible merit order array for that Node where the values are
+    the Generator.order integers of the sorted Generator instances. That is, it is assumed that cheap flexible Generators
+    are dispatched first, with expensive peaking Generators dispatched last.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    generators_typed_dict (DictType(int64, Generators_InstanceType)): Typed dictionary of Generator
+        instances within the scenario, keyed by Generator.order.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: flexible_merit_order.
+    """
     for node in network_instance.nodes.values():
         node_m.assign_flexible_merit_order(node, generators_typed_dict)
     return None
@@ -683,6 +731,26 @@ def assign_flexible_merit_orders(
 
 @njit(fastmath=FASTMATH)
 def calculate_lt_flows(network_instance: Network_InstanceType, interval_resolutions: float64[:]) -> None:
+    """
+    After completing unit committment, calculates the total long-term major Line flows across the entire
+    modelling horizon. Major lines are those that form the transmission network topology and excludes the
+    minor lines connecting assets to the transmission network.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
+        in the unit committment formulation (hours per time interval). An array is used instead of a single
+        scalar value to allow for variable time step simplified balancing methods to be developed in future.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Line in Network.major_lines: lt_flows.
+    """
     for line in network_instance.major_lines.values():
         line_m.calculate_lt_flow(line, interval_resolutions)
     return None
@@ -690,6 +758,18 @@ def calculate_lt_flows(network_instance: Network_InstanceType, interval_resoluti
 
 @njit(fastmath=FASTMATH)
 def calculate_lt_line_losses(network_instance: Network_InstanceType) -> float64:
+    """
+    Estimates the total long-term transmission losses over the modelling horizon for both major and minor
+    Lines. Assumes a simplified linear loss factor applied to the line flows.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    float64: Total power losses [GW] across all Lines over the entire modelling horizon.
+    """
     total_line_losses = 0.0
     for line in network_instance.major_lines.values():
         total_line_losses += line_m.get_lt_losses(line)
@@ -699,15 +779,23 @@ def calculate_lt_line_losses(network_instance: Network_InstanceType) -> float64:
 
 
 @njit(fastmath=FASTMATH)
-def calculate_net_residual_load(network_instance: Network_InstanceType) -> float64[:]:
-    net_residual_load = np.zeros_like(network_instance.nodes[0].residual_load, dtype=np.float64)
-    for node in network_instance.nodes.values():
-        net_residual_load += node.residual_load
-    return net_residual_load
-
-
-@njit(fastmath=FASTMATH)
 def reset_flexible(network_instance: Network_InstanceType, interval: int64) -> None:
+    """
+    Resets the nodal flexible power to zero at each Node for a given time interval.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    interval (int64): Index for the time interval.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: flexible_power.
+    """
     for node in network_instance.nodes.values():
         node.flexible_power[interval] = 0.0
     return None
@@ -715,6 +803,22 @@ def reset_flexible(network_instance: Network_InstanceType, interval: int64) -> N
 
 @njit(fastmath=FASTMATH)
 def reset_dispatch(network_instance: Network_InstanceType, interval: int64) -> None:
+    """
+    Resets the nodal storage power and flexible power to zero at each Node for a given time interval.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    interval (int64): Index for the time interval.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: flexible_power, storage_power.
+    """
     for node in network_instance.nodes.values():
         node.storage_power[interval] = 0.0
         node.flexible_power[interval] = 0.0
@@ -723,6 +827,23 @@ def reset_dispatch(network_instance: Network_InstanceType, interval: int64) -> N
 
 @njit(fastmath=FASTMATH)
 def check_precharging_end(network_instance: Network_InstanceType, interval: int64) -> boolean:
+    """
+    Check whether the start of the deficit block has been reached. While balancing a deficit block,
+    the unit committment rules are iterating in reverse time (decreasing intervals). Therefore, the
+    start of the deficit block is either the first interval in the optimisation horizon (since there
+    are no more intervals to iterate backwards through), or an interval immediately before a deficit
+    block interval that has no unserved energy at any Node.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    interval (int64): Index for the time interval.
+
+    Returns:
+    -------
+    boolean: True if the start of the deficit block has been reached, False if the current time interval
+    is not the first interval of the deficit block.
+    """
     if interval == 0:
         return True
     for node in network_instance.nodes.values():
@@ -739,6 +860,19 @@ def check_precharging_end(network_instance: Network_InstanceType, interval: int6
 
 @njit(fastmath=FASTMATH)
 def check_existing_surplus(network_instance: Network_InstanceType) -> boolean:
+    """
+    During the precharging period, check if any Nodes have an existing surplus that can be used to
+    precharge Storage systems. Note that the existing surplus is a temporary variable that gets
+    updated each time interval during the precharging period.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    boolean: True if any Node has an existing surplus, otherwise False.
+    """
     for node in network_instance.nodes.values():
         if node.existing_surplus > TOLERANCE:
             return True
@@ -747,6 +881,24 @@ def check_existing_surplus(network_instance: Network_InstanceType) -> boolean:
 
 @njit(fastmath=FASTMATH)
 def set_storage_precharge_fills_and_surpluses(network_instance: Network_InstanceType) -> None:
+    """
+    Updates the temporary precharging period fill and surplus values that are used to evaluate
+    inter-storage transfers. The precharge fill and precharge surplus values are used to perform
+    intra-node inter-storage transfers, and then initialise the fill and surplus values used for
+    inter-storage transfers via transmission.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: precharge_fill, precharge_surplus.
+    """
     for node in network_instance.nodes.values():
         node.precharge_fill = node.charge_max_t[-1]
         node.precharge_surplus = node.discharge_max_t[-1]
@@ -755,6 +907,24 @@ def set_storage_precharge_fills_and_surpluses(network_instance: Network_Instance
 
 @njit(fastmath=FASTMATH)
 def set_flexible_precharge_fills_and_surpluses(network_instance: Network_InstanceType) -> None:
+    """
+    Updates the temporary precharging period fill and surplus values that are used to evaluate
+    flexible precharging of Storage systems. The precharge fill and precharge surplus values are used to perform
+    intra-node flexible precharging, and then initialise the fill and surplus values used for
+    flexible precharging via transmission.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: precharge_fill, precharge_surplus.
+    """
     for node in network_instance.nodes.values():
         node.precharge_fill = node.charge_max_t[-1]
         node.precharge_surplus = node.flexible_max_t[-1]
@@ -763,6 +933,25 @@ def set_flexible_precharge_fills_and_surpluses(network_instance: Network_Instanc
 
 @njit(fastmath=FASTMATH)
 def update_imports_exports_temp(network_instance: Network_InstanceType, interval: int64) -> None:
+    """
+    Within the precharging period, imports/exports at each Node are adjusted to allow for additional
+    transmission of electricity to precharge Storage systems. This function saves the difference between
+    the original imports/exports (stored as a temporary value) and the adjusted imports/exports, then
+    sets the temporary imports/exports to equal the new adjusted imports/exports.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    interval (int64): Index for the time interval.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: imports_exports_update, imports_exports_temp.
+    """
     for node in network_instance.nodes.values():
         node.imports_exports_update = node.imports_exports_temp - node.imports_exports[interval]
         node_m.set_imports_exports_temp(node, interval)
@@ -771,6 +960,18 @@ def update_imports_exports_temp(network_instance: Network_InstanceType, interval
 
 @njit(fastmath=FASTMATH)
 def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
+    """
+    Within the precharging period, checks whether any Node in the Network has fill energy (i.e., Storage prechargers that
+    are attempting to be trickle charged).
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    boolean: True if any Node has precharge fill energy it is attempting to balance, otherwise False.
+    """
     for node in network_instance.nodes.values():
         if node.precharge_fill > TOLERANCE:
             return True
@@ -779,6 +980,18 @@ def check_precharge_fill(network_instance: Network_InstanceType) -> boolean:
 
 @njit(fastmath=FASTMATH)
 def check_precharge_surplus(network_instance: Network_InstanceType) -> boolean:
+    """
+    Within the precharging period, checks whether any Node in the Network has surplus energy (i.e., Storage or flexible
+    Generators that are available for trickle charging the prechargers).
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    boolean: True if any Node has precharge surplus energy available for trickle charging, otherwise False.
+    """
     for node in network_instance.nodes.values():
         if node.precharge_surplus > TOLERANCE:
             return True
