@@ -6,6 +6,13 @@ from typing import Dict, List, Tuple, Union
 
 import numpy as np
 from numpy.typing import NDArray
+import torch
+from botorch.acquisition import qLogExpectedImprovement
+from botorch.fit import fit_gpytorch_mll
+from botorch.models import SingleTaskGP
+from botorch.optim import optimize_acqf
+from gpytorch.mlls import ExactMarginalLogLikelihood
+from torch.quasirandom import SobolEngine
 from scipy.optimize import OptimizeResult, differential_evolution
 
 from firm_ce.common.constants import SAVE_POPULATION
@@ -119,22 +126,108 @@ class Solver:
     def single_time(self) -> None:
         self.initialise_callback()
 
-        self.result = differential_evolution(
-            x0=self.decision_x0,
-            func=evaluate_vectorised_xs,
-            bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-            args=self.get_differential_evolution_args(),
-            tol=0,
-            maxiter=self.iterations,
-            popsize=self.config.population,
-            mutation=(0.2, self.config.mutation),
-            recombination=self.config.recombination,
-            disp=True,
-            polish=False,
-            updating="deferred",
-            callback=callback,
-            workers=1,
-            vectorized=True,
+        D = len(self.lower_bounds)
+        N_INIT = D * self.config.population//10 # number of points to seed the problem
+        BATCH_SIZE = self.config.population 
+
+        # Set up Bayesian Optimiser 
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.logger.info(f"Beginning Bayesian Optimisation. Using: {device=} | {N_INIT=} | {BATCH_SIZE=}")
+
+        original_bounds_t  = torch.tensor(
+            np.vstack([self.lower_bounds, self.upper_bounds]), dtype=torch.float64, device=device
+        )
+        unit_cube_bounds_t = torch.tensor([[0.0] * D, [1.0] * D], dtype=torch.float64, device=device)
+        args = self.get_differential_evolution_args()
+
+        def unscale(x_scaled: torch.Tensor) -> torch.Tensor:
+            """Converts a tensor from the unit cube [0, 1] back to original problem bounds."""
+            return original_bounds_t[0] + x_scaled * (original_bounds_t[1] - original_bounds_t[0])
+
+        def objective(x_scaled_tensor: torch.Tensor, args: tuple) -> torch.Tensor:
+            """ Wrapper for BoTorch """
+            x_unscaled = np.atleast_2d(unscale(x_scaled_tensor).cpu().numpy()).T
+            objective = evaluate_vectorised_xs(x_unscaled, *args)
+             # BoTorch only maximizes, so we return the negative of our minimization objective
+            return torch.tensor(-objective, dtype=torch.float64, device=device).unsqueeze(-1)
+
+        self.logger.info(f"Generating {N_INIT} initial points for bayesian optimisation")
+        if self.decision_x0 is not None:
+            base_point_np = self.decision_x0
+        else:
+            self.logger.warning("No initial guess (decision_x0) provided. Using the center of bounds as a base.")
+            base_point_np = self.lower_bounds + 0.1 * (self.upper_bounds - self.lower_bounds)
+
+        span_np = self.upper_bounds - self.lower_bounds
+        span_np[span_np == 0] = 1.0  # Avoid division by zero
+        mutation_sigma = 0.50 * span_np
+        train_X_unscaled_list = [base_point_np]
+        for _ in range(N_INIT - 1):
+            noise = np.random.normal(loc=0.0, scale=mutation_sigma)
+            mutated_point = base_point_np + noise
+            np.clip(mutated_point, self.lower_bounds, self.upper_bounds, out=mutated_point)
+            train_X_unscaled_list.append(mutated_point)
+        train_X_unscaled = torch.tensor(np.array(train_X_unscaled_list), dtype=torch.float64, device=device)
+
+        span_t = original_bounds_t[1] - original_bounds_t[0]
+        span_t[span_t == 0] = 1.0  # Avoid division by zero
+        train_X_scaled = (train_X_unscaled - original_bounds_t[0]) / span_t
+
+        # Evaluate these initial points
+        train_Y = objective(train_X_scaled, args)
+        
+        intermediate_result = OptimizeResult(
+                x = unscale(train_X_scaled[torch.argmin(train_Y)]).cpu().numpy(),
+                population = unscale(train_X_scaled).cpu().numpy(),
+                population_energies = train_Y.cpu().numpy()
+            )
+        callback(intermediate_result)
+        self.logger.info(f"Generated and evaluated {N_INIT} diverse initial points to warm-up the model.")
+
+        # Bayesian Optimisation
+        for i in range(self.iterations):
+            gp = SingleTaskGP(train_X_scaled, train_Y)
+            mll = ExactMarginalLogLikelihood(gp.likelihood, gp)
+            fit_gpytorch_mll(mll)
+            ei = qLogExpectedImprovement(model=gp, best_f=train_Y.max())
+            candidate_scaled, _ = optimize_acqf(
+                acq_function=ei,
+                bounds=unit_cube_bounds_t,
+                q=1,
+                num_restarts=5,
+                raw_samples=20,
+            )
+            new_Y = objective(candidate_scaled, args)
+
+            # Update the training data
+            train_X_scaled = torch.cat([train_X_scaled, candidate_scaled])
+            train_Y = torch.cat([train_Y, new_Y])
+            best_idx = torch.argmin(train_Y)
+            best_val = -train_Y[best_idx].item()
+            self.logger.info(f"Iteration {i+1}/{self.iterations}, Best Value Found: {best_val:.6f}")
+
+            best_x_scaled = train_X_scaled[best_idx]
+            
+            intermediate_result = OptimizeResult(
+                x = unscale(best_x_scaled).cpu().numpy(),
+                population = unscale(candidate_scaled).cpu().numpy(),
+                population_energies = new_Y.cpu().numpy()
+            )
+            callback(intermediate_result)
+
+        # 4. Final Result
+        best_idx = torch.argmin(train_Y)
+        final_x_scaled = train_X_scaled[best_idx]
+        final_x_unscaled = unscale(final_x_scaled).cpu().numpy()
+        final_loss = -train_Y[best_idx].item()
+        self.logger.info(f"Bayesian optimization finished. Final Loss: {final_loss:.6f}")
+
+        self.result = OptimizeResult(
+            x=final_x_unscaled,
+            fun=final_loss,
+            success=True,
+            message="Bayesian optimization completed.",
+            nit=self.iterations,
         )
 
     def get_band_lcoe_max(self) -> float:
