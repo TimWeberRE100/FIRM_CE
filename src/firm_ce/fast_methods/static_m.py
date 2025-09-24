@@ -1,10 +1,11 @@
-import numpy as np
 from typing import Tuple
+
+import numpy as np
 from numpy.typing import NDArray
 
 from firm_ce.common.constants import FASTMATH
 from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import DictType, boolean, float64, int64, UniTuple
+from firm_ce.common.typing import DictType, UniTuple, boolean, float64, int64
 from firm_ce.fast_methods import node_m
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
 from firm_ce.system.topology import Node_InstanceType

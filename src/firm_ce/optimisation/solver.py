@@ -35,8 +35,7 @@ class Solver:
         network_static: Network_InstanceType,
         scenario_logger: Logger,
         scenario_name: str,
-        polish_flag: bool = False,
-        initial_population: Union[NDArray[np.float64], None] = None,
+        initial_population: Union[NDArray[np.float64], str] = "latinhypercube",
     ) -> None:
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
@@ -50,11 +49,7 @@ class Solver:
         self.result = None
         self.optimal_lcoe = None
         self.initial_population = initial_population
-
-        if polish_flag:
-            self.iterations = int(config.iterations // 2)
-        else:
-            self.iterations = config.iterations
+        self.iterations = config.iterations
 
     def get_bounds(self) -> NDArray[np.float64]:
         def power_capacity_bounds(
@@ -127,6 +122,7 @@ class Solver:
             tol=0,
             maxiter=self.iterations,
             popsize=self.config.population,
+            init=self.initial_population,
             mutation=(0.2, self.config.mutation),
             recombination=self.config.recombination,
             disp=True,
@@ -184,6 +180,7 @@ class Solver:
                     tol=0,
                     maxiter=self.iterations,
                     popsize=self.config.population,
+                    init=self.initial_population,
                     mutation=(0.2, self.config.mutation),
                     recombination=self.config.recombination,
                     disp=True,
@@ -252,6 +249,7 @@ class Solver:
                     tol=0,
                     maxiter=self.iterations,
                     popsize=self.config.population,
+                    init=self.initial_population,
                     mutation=(0.2, self.config.mutation),
                     recombination=self.config.recombination,
                     disp=True,

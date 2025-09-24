@@ -197,6 +197,8 @@ class ResultFile:
         """
         Write the data to a CSV file.
 
+        Multi-line headers are possible.
+
         Each row of data_array is written to the file. Optionally,
         values are rounded to the specified number of decimals.
 
@@ -211,8 +213,9 @@ class ResultFile:
         """
         with open(os.path.join(self.target_directory, self.name), mode="w", newline="") as file:
             writer = csv.writer(file)
-            if self.header:
-                writer.writerow(self.header.split(",") if isinstance(self.header, str) else self.header)
+            if self.header is not None:
+                for row in self.header:
+                    writer.writerow(row)
             for row in self.data:
                 writer.writerow(np.round(row, decimals=self.decimals) if self.decimals is not None else row)
         print(f"Saved {self.name} to {self.target_directory}")
