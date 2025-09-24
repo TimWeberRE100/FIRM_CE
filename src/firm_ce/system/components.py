@@ -160,7 +160,7 @@ class Generator:
     flexible_max_t (float64): Maximum dispatchable power in the current interval for a flexible Generator, units GW.
     lt_generation (float64): Long-term total generation over the entire modelling horizon, units GWh.
     unit_lt_hours (float64): Total hours of operation per unit, units hours.
-    lt_costs (LTCosts_InstanceType): Endogenously calculated long-term costs of the generator over the modelling horizon.
+    lt_costs (LTCosts_InstanceType): Endogenously calculated long-term costs of the Generator over the modelling horizon.
     remaining_energy_temp_reverse (float64): Temporary value for remaining energy when balancing deficit block in reverse time,
         units GWh.
     remaining_energy_temp_forward (float64): Temporary value for remaining energy when balancing deficit block in forward time,

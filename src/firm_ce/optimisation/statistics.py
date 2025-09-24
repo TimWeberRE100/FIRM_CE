@@ -6,7 +6,7 @@ import time
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.common.constants import PENALTY_MULTIPLIER, SAVE_POPULATION
+from firm_ce.common.constants import SAVE_POPULATION
 from firm_ce.common.helpers import safe_divide
 from firm_ce.fast_methods import fleet_m, generator_m, ltcosts_m, network_m, static_m
 from firm_ce.io.file_manager import ResultFile
@@ -36,11 +36,7 @@ class Statistics:
         self.solution.evaluate()
         end_time = time.time()
         print(f"Statistics solution evaluation time: {end_time - start_time:.4f} seconds")
-        print(
-            f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], "
-            f"Penalties: {self.solution.penalties}, "
-            f"Deficit: {self.solution.penalties / PENALTY_MULTIPLIER}"
-        )
+        print(f"{scenario_name} LCOE: {self.solution.lcoe} [$/MWh], " f"Penalties: {self.solution.penalties}")
 
         self.results_directory = self.create_solution_directory(
             solution_results_directory, scenario_name + "_" + balancing_type
