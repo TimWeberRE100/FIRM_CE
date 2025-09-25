@@ -62,8 +62,8 @@ class Statistics:
 
             if SAVE_POPULATION:
                 shutil.copy(
-                    os.path.join(temp_dir, "final_population.csv"),
-                    os.path.join(self.results_directory, "final_population.csv"),
+                    os.path.join(temp_dir, "latest_population.csv"),
+                    os.path.join(self.results_directory, "latest_population.csv"),
                 )
                 shutil.copy(
                     os.path.join(temp_dir, "population.csv"), os.path.join(self.results_directory, "population.csv")
