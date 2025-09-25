@@ -62,6 +62,10 @@ class Statistics:
 
             if SAVE_POPULATION:
                 shutil.copy(
+                    os.path.join(temp_dir, "final_population.csv"),
+                    os.path.join(self.results_directory, "final_population.csv"),
+                )
+                shutil.copy(
                     os.path.join(temp_dir, "population.csv"), os.path.join(self.results_directory, "population.csv")
                 )
                 shutil.copy(
@@ -594,7 +598,7 @@ class Statistics:
         for year in range(self.solution.static.year_count):
             first_t, last_t = static_m.get_year_t_boundaries(self.solution.static, year)
             annual_energies_arr[year] = round(
-                sum(arr[first_t : last_t + 1] * self.solution.static.interval_resolutions[first_t : last_t + 1]),
+                sum(arr[first_t:last_t] * self.solution.static.interval_resolutions[first_t:last_t]),
                 decimals,
             )
         annual_energies_arr[-1] = round(sum(arr * self.solution.static.interval_resolutions), decimals)

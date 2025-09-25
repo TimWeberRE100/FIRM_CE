@@ -25,8 +25,8 @@ def get_year_t_boundaries(static_instance: ScenarioParameters_InstanceType, year
 
     Returns:
     -------
-    UniTuple(int64, 2): A tuple of two int64 values that specify the index of the first and last time interval for
-        the year.
+    UniTuple(int64, 2): A tuple of two int64 values that specify the index of the first (inclusive) and last (exclusive)
+        time interval for the year.
     """
     if year < static_instance.year_count - 1:
         last_t = static_instance.year_first_t[year + 1]
