@@ -17,6 +17,23 @@ from firm_ce.system.topology import Network_InstanceType
 
 
 class Statistics:
+    @staticmethod
+    def initialise_header_rows(col_count: int, row_labels_flag: bool = True) -> NDArray[object]:
+        if row_labels_flag:
+            header = np.empty((5, col_count + 1), dtype=object)
+            header[:, 0] = np.array(
+                [
+                    "Asset Name",
+                    "Asset Type",
+                    "Asset ID",
+                    "Column Name",
+                    "Column Units",
+                ]
+            )
+        else:
+            header = np.empty((5, col_count), dtype=object)
+        return header
+
     def __init__(
         self,
         x_candidate: NDArray[np.float64],
@@ -104,32 +121,55 @@ class Statistics:
             result_file.write()
         return None
 
-    def get_asset_column_count(self, include_minor_lines: bool = True, include_energy_limits: bool = True) -> int:
-        return (
-            len(self.solution.fleet.generators)
-            + 2 * len(self.solution.fleet.storages)
-            + len(self.solution.network.major_lines)
-            + include_minor_lines * len(self.solution.network.minor_lines)
-            + include_energy_limits * fleet_m.count_generator_unit_type(self.solution.fleet, "flexible")
-        )
+    def get_col_count(self, result_file: str) -> int:
+        col_count = 0
+        match result_file:
+            case "capacities":
+                col_count = (
+                    len(self.solution.fleet.generators)
+                    + 2 * len(self.solution.fleet.storages)
+                    + len(self.solution.network.major_lines)
+                    + len(self.solution.network.minor_lines)
+                )
+            case "component_costs":
+                col_count = (
+                    len(self.solution.fleet.generators)
+                    + len(self.solution.fleet.storages)
+                    + len(self.solution.network.major_lines)
+                    + len(self.solution.network.minor_lines)
+                )
+            case "energy_balance_ASSETS":
+                col_count = (
+                    3 * len(self.solution.network.nodes)
+                    + len(self.solution.fleet.generators)
+                    + 2 * len(self.solution.fleet.storages)
+                    + len(self.solution.network.major_lines)
+                    + fleet_m.count_generator_unit_type(self.solution.fleet, "flexible")
+                )
+            case "energy_balance_NODES":
+                col_count = 10 * len(self.solution.network.nodes) + len(self.solution.network.major_lines)
+            case "energy_balance_NETWORK":
+                col_count = 10
+            case "levelised_costs":
+                col_count = (
+                    6
+                    + 2 * len(self.solution.fleet.generators)
+                    + 2 * len(self.solution.fleet.storages)
+                    + 2 * len(self.solution.network.major_lines)
+                    + 2 * len(self.solution.network.minor_lines)
+                )
+            case "summary":
+                col_count = (
+                    3 * len(self.solution.network.nodes)
+                    + len(self.solution.fleet.generators)
+                    + len(self.solution.fleet.storages)
+                    + len(self.solution.network.major_lines)
+                )
+        return col_count
 
     def generate_capacities_file(self) -> ResultFile:
-        col_count = (
-            len(self.solution.fleet.generators)
-            + 2 * len(self.solution.fleet.storages)
-            + len(self.solution.network.major_lines)
-            + len(self.solution.network.minor_lines)
-        )
-        header = np.empty((5, col_count + 1), dtype=object)
-        header[:, 0] = np.array(
-            [
-                "Asset Name",
-                "Asset Type",
-                "Asset ID",
-                "Column Name",
-                "Column Units",
-            ]
-        )
+        col_count = self.get_col_count("capacities")
+        header = self.initialise_header_rows(col_count)
 
         data_array = np.empty((4, col_count + 1), dtype=object)
         data_array[:, 0] = np.array(
@@ -193,22 +233,8 @@ class Statistics:
         return result_file
 
     def generate_component_costs_file(self) -> ResultFile:
-        col_count = (
-            len(self.solution.fleet.generators)
-            + len(self.solution.fleet.storages)
-            + len(self.solution.network.major_lines)
-            + len(self.solution.network.minor_lines)
-        )
-        header = np.empty((5, col_count + 1), dtype=object)
-        header[:, 0] = np.array(
-            [
-                "Asset Name",
-                "Asset Type",
-                "Asset ID",
-                "Column Name",
-                "Column Units",
-            ]
-        )
+        col_count = self.get_col_count("component_costs")
+        header = self.initialise_header_rows(col_count)
 
         data_array = np.zeros((4, col_count + 1), dtype=object)
         data_array[:, 0] = np.array(["Annualised Build", "Fixed O&M", "Variable O&M", "Fuel"], dtype=object)
@@ -254,24 +280,13 @@ class Statistics:
     def generate_energy_balance_file(self, aggregation_type: str) -> ResultFile:
         match aggregation_type:
             case "assets":
-                col_count = 3 * len(self.solution.network.nodes) + self.get_asset_column_count(
-                    include_minor_lines=False, include_energy_limits=True
-                )
+                col_count = self.get_col_count("energy_balance_ASSETS")
             case "nodes":
-                col_count = 10 * len(self.solution.network.nodes) + len(self.solution.network.major_lines)
+                col_count = self.get_col_count("energy_balance_NODES")
             case "network":
-                col_count = 10
+                col_count = self.get_col_count("energy_balance_NETWORK")
 
-        header = np.empty((5, col_count), dtype=object)
-        header[:, 0] = np.array(
-            [
-                "Asset Name",
-                "Asset Type",
-                "Asset ID",
-                "Column Name",
-                "Column Units",
-            ]
-        )
+        header = self.initialise_header_rows(col_count, row_labels_flag=False)
         data_array = np.zeros((self.full_intervals_count, col_count), dtype=np.float64)
 
         col = 0
@@ -439,23 +454,8 @@ class Statistics:
         return result_file
 
     def generate_levelised_costs_file(self) -> ResultFile:
-        col_count = (
-            6
-            + 2 * len(self.solution.fleet.generators)
-            + 2 * len(self.solution.fleet.storages)
-            + 2 * len(self.solution.network.major_lines)
-            + 2 * len(self.solution.network.minor_lines)
-        )
-        header = np.empty((5, col_count + 1), dtype=object)
-        header[:, 0] = np.array(
-            [
-                "Asset Name",
-                "Asset Type",
-                "Asset ID",
-                "Column Name",
-                "Column Units",
-            ]
-        )
+        col_count = self.get_col_count("levelised_costs")
+        header = self.initialise_header_rows(col_count)
         header[:, 1:7] = np.array(
             [
                 ["Scenario Total", "", "", "LCOE", "[$/MWh]"],
@@ -605,23 +605,8 @@ class Statistics:
         return annual_energies_arr
 
     def generate_summary_file(self) -> ResultFile:
-        col_count = (
-            3 * len(self.solution.network.nodes)
-            + len(self.solution.fleet.generators)
-            + len(self.solution.fleet.storages)
-            + len(self.solution.network.major_lines)
-        )
-
-        header = np.empty((5, col_count + 1), dtype=object)
-        header[:, 0] = np.array(
-            [
-                "Asset Name",
-                "Asset Type",
-                "Asset ID",
-                "Column Name",
-                "Column Units",
-            ]
-        )
+        col_count = self.get_col_count("summary")
+        header = self.initialise_header_rows(col_count)
 
         row_labels = np.array(
             list(range(self.solution.static.first_year, self.solution.static.final_year + 1)) + ["Total"], dtype=object

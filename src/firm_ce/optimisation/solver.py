@@ -2,7 +2,7 @@ import csv
 import os
 from itertools import chain
 from logging import Logger
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Callable
 
 import numpy as np
 from numpy.typing import NDArray
@@ -111,14 +111,12 @@ class Solver:
         )
         return args
 
-    def single_time(self) -> None:
-        self.initialise_callback()
-
-        self.result = differential_evolution(
+    def run_differential_evolution(self, objective_function: Callable, args: Tuple) -> OptimizeResult:
+        result = differential_evolution(
             x0=self.decision_x0,
-            func=evaluate_vectorised_xs,
+            func=objective_function,
             bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-            args=self.get_differential_evolution_args(),
+            args=args,
             tol=0,
             maxiter=self.iterations,
             popsize=self.config.population,
@@ -132,6 +130,11 @@ class Solver:
             workers=1,
             vectorized=True,
         )
+        return result
+
+    def single_time(self) -> None:
+        self.initialise_callback()
+        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args())
 
     def get_band_lcoe_max(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
@@ -173,23 +176,7 @@ class Solver:
                     band_type,
                 )
 
-                result = differential_evolution(
-                    broad_optimum_objective,
-                    bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                    args=args,
-                    tol=0,
-                    maxiter=self.iterations,
-                    popsize=self.config.population,
-                    init=self.initial_population,
-                    mutation=(0.2, self.config.mutation),
-                    recombination=self.config.recombination,
-                    disp=True,
-                    polish=False,
-                    updating="deferred",
-                    callback=callback,
-                    workers=1,
-                    vectorized=True,
-                )
+                result = self.run_differential_evolution(broad_optimum_objective, args)
 
                 bands_record.append(result.x.copy())
 
@@ -242,23 +229,7 @@ class Solver:
                     midpoint,
                 )
 
-                differential_evolution(
-                    broad_optimum_objective,
-                    bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                    args=args,
-                    tol=0,
-                    maxiter=self.iterations,
-                    popsize=self.config.population,
-                    init=self.initial_population,
-                    mutation=(0.2, self.config.mutation),
-                    recombination=self.config.recombination,
-                    disp=True,
-                    polish=False,
-                    updating="deferred",
-                    callback=callback,
-                    workers=1,
-                    vectorized=True,
-                )
+                self.run_differential_evolution(broad_optimum_objective, args)
 
                 append_to_midpoint_csv(self.scenario_name, evaluation_records)
 
