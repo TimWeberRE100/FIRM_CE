@@ -4,15 +4,15 @@ from typing import Dict, List
 
 import numpy as np
 
-from ..common.constants import PENALTY_MULTIPLIER
-from ..common.typing import (
+from firm_ce.common.constants import PENALTY_MULTIPLIER
+from firm_ce.common.typing import (
     BandCandidates_Type,
     BroadOptimumVars_Type,
     EvaluationRecord_Type,
 )
-from ..system.components import Fleet_InstanceType
-from ..system.topology import Network_InstanceType
-from .single_time import Solution, parallel_wrapper
+from firm_ce.optimisation.single_time import Solution, parallel_wrapper
+from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.topology import Network_InstanceType
 
 
 def near_optimum_path(root: str, scenario_name: str):
@@ -112,8 +112,10 @@ def broad_optimum_objective(
     match band_type:
         case "min" | "max":
             for candidate_x in range(band_population_candidates.shape[1]):
-                """if not (de_population_penalties[candidate_x] <= 0.001 and
-                band_population_penalties[candidate_x] <= 0.001): continue #### DEBUG ########"""
+                if not (
+                    de_population_penalties[candidate_x] <= 0.001 and band_population_penalties[candidate_x] <= 0.001
+                ):
+                    continue
                 evaluation_records.append(
                     create_evaluation_record(
                         group_key,
@@ -128,8 +130,10 @@ def broad_optimum_objective(
         case "midpoint":
             target_penalties = np.abs(group_var_sums - target_group_var_sum)
             for candidate_x in range(band_population_candidates.shape[1]):
-                """if not (de_population_penalties[candidate_x] <= 0.001 and
-                band_population_penalties[candidate_x] <= 0.001): continue #### DEBUG ########"""
+                if not (
+                    de_population_penalties[candidate_x] <= 0.001 and band_population_penalties[candidate_x] <= 0.001
+                ):
+                    continue
                 evaluation_records.append(
                     create_evaluation_record(
                         group_key,

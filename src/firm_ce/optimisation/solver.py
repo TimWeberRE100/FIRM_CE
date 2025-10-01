@@ -2,17 +2,14 @@ import csv
 import os
 from itertools import chain
 from logging import Logger
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Callable
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult, differential_evolution
 
-from ..common.constants import SAVE_POPULATION
-from ..system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
-from ..system.parameters import ModelConfig, ScenarioParameters_InstanceType
-from ..system.topology import Line_InstanceType, Network_InstanceType
-from .broad_optimum import (
+from firm_ce.common.constants import SAVE_POPULATION
+from firm_ce.optimisation.broad_optimum import (
     append_to_midpoint_csv,
     broad_optimum_objective,
     build_broad_optimum_var_info,
@@ -22,7 +19,10 @@ from .broad_optimum import (
     write_broad_optimum_bands,
     write_broad_optimum_records,
 )
-from .single_time import Solution, evaluate_vectorised_xs
+from firm_ce.optimisation.single_time import Solution, evaluate_vectorised_xs
+from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
+from firm_ce.system.topology import Line_InstanceType, Network_InstanceType
 
 
 class Solver:
@@ -35,8 +35,7 @@ class Solver:
         network_static: Network_InstanceType,
         scenario_logger: Logger,
         scenario_name: str,
-        polish_flag: bool = False,
-        initial_population: Union[NDArray[np.float64], None] = None,
+        initial_population: Union[NDArray[np.float64], str] = "latinhypercube",
     ) -> None:
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
@@ -50,11 +49,7 @@ class Solver:
         self.result = None
         self.optimal_lcoe = None
         self.initial_population = initial_population
-
-        if polish_flag:
-            self.iterations = int(config.iterations // 2)
-        else:
-            self.iterations = config.iterations
+        self.iterations = config.iterations
 
     def get_bounds(self) -> NDArray[np.float64]:
         def power_capacity_bounds(
@@ -116,17 +111,16 @@ class Solver:
         )
         return args
 
-    def single_time(self) -> None:
-        self.initialise_callback()
-
-        self.result = differential_evolution(
+    def run_differential_evolution(self, objective_function: Callable, args: Tuple) -> OptimizeResult:
+        result = differential_evolution(
             x0=self.decision_x0,
-            func=evaluate_vectorised_xs,
+            func=objective_function,
             bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-            args=self.get_differential_evolution_args(),
+            args=args,
             tol=0,
             maxiter=self.iterations,
             popsize=self.config.population,
+            init=self.initial_population,
             mutation=(0.2, self.config.mutation),
             recombination=self.config.recombination,
             disp=True,
@@ -136,6 +130,11 @@ class Solver:
             workers=1,
             vectorized=True,
         )
+        return result
+
+    def single_time(self) -> None:
+        self.initialise_callback()
+        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args())
 
     def get_band_lcoe_max(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
@@ -177,22 +176,7 @@ class Solver:
                     band_type,
                 )
 
-                result = differential_evolution(
-                    broad_optimum_objective,
-                    bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                    args=args,
-                    tol=0,
-                    maxiter=self.iterations,
-                    popsize=self.config.population,
-                    mutation=(0.2, self.config.mutation),
-                    recombination=self.config.recombination,
-                    disp=True,
-                    polish=False,
-                    updating="deferred",
-                    callback=callback,
-                    workers=1,
-                    vectorized=True,
-                )
+                result = self.run_differential_evolution(broad_optimum_objective, args)
 
                 bands_record.append(result.x.copy())
 
@@ -245,22 +229,7 @@ class Solver:
                     midpoint,
                 )
 
-                differential_evolution(
-                    broad_optimum_objective,
-                    bounds=list(zip(self.lower_bounds, self.upper_bounds)),
-                    args=args,
-                    tol=0,
-                    maxiter=self.iterations,
-                    popsize=self.config.population,
-                    mutation=(0.2, self.config.mutation),
-                    recombination=self.config.recombination,
-                    disp=True,
-                    polish=False,
-                    updating="deferred",
-                    callback=callback,
-                    workers=1,
-                    vectorized=True,
-                )
+                self.run_differential_evolution(broad_optimum_objective, args)
 
                 append_to_midpoint_csv(self.scenario_name, evaluation_records)
 
@@ -300,6 +269,11 @@ def callback(intermediate_result: OptimizeResult) -> None:
         # Save population from last iteration
         if hasattr(intermediate_result, "population"):
             with open(os.path.join(results_dir, "population.csv"), "a", newline="") as f:
+                writer = csv.writer(f)
+                for individual in intermediate_result.population:
+                    writer.writerow(list(individual))
+
+            with open(os.path.join(results_dir, "latest_population.csv"), "w", newline="") as f:
                 writer = csv.writer(f)
                 for individual in intermediate_result.population:
                     writer.writerow(list(individual))

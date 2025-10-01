@@ -2,13 +2,13 @@ import os
 
 import numpy as np
 
-from ..common.helpers import parse_comma_separated
-from ..common.logging import init_model_logger
-from ..io.file_manager import import_config_csvs
+from firm_ce.common.helpers import parse_comma_separated
+from firm_ce.common.logging import init_model_logger
+from firm_ce.io.file_manager import import_config_csvs
 
 
 class ModelData:
-    def __init__(self, config_directory) -> None:
+    def __init__(self, config_directory: str, logging_flag: bool) -> None:
         self.config_directory = config_directory
 
         # Get the config settings for the csvs
@@ -18,7 +18,7 @@ class ModelData:
         model_name = self.get_model_name()
 
         # Initialise the logger
-        self.logger, self.results_dir = init_model_logger(model_name)
+        self.logger, self.results_dir = init_model_logger(model_name, logging_flag)
 
         # Set all the relevant parameters
         self.scenarios = self.config_data.get("scenarios")
@@ -37,9 +37,10 @@ class ModelData:
         model_name = None
 
         if "config" in self.config_data:
-            if "name" in self.config_data["config"].values():
-                if self.config_data["config"].values()["name"] == "model_name":
-                    model_name = self.config_data["config"].values()["value"]
+            for record in self.config_data["config"].values():
+                if record.get("name") == "model_name":
+                    model_name = record.get("value")
+                    break
 
         if model_name is None:
             model_name = "Model"
@@ -221,7 +222,7 @@ def validate_lines(lines_dict, scenarios_list, scenario_nodes, model_logger):
                 flag = False
 
         if float(item["min_build"]) > float(item["max_build"]):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get("scenarios")):
@@ -277,7 +278,7 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
             flag = False
 
         if float(item["min_build"]) > float(item["max_build"]):
-            model_logger.error("'min_build' must be less than 'max_build'")
+            model_logger.error("'min_build' must be less than or equal to 'max_build'")
             flag = False
 
         for scenario in parse_list(item.get("scenarios")):
