@@ -1,4 +1,4 @@
-from typing import Dict, List
+from typing import Dict, Any
 
 import numpy as np
 
@@ -18,7 +18,7 @@ from firm_ce.system.topology import (
 )
 
 
-def construct_Node_object(idx: int, order: int, node_name: str) -> Node_InstanceType:
+def construct_Node_object(idx: int, order: int, node_dict: dict) -> Node_InstanceType:
     """
     Takes data required to initialise a single node object and returns an instance of the Node jitclass.
     The nodes (also called buses) represent a spatial location that is treated as a copper-plate. All
@@ -37,11 +37,13 @@ def construct_Node_object(idx: int, order: int, node_name: str) -> Node_Instance
     -------
     Node_InstanceType: A static instance of the Node jitclass.
     """
-    return Node(True, idx, order, node_name)
+    return Node(True, idx, order, node_dict.get("name"))
 
 
 def construct_Line_object(
-    line_dict: Dict[str, str], nodes_object_dict: DictType(int64, Node_InstanceType), order: int
+    line_dict: Dict[str, Any],
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+    order: int
 ) -> Line_InstanceType:
     """
     Takes data required to initialise a single line object, casts values into Numba-compatible
@@ -50,7 +52,7 @@ def construct_Line_object(
 
     Parameters:
     -------
-    line_dict (Dict[str,str]): A dictionary containing the attributes of
+    line_dict (Dict[str,Any]): A dictionary containing the attributes of
         a single line object in `config/lines.csv`.
     nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
@@ -69,7 +71,7 @@ def construct_Line_object(
     capacity = float(line_dict["initial_capacity"])
     unit_type = str(line_dict["unit_type"])
     near_opt = str(line_dict.get("near_optimum", "")).lower() in ("true", "1", "yes")
-    minor_node = construct_Node_object(-1, -1, "MINOR_NODE")
+    minor_node = construct_Node_object(-1, -1, {"name": "MINOR_NODE"})
 
     raw_group = line_dict.get("range_group", "")
     group = (
@@ -160,7 +162,11 @@ def construct_new_Route_object(
 
 
 def extend_route(
-    route: Route_InstanceType, new_node: Node_InstanceType, new_line: Line_InstanceType, line_direction: int, leg: int
+    route: Route_InstanceType,
+    new_node: Node_InstanceType,
+    new_line: Line_InstanceType,
+    line_direction: int,
+    leg: int
 ) -> Route_InstanceType:
     """
     Takes an existing route, extends it by a single leg, and returns the extended
@@ -295,8 +301,8 @@ def build_routes_typed_dict(
 
 
 def construct_Network_object(
-    nodes_imported_list: List[str],
-    lines_imported_dict: Dict[str, Dict[str, str]],
+    nodes_imported_dict: Dict[int, Dict[str, Any]],
+    lines_imported_dict: Dict[int, Dict[str, Any]],
     networksteps_max: int,
 ) -> Network_InstanceType:
     """
@@ -310,8 +316,9 @@ def construct_Network_object(
 
     Parameters:
     -------
-    nodes_imported_list (List[str]): A list of all node names imported from `config/scenarios.csv`.
-    lines_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
+    nodes_imported_dict (Dict[int, Dict[str, Any]]): A dictionary containing data for all nodes
+        imported from `config/nodes.csv`.
+    lines_imported_dict (Dict[int, Dict[str, Any]]): A dictionary containing data for all
         lines imported from `config/lines.csv`.
     networksteps_max (int): The maximum number of legs allowed in a route for a given scenario.
         Can be adjusted in `config/scenarios.csv`.
@@ -322,9 +329,9 @@ def construct_Network_object(
     """
 
     nodes = TypedDict.empty(key_type=int64, value_type=Node_InstanceType)
-    for idx in range(len(nodes_imported_list)):
+    for idx in range(len(nodes_imported_dict)):
         nodes[idx] = construct_Node_object(
-            idx, idx, nodes_imported_list[idx]
+            idx, idx, nodes_imported_dict[idx]
         )  # Separate idx from order in future version for consistency?
 
     major_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)

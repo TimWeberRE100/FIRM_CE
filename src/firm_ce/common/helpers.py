@@ -1,7 +1,7 @@
 from typing import List
 
 
-def parse_comma_separated(value: str) -> List[str]:
+def parse_comma_separated(value: str, lower: bool = True) -> List[str]:
     """
     Parse a comma-separated string into a list of trimmed, non-empty strings.
 
@@ -13,6 +13,8 @@ def parse_comma_separated(value: str) -> List[str]:
     -------
     List[str]: A list of cleaned strings with whitespace removed and empty entries excluded.
     """
+    if lower:
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
