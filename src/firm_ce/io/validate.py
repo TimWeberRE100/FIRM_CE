@@ -87,7 +87,7 @@ def validate_model_config(config_dict, model_logger):
         "recombination": lambda v: validate_range(v, 0, 1),
         "type": lambda v: validate_enum(
             v,
-            ["single_time", "capacity_expansion", "near_optimum", "midpoint_explore"],
+            ["single_time", "capacity_expansion", "near_optimum_min", "near_optimum_max", "midpoint_explore"],
         ),
         "model_name": None,
         "near_optimal_tol": lambda v: validate_range(v, 0, 1),
