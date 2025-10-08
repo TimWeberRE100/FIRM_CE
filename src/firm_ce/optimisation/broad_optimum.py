@@ -2,10 +2,11 @@ import csv
 import os
 from typing import Dict, List, Tuple
 from numpy.typing import NDArray
+import time
 
 import numpy as np
 
-from firm_ce.common.constants import PENALTY_MULTIPLIER, TOLERANCE
+from firm_ce.common.constants import PENALTY_MULTIPLIER, TOLERANCE, NUM_THREADS
 from firm_ce.common.typing import (
     BandCandidates_Type,
     BroadOptimumVars_Type,
@@ -187,10 +188,13 @@ def broad_optimum_objective(
     group_key: str,
     group_orders: List[int]
 ) -> float:
-
+    start_time = time.time()
     _, population_lcoes, population_penalties = parallel_wrapper(
         band_population_candidates, *unit_commitment_args
     )
+    end_time = time.time()
+    print(f"Average objective time: {NUM_THREADS*(end_time-start_time)/band_population_candidates.shape[1]:.4f} seconds.")
+    print(f"Iteration time: {(end_time-start_time):.4f} seconds for {NUM_THREADS} workers.")
     
     group_variable_sums = band_population_candidates[group_orders, :].sum(axis=0)
     band_population_penalties = np.maximum(0, population_lcoes - broad_optimum.lcoe_cutoff) * PENALTY_MULTIPLIER
@@ -211,6 +215,8 @@ def broad_optimum_objective(
                 candidate_x,
             )
         )
+    update_records_time = time.time()
+    print(f"Time to update broad optimum records: {(update_records_time-end_time):.4f} seconds.")
 
     match broad_optimum.type:
         case "min":
