@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult, differential_evolution
 
-from firm_ce.common.constants import SAVE_POPULATION
+from firm_ce.common.constants import SAVE_POPULATION, TOLERANCE
 from firm_ce.optimisation.broad_optimum import (
     BroadOptimum,
     broad_optimum_objective,
@@ -87,6 +87,8 @@ class Solver:
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "callback.csv"), "w", newline="") as csvfile:
             csv.writer(csvfile)
+        with open(os.path.join(temp_dir, "latest_population.csv"), "w", newline="") as csvfile:
+            csv.writer(csvfile)
         with open(os.path.join(temp_dir, "population.csv"), "w", newline="") as csvfile:
             csv.writer(csvfile)
         with open(os.path.join(temp_dir, "population_energies.csv"), "w", newline="") as csvfile:
@@ -131,8 +133,9 @@ class Solver:
 
     def get_lcoe_cutoff(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
+        solution.evaluate()
 
-        if solution.penalties > 1:
+        if solution.penalties > TOLERANCE:
             self.logger.warning(
                 f"Initial guess (assumed optimal solution) has a penalty of {solution.penalties}."
                 f"It is recommended to double-check initial_guess.csv contains the correct optimal solution."
@@ -144,6 +147,7 @@ class Solver:
         return band_lcoe_max
 
     def find_near_optimal_band(self) -> Dict[str, Tuple[float]]:
+        self.initialise_callback()
         broad_optimum = BroadOptimum(
             self.scenario_name,
             self.config.type,

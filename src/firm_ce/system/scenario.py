@@ -105,7 +105,7 @@ class Scenario:
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
 
-    def load_datafiles(self, all_datafiles: Dict[str, DataFile], data_directory: str) -> None:
+    def load_datafiles(self, all_datafiles: Dict[str, DataFile], data_directory: str = "inputs/data") -> None:
         """
         Load and attach external timeseries datafiles from the data_directory required by the
         Network.nodes and Fleet.generators for this Scenario. Calculates the annual net operational

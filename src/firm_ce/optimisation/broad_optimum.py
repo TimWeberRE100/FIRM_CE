@@ -5,7 +5,7 @@ from numpy.typing import NDArray
 
 import numpy as np
 
-from firm_ce.common.constants import PENALTY_MULTIPLIER
+from firm_ce.common.constants import PENALTY_MULTIPLIER, TOLERANCE
 from firm_ce.common.typing import (
     BandCandidates_Type,
     BroadOptimumVars_Type,
@@ -181,22 +181,23 @@ class BroadOptimum:
 
 
 def broad_optimum_objective(
-    band_population_candidates: List[List[float]],  # 2-dimensional array to allow vectorised DE
-    differential_evolution_args,
+    band_population_candidates: NDArray[np.float64],  # 2-dimensional array to allow vectorised DE
+    unit_commitment_args,
     broad_optimum: BroadOptimum,
     group_key: str,
     group_orders: List[int]
 ) -> float:
 
     _, population_lcoes, population_penalties = parallel_wrapper(
-        band_population_candidates, *differential_evolution_args
+        band_population_candidates, *unit_commitment_args
     )
+    
     group_variable_sums = band_population_candidates[group_orders, :].sum(axis=0)
     band_population_penalties = np.maximum(0, population_lcoes - broad_optimum.lcoe_cutoff) * PENALTY_MULTIPLIER
 
     for candidate_x in range(band_population_candidates.shape[1]):
         if not (
-            population_penalties[candidate_x] <= 0.001 and band_population_penalties[candidate_x] <= 0.001
+            population_penalties[candidate_x] <= TOLERANCE and band_population_penalties[candidate_x] <= TOLERANCE
         ):
             continue
         broad_optimum.evaluation_records.append(
