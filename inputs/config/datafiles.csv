@@ -4,3 +4,4 @@ id,scenarios,filename,datafile_type
 3,all,wind.csv,generation
 4,all,flexible_annual_limit.csv,flexible_annual_limit
 5,all,baseload.csv,generation
+6,all,inflows.csv,flexible_inflows

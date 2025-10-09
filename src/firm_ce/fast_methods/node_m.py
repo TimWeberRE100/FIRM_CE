@@ -8,7 +8,7 @@ from firm_ce.common.exceptions import (
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, boolean, float64, int64, unicode_type
 from firm_ce.fast_methods import generator_m
-from firm_ce.system.components import Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.components import Generator_InstanceType, Reservoir_InstanceType, Storage_InstanceType
 from firm_ce.system.topology import Node, Node_InstanceType
 
 
@@ -216,7 +216,11 @@ def update_netload_t(node_instance: Node_InstanceType, interval: int64, precharg
     )
 
     if precharging_flag:
-        node_instance.netload_t -= node_instance.storage_power[interval] + node_instance.flexible_power[interval]
+        node_instance.netload_t -= (
+            node_instance.storage_power[interval] 
+            + node_instance.reservoir_power[interval] 
+            + node_instance.flexible_power[interval]
+        )
     return None
 
 
@@ -303,6 +307,56 @@ def assign_storage_merit_order(
 
 
 @njit(fastmath=FASTMATH)
+def assign_reservoir_merit_order(
+    node_instance: Node_InstanceType, reservoirs_typed_dict: DictType(int64, Reservoir_InstanceType)
+) -> None:
+    """
+    Identifies Reservoir instances located at the Node and sorts them from shortest to longest reservoir duration.
+    The Reservoir.order values for the merit order are stored in an array for the Node.
+
+    The pseudo-method starts by iterating through all Reservoir instances in the scenario and adding the Reservoir.order
+    and Reservoir.duration values to temporary arrays. If there are no Reservoir instances at the Node, the function
+    returns None early. Otherwise, the temporary arrays are clipped to have a length equal to the number of Reservoir
+    instances at that Node. The indices that would sort the temporary reservoir duration array are calculated, and then
+    the temporary reservoir order array is sorted using those indices.
+
+    Parameters:
+    -------
+    node_instance (Node_InstanceType): An instance of the Node jitclass.
+    reservoirs_typed_dict (DictType(int64, Reservoir_InstanceType)): Typed dictionary of Reservoir instances within
+        the scenario, keyed by Reservoir.order.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: reservoir_merit_order.
+    """
+    reservoirs_count = len(reservoirs_typed_dict)
+    temp_orders = np.full(reservoirs_count, -1, dtype=np.int64)
+    temp_durations = np.full(reservoirs_count, -1, dtype=np.float64)
+
+    idx = 0
+    for reservoir_order, reservoir in reservoirs_typed_dict.items():
+        if reservoir.node.order == node_instance.order:
+            temp_orders[idx] = reservoir_order
+            temp_durations[idx] = reservoir.duration
+            idx += 1
+
+    if idx == 0:
+        return None
+
+    temp_orders = temp_orders[:idx]
+    temp_durations = temp_durations[:idx]
+
+    sort_order = np.argsort(temp_durations)
+    node_instance.reservoir_merit_order = temp_orders[sort_order]
+    return None
+
+
+@njit(fastmath=FASTMATH)
 def assign_flexible_merit_order(
     node_instance: Node_InstanceType, generators_typed_dict: DictType(int64, Generator_InstanceType)
 ) -> None:
@@ -380,18 +434,18 @@ def check_remaining_netload(node_instance: Node_InstanceType, interval: int64, c
     """
     if check_case == "deficit":
         return (
-            node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
+            node_instance.netload_t - node_instance.storage_power[interval] - node_instance.reservoir_power[interval] - node_instance.flexible_power[interval]
             > TOLERANCE
         )
     elif check_case == "spillage":
         return (
-            node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
+            node_instance.netload_t - node_instance.storage_power[interval] - node_instance.reservoir_power[interval] - node_instance.flexible_power[interval]
             < -TOLERANCE
         )
     elif check_case == "both":
         return (
             abs(
-                node_instance.netload_t - node_instance.storage_power[interval] - node_instance.flexible_power[interval]
+                node_instance.netload_t - node_instance.storage_power[interval] - node_instance.reservoir_power[interval] - node_instance.flexible_power[interval]
             )
             > TOLERANCE
         )
@@ -449,6 +503,11 @@ def reset_dispatch_max_t(node_instance: Node_InstanceType) -> None:
     else:
         node_instance.discharge_max_t = np.zeros(1, dtype=np.float64)
         node_instance.charge_max_t = np.zeros(1, dtype=np.float64)
+
+    if len(node_instance.reservoir_merit_order) > 0:
+        node_instance.reservoir_max_t = np.zeros(len(node_instance.reservoir_merit_order), dtype=np.float64)
+    else:
+        node_instance.reservoir_max_t = np.zeros(1, dtype=np.float64)
 
     if len(node_instance.flexible_merit_order) > 0:
         node_instance.flexible_max_t = np.zeros(len(node_instance.flexible_merit_order), dtype=np.float64)

@@ -209,7 +209,10 @@ def calculate_vom(
 
 @njit(fastmath=FASTMATH)
 def calculate_fuel(
-    ltcosts_instance: LTCosts_InstanceType, generation: float64, unit_hours: float64, unit_costs: UnitCost_InstanceType
+    ltcosts_instance: LTCosts_InstanceType, 
+    generation: float64, 
+    unit_hours: float64, 
+    unit_costs: UnitCost_InstanceType,
 ) -> None:
     """
     Calculates the fuel costs for an asset. Requires completion of unit committment. Line and Storage objects are assumed

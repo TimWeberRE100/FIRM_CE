@@ -36,7 +36,10 @@ class Model:
     """
 
     def __init__(
-        self, config_directory: str = "inputs/config", data_directory: str = "inputs/data", logging_flag: bool = True
+        self,
+        config_directory: str = "inputs/config",
+        data_directory: str = "inputs/data",
+        logging_flag: bool = True,
     ) -> None:
         """
         Initialises a Model instance.

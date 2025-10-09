@@ -4,6 +4,7 @@ from firm_ce.common.typing import boolean, float64, int64, unicode_type
 from firm_ce.fast_methods import (
     fleet_m,
     generator_m,
+    reservoir_m,
     network_m,
     node_m,
     static_m,
@@ -55,6 +56,10 @@ def initialise_interval(
         for idx, flexible_order in enumerate(node.flexible_merit_order):
             generator_m.set_flexible_max_t(
                 fleet.generators[flexible_order], interval, resolution, idx, forward_time_flag
+            )
+        for idx, reservoir_order in enumerate(node.reservoir_merit_order):
+            reservoir_m.set_reservoir_max_t(
+                fleet.reservoirs[reservoir_order], interval, resolution, idx, forward_time_flag
             )
         for idx, storage_order in enumerate(node.storage_merit_order):
             storage_m.set_dispatch_max_t(fleet.storages[storage_order], interval, resolution, idx, forward_time_flag)
@@ -139,6 +144,46 @@ def balance_with_storage(
         node.storage_power[interval] = 0
         for idx, storage_order in enumerate(node.storage_merit_order):
             storage_m.dispatch(fleet.storages[storage_order], interval, idx)
+    return None
+
+
+@njit(fastmath=FASTMATH)
+def balance_with_reservoir(
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+) -> None:
+    """
+    Dispatch Storage systems according to the merit order at each Node to balance remaining netload.
+    Positive netload requires Storage systems to discharge, negative netload provides electricity
+    for charging.
+
+    Notes:
+    -----
+    - Nodes that have no remaining netload for balancing are skipped.
+    - Nodal storage power is reset before dispatching the Storage systems.
+
+    Parameters:
+    -------
+    interval (int64): Index of the time interval to balance.
+    network (Network_InstanceType): An instance of the Network jitclass.
+    fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for Nodes in Network.nodes: storage_power.
+    Attributes modified for the Storage systems in Fleet.storages: dispatch_power, node.
+    """
+    for node in network.nodes.values():
+        if not node_m.check_remaining_netload(node, interval, "deficit"):
+            continue
+        node.reservoir_power[interval] = 0
+        for idx, reservoir_order in enumerate(node.reservoir_merit_order):
+            reservoir_m.dispatch(fleet.reservoirs[reservoir_order], interval, idx)
     return None
 
 
@@ -237,6 +282,11 @@ def energy_balance_for_interval(solution, interval: int64, forward_time_flag: bo
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
         balance_with_transmission(interval, solution.network, "storage_discharge", False)
         balance_with_storage(interval, solution.network, solution.fleet)  # Neighbouring and local storage
+        balance_with_reservoir(interval, solution.network, solution.fleet)  # Local reservoir
+
+    if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
+        balance_with_transmission(interval, solution.network, "reservoir", False)
+        balance_with_reservoir(interval, solution.network, solution.fleet)  # Local reservoir
         balance_with_flexible(interval, solution.network, solution.fleet)  # Local flexible
 
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
@@ -257,6 +307,7 @@ def balance_for_period(
     precharging_allowed: boolean,
     solution,
     year: int64,
+    id_
 ) -> None:
     """
     Iterates through the time intervals within a specified period and performs the unit committment.
@@ -292,18 +343,22 @@ def balance_for_period(
     ATTRIBUTES MODIFIED DURING PRECHARGING
     """
     perform_precharge = False
-
+    print(id_+" balance for period start loop")
     for t in range(start_t, end_t):
+        strt = str(int(t))
+        print(id_+" balance for interval "+strt)
         energy_balance_for_interval(solution, t, True)
-
+        print(id_+" spillage and deficit for interval "+strt)
         network_m.calculate_spillage_and_deficit(solution.network, t)
-
+        print(id_+" update stored energies "+strt)
         fleet_m.update_stored_energies(solution.fleet, t, solution.static.interval_resolutions[t], True)
+        print(id_+" update stored energies "+strt)
         fleet_m.update_remaining_flexible_energies(
             solution.fleet, t, solution.static.interval_resolutions[t], True, False
         )
 
         if not precharging_allowed:
+            print(id_+" skipping precharging "+strt)
             continue
 
         if not perform_precharge and network_m.check_remaining_netloads(solution.network, t, "deficit"):
@@ -314,6 +369,7 @@ def balance_for_period(
         ):
             precharge_storage(solution, t, year)
             perform_precharge = False
+    print(id_+" balance for period end loop")
     return None
 
 

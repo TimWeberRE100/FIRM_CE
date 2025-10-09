@@ -24,6 +24,7 @@ class ModelData:
         self.scenarios = self.config_data.get("scenarios")
         self.nodes = self.config_data.get("nodes")
         self.generators = self.config_data.get("generators")
+        self.reservoirs = self.config_data.get("reservoirs")
         self.fuels = self.config_data.get("fuels")
         self.lines = self.config_data.get("lines")
         self.storages = self.config_data.get("storages")
@@ -362,6 +363,86 @@ def validate_generators(generators_dict, scenarios_list, scenario_fuels, scenari
     return scenario_generators, scenario_baseload, flag
 
 
+def validate_reservoirs(reservoirs_dict, scenarios_list, scenario_fuels, scenario_lines, scenario_nodes, model_logger):
+    flag = True
+    scenario_reservoirs = {s: [] for s in scenarios_list}
+
+    for idx, item in reservoirs_dict.items():
+        for field in [
+            "capex_p",
+            "capex_e",
+            "fom",
+            "vom",
+            "heat_rate_base",
+            "heat_rate_incr",
+            "initial_power_capacity",
+            "initial_energy_capacity",
+            "duration",
+            "max_build_p",
+            "max_build_e",
+            "min_build_p",
+            "min_build_e",
+        ]:
+            if not validate_range(item[field], 0):
+                model_logger.error("'%s' must be float greater than or equal to 0", field)
+                flag = False
+
+        if not validate_range(item["discount_rate"], 0, 1):
+            model_logger.error("'discount_rate' must be float in range [0,1]")
+            flag = False
+
+        if not validate_enum(item["unit_type"], ["flexible", "flexible_annual"]):
+            model_logger.error("'unit_type' must be one of ['flexible', 'flexible_annual']")
+            flag = False
+
+        if float(item["min_build_p"]) > float(item["max_build_p"]):
+            model_logger.error("'min_build_p' must be less than or equal to 'max_build_p'")
+            flag = False
+
+        if float(item["min_build_e"]) > float(item["max_build_e"]):
+            model_logger.error("'min_build_e' must be less than or equal to 'max_build_e'")
+            flag = False
+
+        def _validate_reservoir(flag):
+            if item["name"] in scenario_reservoirs[scenario]:
+                model_logger.error("Duplicate reservoir name '%s' in scenario %s", item["name"], scenario)
+                flag = False
+            else:
+                scenario_reservoirs[scenario].append(item["name"])
+
+            if item["node"] not in scenario_nodes[scenario]:
+                model_logger.error(
+                    "'node' %s for reservoir %s is not defined in scenario %s", item["node"], item["name"], scenario
+                )
+                flag = False
+
+            if item["fuel"] not in scenario_fuels[scenario]:
+                model_logger.error(
+                    "'fuel' %s for reservoir %s is not defined in scenario %s", item["fuel"], item["name"], scenario
+                )
+                flag = False
+
+            if item["line"] not in scenario_lines[scenario]:
+                model_logger.error(
+                    "'line' %s for reservoir %s is not defined in scenario %s", item["line"], item["name"], scenario
+                )
+                flag = False
+            return flag
+
+        scenarios = parse_list(item.get("scenarios"))
+        if scenarios == ["all"]:
+            for scenario in scenarios_list:
+                flag = _validate_reservoir(flag)
+        else:
+            for scenario in scenarios:
+                if scenario in scenarios_list:
+                    flag = _validate_reservoir(flag)
+                else:
+                    model_logger.warning("scenario '%s' for generator.id %s not defined in scenarios.csv", scenario, idx)
+
+    return scenario_reservoirs, flag
+
+
 def validate_storages(storages_dict, scenarios_list, scenario_nodes, scenario_lines, model_logger):
     flag = True
     scenario_storages = {s: [] for s in scenarios_list}
@@ -441,6 +522,7 @@ def validate_initial_guess(
     x0s_dict,
     scenarios_list,
     scenario_generators,
+    scenario_reservoirs,
     scenario_storages,
     scenario_lines,
     scenario_baseload,
@@ -563,6 +645,15 @@ def validate_config(model_data: ModelData) -> bool:
     else:
         model_logger.info("generators.csv validated!")
 
+    scenario_reservoirs, flag = validate_reservoirs(
+        model_data.reservoirs, scenarios_list, scenario_fuels, scenario_lines, scenario_nodes, model_logger
+    )
+    if not flag:
+        model_logger.error("reservoirs.csv contains errors.")
+        config_flag = False
+    else:
+        model_logger.info("reservoirs.csv validated!")
+
     scenario_storages, flag = validate_storages(
         model_data.storages, scenarios_list, scenario_nodes, scenario_lines, model_logger
     )
@@ -576,6 +667,7 @@ def validate_config(model_data: ModelData) -> bool:
         model_data.x0s,
         scenarios_list,
         scenario_generators,
+        scenario_reservoirs,
         scenario_storages,
         scenario_lines,
         scenario_baseload,

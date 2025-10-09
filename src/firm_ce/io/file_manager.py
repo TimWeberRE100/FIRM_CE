@@ -35,6 +35,7 @@ class ImportCSV:
             "scenarios",
             "nodes",
             "generators",
+            "reservoirs",
             "fuels",
             "lines",
             "storages",

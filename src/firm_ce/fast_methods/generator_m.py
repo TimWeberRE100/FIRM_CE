@@ -78,7 +78,9 @@ def create_dynamic_copy(
 
 @njit(fastmath=FASTMATH)
 def build_capacity(
-    generator_instance: Generator_InstanceType, new_build_power_capacity: float64, interval_resolutions: float64[:]
+    generator_instance: Generator_InstanceType,
+    new_build_power_capacity: float64,
+    interval_resolutions: float64[:],
 ) -> None:
     """
     Takes a new_build_power_capacity and adds it to the existing capacity and new_build attributes. Updates the capacity
@@ -150,9 +152,9 @@ def load_data(
     Attributes modified for the referenced Generator.line: lt_flows.
     Attributes modified for the referenced Generator.node: residual_load.
     """
-    generator_instance.data_status = "loaded"
     generator_instance.data = generation_trace
     generator_instance.annual_constraints_data = annual_constraints
+    generator_instance.data_status = "loaded"
 
     update_residual_load(generator_instance, generator_instance.initial_capacity, interval_resolutions)
     return None
@@ -176,14 +178,17 @@ def unload_data(generator_instance: Generator_InstanceType) -> None:
     -------
     Attributes modified for the Generator instance: data_status, data, annual_constraints_data.
     """
-    generator_instance.data_status = "unloaded"
     generator_instance.data = np.empty((0,), dtype=np.float64)
     generator_instance.annual_constraints_data = np.empty((0,), dtype=np.float64)
+    generator_instance.data_status = "unloaded"
     return None
 
 
 @njit(fastmath=FASTMATH)
-def get_data(generator_instance: Generator_InstanceType, data_type: unicode_type) -> float64[:]:
+def get_data(
+    generator_instance: Generator_InstanceType,
+    data_type: unicode_type,
+) -> float64[:]:
     """
     Gets the specified data_type from the Generator instance.
 
@@ -213,7 +218,10 @@ def get_data(generator_instance: Generator_InstanceType, data_type: unicode_type
 
 
 @njit(fastmath=FASTMATH)
-def allocate_memory(generator_instance: Generator_InstanceType, intervals_count: int64) -> None:
+def allocate_memory(
+    generator_instance: Generator_InstanceType,
+    intervals_count: int64,
+) -> None:
     """
     Memory associated with endogenous time-series data for a flexible Generator is only allocated after a dynamic copy of
     the Generator instance is created. This is to minimise memory usage of the static instances.
@@ -245,7 +253,9 @@ def allocate_memory(generator_instance: Generator_InstanceType, intervals_count:
 
 @njit(fastmath=FASTMATH)
 def update_residual_load(
-    generator_instance: Generator_InstanceType, added_capacity: float64, interval_resolutions: float64[:]
+    generator_instance: Generator_InstanceType,
+    added_capacity: float64,
+    interval_resolutions: float64[:],
 ) -> None:
     """
     Update the residual load at the Node where a Generator is located after adding new capacity.
@@ -279,7 +289,9 @@ def update_residual_load(
 
 @njit(fastmath=FASTMATH)
 def update_lt_generation(
-    generator_instance: Generator_InstanceType, generation_trace: float64[:], interval_resolutions: float64[:]
+    generator_instance: Generator_InstanceType,
+    generation_trace: float64[:],
+    interval_resolutions: float64[:],
 ) -> None:
     """
     The total generation over the modelling horizon for the Generator is updated, based upon a generation trace
@@ -368,7 +380,10 @@ def get_annual_limit(
 
 
 @njit(fastmath=FASTMATH)
-def check_unit_type(generator_instance: Generator_InstanceType, unit_type: unicode_type) -> boolean:
+def check_unit_type(
+    generator_instance: Generator_InstanceType,
+    unit_type: unicode_type,
+) -> boolean:
     """
     Check whether a Generator.unit_type has a specified value. Commonly used to check if
     a Generator has the 'flexible' unit_type.
@@ -442,7 +457,11 @@ def set_flexible_max_t(
 
 
 @njit(fastmath=FASTMATH)
-def dispatch(generator_instance: Generator_InstanceType, interval: int64, merit_order_idx: int64) -> None:
+def dispatch(
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+    merit_order_idx: int64,
+) -> None:
     """
     Dispatches the flexible Generator according to its place in the merit order for the Generator.node.
     The total flexible power at that node is also updated according to the dispatch of the Generator.
@@ -465,7 +484,7 @@ def dispatch(generator_instance: Generator_InstanceType, interval: int64, merit_
     """
     if merit_order_idx == 0:
         generator_instance.dispatch_power[interval] = min(
-            max(generator_instance.node.netload_t - generator_instance.node.storage_power[interval], 0.0),
+            max(generator_instance.node.netload_t - generator_instance.node.reservoir_power[interval] - generator_instance.node.storage_power[interval], 0.0),
             generator_instance.flexible_max_t,
         )
     else:
@@ -473,6 +492,7 @@ def dispatch(generator_instance: Generator_InstanceType, interval: int64, merit_
             max(
                 generator_instance.node.netload_t
                 - generator_instance.node.storage_power[interval]
+                - generator_instance.node.reservoir_power[interval]
                 - generator_instance.node.flexible_max_t[merit_order_idx - 1],
                 0.0,
             ),
@@ -531,7 +551,10 @@ def update_remaining_energy(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_generation(generator_instance: Generator_InstanceType, interval_resolutions: float64[:]) -> None:
+def calculate_lt_generation(
+    generator_instance: Generator_InstanceType,
+    interval_resolutions: float64[:],
+) -> None:
     """
     Calculate the total generation over the long-term modelling horizon for a flexible Generator. Also
     calculate the hours of operation for each unit of the Generator over the modelling horizon.
@@ -589,7 +612,9 @@ def calculate_variable_costs(generator_instance: Generator_InstanceType) -> floa
 
 @njit(fastmath=FASTMATH)
 def calculate_fixed_costs(
-    generator_instance: Generator_InstanceType, years_float: float64, year_count: int64
+    generator_instance: Generator_InstanceType,
+    years_float: float64,
+    year_count: int64,
 ) -> float64:
     """
     Calculate the total fixed costs for a Generator.
@@ -625,7 +650,10 @@ def calculate_fixed_costs(
 
 
 @njit(fastmath=FASTMATH)
-def initialise_deficit_block(generator_instance: Generator_InstanceType, interval: int64) -> None:
+def initialise_deficit_block(
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+) -> None:
     """
     Upon resolving a deficit block, initialise the temporary remaining energy,
     max remaining energy, and min remaining energy values for a flexible Generator. These temporary
@@ -655,7 +683,10 @@ def initialise_deficit_block(generator_instance: Generator_InstanceType, interva
 
 
 @njit(fastmath=FASTMATH)
-def update_deficit_block_bounds(generator_instance: Generator_InstanceType, remaining_energy: float64) -> None:
+def update_deficit_block_bounds(
+    generator_instance: Generator_InstanceType,
+    remaining_energy: float64,
+) -> None:
     """
     Update the temporary minimum and maximum remaining energy values for the flexible Generator in the
     deficit block. These values are updated in each time interval for the deficit block. The minimum
@@ -683,7 +714,10 @@ def update_deficit_block_bounds(generator_instance: Generator_InstanceType, rema
 
 
 @njit(fastmath=FASTMATH)
-def initialise_precharging_flags(generator_instance: Generator_InstanceType, interval: int64) -> None:
+def initialise_precharging_flags(
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+) -> None:
     """
     Initialises the trickling flag for a flexible Generator once precharging in the lead-up to the deficit
     block begins. The trickling flag is True if the flexible Generator has sufficient energy remaining for
@@ -713,7 +747,10 @@ def initialise_precharging_flags(generator_instance: Generator_InstanceType, int
 
 
 @njit(fastmath=FASTMATH)
-def update_precharging_flags(generator_instance: Generator_InstanceType, interval: int64) -> None:
+def update_precharging_flags(
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+) -> None:
     """
     At the start of a time interval within the precharging period, the remaining trickling reserves and
     trickling flag for the flexible Generator is updated. The remaining trickling reserves define the
@@ -751,7 +788,10 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
 
 @njit(fastmath=FASTMATH)
 def set_precharging_max_t(
-    generator_instance: Generator_InstanceType, interval: int64, resolution: float64, merit_order_idx: int64
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+    resolution: float64,
+    merit_order_idx: int64,
 ) -> None:
     """
     Within the precharging period (leading up to the deficit block), the maximum dispatch power adjustment for a

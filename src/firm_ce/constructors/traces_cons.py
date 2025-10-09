@@ -3,7 +3,7 @@ from typing import Dict
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.fast_methods import generator_m, node_m
+from firm_ce.fast_methods import generator_m, reservoir_m, node_m
 from firm_ce.io.file_manager import DataFile
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
@@ -45,7 +45,7 @@ def select_datafile(
 
 
 def load_datafiles_to_generators(
-    fleet: Fleet_InstanceType,
+    fleet: Fleet_InstanceType,  # type: ignore
     datafiles_imported_dict: Dict[str, DataFile],
     resolution: float,
 ) -> None:
@@ -86,8 +86,20 @@ def load_datafiles_to_generators(
     return None
 
 
+def load_datafiles_to_reservoirs(
+    fleet: Fleet_InstanceType,  # type: ignore
+    datafiles_imported_dict: Dict[str, DataFile],
+) -> None:
+    for reservoir in fleet.reservoirs.values():
+        reservoir_m.load_data(
+            reservoir,
+            select_datafile("flexible_inflows", reservoir.name, datafiles_imported_dict),
+        )
+    return None
+
+
 def load_datafiles_to_network(
-    network: Network_InstanceType,
+    network: Network_InstanceType,  # type: ignore
     datafiles_imported_dict: Dict[str, DataFile],
 ) -> None:
     """
@@ -120,7 +132,9 @@ def load_datafiles_to_network(
     return None
 
 
-def unload_data_from_generators(fleet: Fleet_InstanceType):
+def unload_data_from_generators(
+        fleet: Fleet_InstanceType  # type: ignore
+):
     """
     Iterates through all generators and unloads time-series data. Allows large amounts of
     memory to be cleared before running an optimisation for a new scenario.
@@ -143,7 +157,34 @@ def unload_data_from_generators(fleet: Fleet_InstanceType):
     return None
 
 
-def unload_data_from_network(network: Network_InstanceType):
+def unload_data_from_reservoirs(
+        fleet: Fleet_InstanceType  # type: ignore
+):
+    """
+    Iterates through all reservoirs and unloads time-series data. Allows large amounts of
+    memory to be cleared before running an optimisation for a new scenario.
+
+    Parameters:
+    -------
+    fleet (Fleet_InstanceType): A static instance of the Fleet jitclass.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    The data_status, data attributes of each generator object are
+    modified.
+    """
+    for reservoir in fleet.reservoirs.values():
+        reservoir_m.unload_data(reservoir)
+    return None
+
+
+def unload_data_from_network(
+        network: Network_InstanceType  # type: ignore
+):
     """
     Iterates through all nodes and unloads time-series data. Allows large amounts of
     memory to be cleared before running an optimisation for a new scenario.

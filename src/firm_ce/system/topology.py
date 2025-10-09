@@ -18,10 +18,12 @@ if JIT_ENABLED:
         ("residual_load", float64[:]),
         # Dynamic
         ("storage_merit_order", int64[:]),
+        ("reservoir_merit_order", int64[:]),
         ("flexible_merit_order", int64[:]),
         ("netload_t", float64),
         ("discharge_max_t", float64[:]),
         ("charge_max_t", float64[:]),
+        ("reservoir_max_t", float64[:]),
         ("flexible_max_t", float64[:]),
         ("fill", float64),
         ("surplus", float64),
@@ -31,8 +33,10 @@ if JIT_ENABLED:
         ("deficits", float64[:]),
         ("spillage", float64[:]),
         ("flexible_power", float64[:]),
+        ("reservoir_power", float64[:]),
         ("storage_power", float64[:]),
         ("flexible_energy", float64[:]),
+        ("reservoir_energy", float64[:]),
         ("storage_energy", float64[:]),
         # Precharging
         ("imports_exports_temp", float64),
@@ -133,10 +137,12 @@ class Node:
 
         # Dynamic
         self.flexible_merit_order = np.empty((0,), dtype=np.int64)
+        self.reservoir_merit_order = np.empty((0,), dtype=np.int64)
         self.storage_merit_order = np.empty((0,), dtype=np.int64)
         self.netload_t = 0.0  # GW
         self.discharge_max_t = np.empty((0,), dtype=np.float64)  # GW
         self.charge_max_t = np.empty((0,), dtype=np.float64)  # GW
+        self.reservoir_max_t = np.empty((0,), dtype=np.float64)  # GW
         self.flexible_max_t = np.empty((0,), dtype=np.float64)  # GW
 
         self.fill = 0.0  # GW, power attempting to import
@@ -149,8 +155,10 @@ class Node:
         self.spillage = np.empty((0,), dtype=np.float64)
 
         self.flexible_power = np.empty((0,), dtype=np.float64)
+        self.reservoir_power = np.empty((0,), dtype=np.float64)
         self.storage_power = np.empty((0,), dtype=np.float64)
         self.flexible_energy = np.empty((0,), dtype=np.float64)
+        self.reservoir_energy = np.empty((0,), dtype=np.float64)
         self.storage_energy = np.empty((0,), dtype=np.float64)
 
         # Precharging

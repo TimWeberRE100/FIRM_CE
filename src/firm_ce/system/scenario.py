@@ -11,8 +11,10 @@ from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_obj
 from firm_ce.constructors.topology_cons import construct_Network_object
 from firm_ce.constructors.traces_cons import (
     load_datafiles_to_generators,
+    load_datafiles_to_reservoirs,
     load_datafiles_to_network,
     unload_data_from_generators,
+    unload_data_from_reservoirs,
     unload_data_from_network,
 )
 from firm_ce.fast_methods import static_m
@@ -93,6 +95,7 @@ class Scenario:
         self.static = construct_ScenarioParameters_object(self.scenario_data, len(self.network.nodes))
         self.fleet = construct_Fleet_object(
             self.get_scenario_dicts(model_data.generators),
+            self.get_scenario_dicts(model_data.reservoirs),
             self.get_scenario_dicts(model_data.storages),
             self.get_scenario_dicts(model_data.fuels),
             self.network.minor_lines,
@@ -133,6 +136,7 @@ class Scenario:
         load_datafiles_to_network(self.network, datafiles)
 
         load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)
+        load_datafiles_to_reservoirs(self.fleet, datafiles)
 
         static_m.set_year_energy_demand(self.static, self.network.nodes)
 
@@ -162,6 +166,7 @@ class Scenario:
         unload_data_from_network(self.network)
 
         unload_data_from_generators(self.fleet)
+        unload_data_from_reservoirs(self.fleet)
 
         static_m.unset_year_energy_demand(self.static)
 
@@ -301,6 +306,12 @@ class Scenario:
         for generator in self.fleet.generators.values():
             generator.candidate_x_idx = x_index
             x_index += 1
+        for reservoir in self.fleet.reservoirs.values():
+            reservoir.candidate_p_x_idx = x_index
+            x_index += 1
+        for reservoir in self.fleet.reservoirs.values():
+            reservoir.candidate_e_x_idx = x_index
+            x_index += 1
         for storage in self.fleet.storages.values():
             storage.candidate_p_x_idx = x_index
             x_index += 1
@@ -332,6 +343,7 @@ class Scenario:
         of candidate solutions evaluated (`populations.csv`), the energies of each population (`population_energies.csv`),
         and the best candidate solution from each iteration of the optimisation (`callback.csv`).
         """
+        print("Scenario.solve")
         solver = Solver(
             config, self.x0, self.static, self.fleet, self.network, self.logger, self.name, self.initial_population
         )

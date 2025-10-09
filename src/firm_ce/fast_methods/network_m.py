@@ -1,7 +1,7 @@
 from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.exceptions import raise_static_modification_error
 from firm_ce.common.jit_overload import njit
-from firm_ce.common.typing import TypedDict, TypedList, boolean, float64, int64, unicode_type
+from firm_ce.common.typing import DictType, TypedDict, TypedList, boolean, float64, int64, unicode_type
 from firm_ce.fast_methods import line_m, node_m, route_m
 from firm_ce.system.topology import (
     Line_InstanceType,
@@ -11,6 +11,11 @@ from firm_ce.system.topology import (
     Route_InstanceType,
     routes_key_type,
     routes_list_type,
+)
+from firm_ce.system.components import (
+    Generator_InstanceType,
+    Reservoir_InstanceType,
+    Storage_InstanceType,
 )
 
 
@@ -597,20 +602,26 @@ def set_node_fills_and_surpluses(
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t, 0)
             node.surplus = -min(node.netload_t, 0)
+
     elif transmission_case == "storage_discharge":
         for node in network_instance.nodes.values():
             node.fill = max(node.netload_t - node.storage_power[interval], 0)
             node.surplus = max(node.discharge_max_t[-1] - node.storage_power[interval], 0)
 
+    elif transmission_case == "reservoir":
+        for node in network_instance.nodes.values():
+            node.fill = max(node.netload_t - node.storage_power[interval] - node.reservoir_power[interval], 0)
+            node.surplus = max(node.reservoir_max_t[-1] - node.reservoir_power[interval], 0)
+
     elif transmission_case == "flexible":
         for node in network_instance.nodes.values():
-            node.fill = max(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0)
+            node.fill = max(node.netload_t - node.storage_power[interval] - node.reservoir_power[interval] - node.flexible_power[interval], 0)
             node.surplus = max(node.flexible_max_t[-1] - node.flexible_power[interval], 0)
 
     elif transmission_case == "storage_charge":
         for node in network_instance.nodes.values():
             node.fill = max(node.charge_max_t[-1] + node.storage_power[interval], 0)
-            node.surplus = -min(node.netload_t - node.storage_power[interval] - node.flexible_power[interval], 0.0)
+            node.surplus = -min(node.netload_t - node.storage_power[interval] - node.reservoir_power[interval] - node.flexible_power[interval], 0.0)
 
     elif transmission_case == "precharging_surplus":
         for node in network_instance.nodes.values():
@@ -671,7 +682,8 @@ def calculate_spillage_and_deficit(network_instance: Network_InstanceType, inter
 
 @njit(fastmath=FASTMATH)
 def assign_storage_merit_orders(
-    network_instance: Network_InstanceType, storages_typed_dict  # DictType(int64, Storage_InstanceType)
+    network_instance: Network_InstanceType,
+    storages_typed_dict: DictType(int64, Storage_InstanceType)
 ) -> None:
     """
     For each Node, finds all Storage instances at that Node. Sorts the Storage systems at that Node from
@@ -701,8 +713,41 @@ def assign_storage_merit_orders(
 
 
 @njit(fastmath=FASTMATH)
+def assign_reservoir_merit_orders(
+    network_instance: Network_InstanceType,
+    reservoirs_typed_dict: DictType(int64, Reservoir_InstanceType),
+) -> None:
+    """
+    For each Node, finds all Reservoir instances at that Node. Sorts the Reservoir systems at that Node from
+    shortest to longest duration. Builds a Reservoir merit order array for that Node where the values are
+    the Reservoir.order integers of the sorted Reservoir instances. That is, it is assumed that short-duration
+    reservoir systems are dispatched first, with long-duration/seasonal reservoir dispatched last.
+
+    Note that when balancing a deficit block in reverse time, the merit order is reversed.
+
+    Parameters:
+    -------
+    network_instance (Network_InstanceType): An instance of the Network jitclass.
+    reservoirs_typed_dict (DictType(int64, Reservoir_InstanceType)): Typed dictionary of Reservoir instances within
+        the scenario, keyed by Reservoir.order.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for each Node in Network.nodes: reservoir_merit_order.
+    """
+    for node in network_instance.nodes.values():
+        node_m.assign_reservoir_merit_order(node, reservoirs_typed_dict)
+    return None
+
+
+@njit(fastmath=FASTMATH)
 def assign_flexible_merit_orders(
-    network_instance: Network_InstanceType, generators_typed_dict  # DictType(int64, Generators_InstanceType)
+    network_instance: Network_InstanceType,
+    generators_typed_dict: DictType(int64, Generator_InstanceType)
 ) -> None:
     """
     For each Node, finds all flexible Generator instances at that Node. Sorts the flexible Generators at that Node from

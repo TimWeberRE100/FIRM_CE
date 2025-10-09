@@ -5,7 +5,7 @@ import numpy as np
 from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIER
 from firm_ce.common.jit_overload import jitclass, njit, prange
 from firm_ce.common.typing import boolean, float64, unicode_type
-from firm_ce.fast_methods import fleet_m, generator_m, line_m, network_m, static_m, storage_m
+from firm_ce.fast_methods import fleet_m, generator_m, line_m, network_m, reservoir_m, static_m, storage_m
 from firm_ce.optimisation.balancing import balance_for_period
 from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.parameters import ScenarioParameters_InstanceType
@@ -104,6 +104,7 @@ class Solution:
         modified in the dynamic instances. Refer to docstrings for the fast pseudo-methods called within this special
         method for details on these modifications.
         """
+        print("Created a Solution instance")
         self.x = x
         self.evaluated = False
         self.lcoe = 0.0
@@ -129,9 +130,10 @@ class Solution:
         network_m.allocate_memory(self.network, self.static.intervals_count)
 
         network_m.assign_storage_merit_orders(self.network, self.fleet.storages)
+        network_m.assign_reservoir_merit_orders(self.network, self.fleet.reservoirs)
         network_m.assign_flexible_merit_orders(self.network, self.fleet.generators)
 
-    def balance_residual_load(self) -> boolean:
+    def balance_residual_load(self, id_) -> boolean:
         """
         Evaluate the unit committment business rules over the entire modelling horizon.
 
@@ -158,23 +160,29 @@ class Solution:
         time-series data and temporary values are modified throughout the balance_for_period function. Attributes
         that are modified are marked using *Dynamic* or *Precharging* comments in the relevant jitclass definitions.
         """
+        print(id_ + " Initialising stored energies")
         fleet_m.initialise_stored_energies(self.fleet)
-
+        print(id_ + " Looping through years")
         for year in range(self.static.year_count):
+            print(id_ + " Getting year t boundaries")
             first_t, last_t = static_m.get_year_t_boundaries(self.static, year)
-
+            print(id_+" "+str(int(first_t))+"-"+str(int(last_t)))
+            print(id_ + " initialising annual limits")
             fleet_m.initialise_annual_limits(self.fleet, year, first_t)
-
-            balance_for_period(first_t, last_t, self.balancing_type == "full", self, year)
-
+            print(id_ + " balance for period")
+            balance_for_period(first_t, last_t, self.balancing_type == "full", self, year, id_)
+            print(id_ + " annual unserved energy")
             annual_unserved_energy = network_m.calculate_period_unserved_energy(
                 self.network, first_t, last_t, self.static.interval_resolutions
             )
 
             # End early if reliability constraint breached for any year
+            print(id_ + " checking reliability constraint")
             if not static_m.check_reliability_constraint(self.static, year, annual_unserved_energy):
                 self.penalties += (self.static.year_count - year) * annual_unserved_energy * PENALTY_MULTIPLIER
+                print(id_ + " returning false")
                 return False
+        print(id_ + " returning true")
         return True
 
     def calculate_fixed_costs(self) -> float64:
@@ -207,6 +215,9 @@ class Solution:
 
         for generator in self.fleet.generators.values():
             total_costs += generator_m.calculate_fixed_costs(generator, years_float, self.static.year_count)
+
+        for reservoir in self.fleet.reservoirs.values():
+            total_costs += reservoir_m.calculate_fixed_costs(reservoir, years_float, self.static.year_count)
 
         for storage in self.fleet.storages.values():
             total_costs += storage_m.calculate_fixed_costs(storage, years_float, self.static.year_count)
@@ -253,6 +264,9 @@ class Solution:
         for generator in self.fleet.generators.values():
             total_costs += generator_m.calculate_variable_costs(generator)
 
+        for reservoir in self.fleet.reservoirs.values():
+            total_costs += reservoir_m.calculate_variable_costs(reservoir)
+
         for storage in self.fleet.storages.values():
             total_costs += storage_m.calculate_variable_costs(storage)
 
@@ -283,7 +297,7 @@ class Solution:
         """
         return (fixed_costs / sum(self.static.year_energy_demand) / 1000) < self.fixed_costs_threshold  # $/MWh_demand
 
-    def objective(self):
+    def objective(self, id_):
         """
         Evaluates the long-term energy planning system, through the calculation of investment and unit committment
         costs. Penalty functions are used to soft-constrain fixed costs and reliability.
@@ -317,20 +331,24 @@ class Solution:
         values are modified throughout the balance_residual_load method. Attributes that are modified are marked using
         *Dynamic* or *Precharging* comments in the relevant jitclass definitions.
         """
+
+        print(id_+ " calculating fixed costs")
         total_costs = self.calculate_fixed_costs()
         if not self.check_fixed_costs(total_costs):
+            print(id_+"expensive -> returning early")
             return self.lcoe, total_costs * PENALTY_MULTIPLIER  # End early if fixed cost constraint breached
-
-        reliability_check = self.balance_residual_load()
+        print(id_+ " balancing residual load")
+        reliability_check = self.balance_residual_load(id_)
         if not reliability_check:
+            print(id_+ " unreliable -> returning early")
             return self.lcoe, self.penalties  # End early if reliability constraint breached
-
+        print(id_+ " calculating variable costs")
         total_costs += self.calculate_variable_costs()
-
+        print(id_+ " calculating line losses")
         total_line_losses = network_m.calculate_lt_line_losses(self.network)
 
         lcoe = total_costs / np.abs(sum(self.static.year_energy_demand) - total_line_losses) / 1000  # $/MWh
-
+        print(id_+ " Returning objective")
         return lcoe, self.penalties
 
     def evaluate(self):
@@ -346,8 +364,11 @@ class Solution:
         -------
         Attributes modified for Solution instance: lcoe, penalties, evaluated.
         """
-        self.lcoe, self.penalties = self.objective()
+        id_ = str(int(10000*np.random.rand()))
+        print(id_+" Evaluating a Solution instance")
+        self.lcoe, self.penalties = self.objective(id_)
         self.evaluated = True
+        print(id_+" Evaluated.")
         return self
 
 
@@ -391,6 +412,7 @@ def parallel_wrapper(
         population. The first row is the total energy (cost) of the objective function, second row is the LCOE, and
         third row is the penalties for each candidate solution.
     """
+    print("firm_ce.optimisation.single_time.parallel_wrapper")
     n_points = xs.shape[1]
     result = np.zeros((3, n_points), dtype=np.float64)
     for j in prange(n_points):
@@ -435,6 +457,7 @@ def evaluate_vectorised_xs(
         population. Each column is the energy of a different candidate solution. The energy is the sum of LCOE
         and the penalties. This is the value minimised by the differential evolution optimisation.
     """
+    print("firm_ce.optimisation.single_time.evaluate_vectorised_xs")
     start_time = time.time()
     result = parallel_wrapper(xs, static, fleet, network, balancing_type, fixed_costs_threshold)
     end_time = time.time()
