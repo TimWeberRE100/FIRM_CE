@@ -106,7 +106,7 @@ class Solver:
         )
         return args
 
-    def run_differential_evolution(self, objective_function: Callable, args: Tuple) -> OptimizeResult:
+    def run_differential_evolution(self, objective_function: Callable, args: Tuple, initial_population: NDArray[np.float64]) -> OptimizeResult:
         result = differential_evolution(
             x0=self.decision_x0,
             func=objective_function,
@@ -115,7 +115,7 @@ class Solver:
             tol=0,
             maxiter=self.iterations,
             popsize=self.config.population,
-            init=self.initial_population,
+            init=initial_population,
             mutation=(0.2, self.config.mutation),
             recombination=self.config.recombination,
             disp=True,
@@ -129,7 +129,7 @@ class Solver:
 
     def single_time(self) -> None:
         self.initialise_callback()
-        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args())
+        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args(), self.initial_population)
 
     def get_lcoe_cutoff(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
@@ -162,8 +162,14 @@ class Solver:
             match broad_optimum.type:
                 case "min":
                     self.logger.info(f"[near_optimum] finding MIN for group '{group_key}'")
+
+                    if not isinstance(self.initial_population, str):
+                        initial_population_adjusted = broad_optimum.minimise_group_xs(self.initial_population, group_key)
                 case "max":
                     self.logger.info(f"[near_optimum] finding MAX for group '{group_key}'")
+
+                    if not isinstance(self.initial_population, str):
+                        initial_population_adjusted = broad_optimum.maximise_group_xs(self.initial_population, group_key)
 
             args = (
                 self.get_differential_evolution_args(),
@@ -172,7 +178,7 @@ class Solver:
                 idx_list,
             )
 
-            self.result = self.run_differential_evolution(broad_optimum_objective, args)
+            self.result = self.run_differential_evolution(broad_optimum_objective, args, initial_population_adjusted)
             broad_optimum.add_band_record(group_key, self.result.x)
             broad_optimum.write_records()
             broad_optimum.write_bands(self.get_differential_evolution_args())

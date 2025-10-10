@@ -24,13 +24,23 @@ class BroadOptimum:
         return results_path
     
     @staticmethod
-    def create_variable_record(candidate_x_idx: int, asset_name: str, units: str, near_optimum_check: bool, near_optimum_group: str) -> BroadOptimumVars_Type:
+    def create_variable_record(
+        candidate_x_idx: int, 
+        asset_name: str, 
+        units: str, 
+        near_optimum_check: bool, 
+        near_optimum_group: str,
+        min_build: float,
+        max_build: float
+    ) -> BroadOptimumVars_Type:
         return (
             candidate_x_idx,
             asset_name,
             units,
             near_optimum_check,
             near_optimum_group,
+            min_build,
+            max_build
         )
     
     @staticmethod
@@ -82,7 +92,7 @@ class BroadOptimum:
     def build_groups_dict(self):
         groups = {}
         for record in self.variable_info:
-            candidate_x_idx, _, _, near_optimum_check, group = record
+            candidate_x_idx, _, _, near_optimum_check, group, _, _ = record
 
             if not near_optimum_check:
                 continue
@@ -98,27 +108,53 @@ class BroadOptimum:
         for generator in fleet.generators.values():
             variable_info.append(
                 self.create_variable_record(
-                    generator.candidate_x_idx, generator.name, "GW", generator.near_optimum_check, generator.group
+                    generator.candidate_x_idx, 
+                    generator.name, 
+                    "GW", 
+                    generator.near_optimum_check, 
+                    generator.group, 
+                    generator.min_build, 
+                    generator.max_build
                 )
             )
 
         for storage in fleet.storages.values():
             variable_info.append(
                 self.create_variable_record(
-                    storage.candidate_p_x_idx, storage.name, "GW", storage.near_optimum_check, storage.group
+                    storage.candidate_p_x_idx, 
+                    storage.name, 
+                    "GW", 
+                    storage.near_optimum_check, 
+                    storage.group,
+                    storage.min_build_p,
+                    storage.max_build_p
                 )
             )
 
         for storage in fleet.storages.values():
             variable_info.append(
                 self.create_variable_record(
-                    storage.candidate_e_x_idx, storage.name, "GWh", storage.near_optimum_check, storage.group
+                    storage.candidate_e_x_idx, 
+                    storage.name, 
+                    "GWh", 
+                    storage.near_optimum_check, 
+                    storage.group,
+                    storage.min_build_e,
+                    storage.max_build_e
                 )
             )
 
         for line in network.major_lines.values():
             variable_info.append(
-                self.create_variable_record(line.candidate_x_idx, line.name, "GW", line.near_optimum_check, line.group)
+                self.create_variable_record(
+                    line.candidate_x_idx, 
+                    line.name, 
+                    "GW", 
+                    line.near_optimum_check, 
+                    line.group,
+                    line.min_build,
+                    line.max_build
+                )
             )
         return variable_info
     
@@ -137,7 +173,7 @@ class BroadOptimum:
                     "LCOE [$/MWh]",
                     "Operational_Penalty",
                     "Band_Penalty",
-                    *[f"{asset_name} [{unit}]" for _, asset_name, unit, _, _ in self.variable_info],
+                    *[f"{asset_name} [{unit}]" for _, asset_name, unit, _, _, _, _ in self.variable_info],
                 ]
             )
             for group, band_type, _, lcoe, unit_commitment_penalty, band_penalty, candidate_x in self.evaluation_records:
@@ -147,7 +183,7 @@ class BroadOptimum:
     def write_bands(self, unit_commitment_args: Tuple) -> None:   
         bands_path = os.path.join(self.results_path, "near_optimal_bands.csv")
         asset_column_names = [
-            f"{asset_name} [{unit}]" for _, asset_name, unit, near_optimum_check, _ in self.variable_info if near_optimum_check
+            f"{asset_name} [{unit}]" for _, asset_name, unit, near_optimum_check, _, _, _ in self.variable_info if near_optimum_check
         ]
         names_to_columns = {name: col for col, name in enumerate(asset_column_names)}
 
@@ -171,14 +207,27 @@ class BroadOptimum:
                 group_values = [group, self.type, solution.lcoe, solution.penalties, band_penalty]
                 asset_values = [""] * len(asset_column_names)
                 for candidate_x_idx in self.groups[group]:
-                    _, asset_name, unit, _, _ = self.variable_info[candidate_x_idx]
+                    _, asset_name, unit, _, _, _, _ = self.variable_info[candidate_x_idx]
                     col = names_to_columns[f"{asset_name} [{unit}]"]
                     asset_values[col] = candidate_x[candidate_x_idx]
                 writer_bands.writerow(group_values + asset_values)
         return None
 
-    def read_bands(self):
-        pass
+    def minimise_group_xs(self, initial_population: NDArray[np.float64], group_key: str) -> NDArray[np.float64]:
+        initial_population_adjusted = initial_population.copy()
+        for candidate_x_idx, asset_name, _, near_optimum_check, near_optimum_group, min_build, _ in self.variable_info:
+            if near_optimum_check and (near_optimum_group == group_key):
+                initial_population_adjusted[:, candidate_x_idx] = min_build
+        return initial_population_adjusted
+
+
+    def maximise_group_xs(self, initial_population: NDArray[np.float64], group_key: str) -> NDArray[np.float64]:
+        initial_population_adjusted = initial_population.copy()
+        for row in range(initial_population.shape[0]):
+            for candidate_x_idx, _, _, near_optimum_check, near_optimum_group, _, max_build in self.variable_info:
+                if near_optimum_check and (near_optimum_group == group_key):
+                    initial_population_adjusted[row, candidate_x_idx] = max_build
+        return initial_population_adjusted
 
 
 def broad_optimum_objective(
