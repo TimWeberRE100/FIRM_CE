@@ -106,9 +106,9 @@ class Solver:
         )
         return args
 
-    def run_differential_evolution(self, objective_function: Callable, args: Tuple, initial_population: NDArray[np.float64]) -> OptimizeResult:
+    def run_differential_evolution(self, objective_function: Callable, args: Tuple, initial_population: NDArray[np.float64], initial_guess: NDArray[np.float64] | None = None) -> OptimizeResult:
         result = differential_evolution(
-            x0=self.decision_x0,
+            x0=initial_guess,
             func=objective_function,
             bounds=list(zip(self.lower_bounds, self.upper_bounds)),
             args=args,
@@ -129,7 +129,7 @@ class Solver:
 
     def single_time(self) -> None:
         self.initialise_callback()
-        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args(), self.initial_population)
+        self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args(), self.initial_population, self.decision_x0)
 
     def get_lcoe_cutoff(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
@@ -155,6 +155,7 @@ class Solver:
             self.network_static,
             self.get_lcoe_cutoff()
         )
+        initial_population_adjusted = self.initial_population
 
         for group_key, idx_list in broad_optimum.groups.items():
             self.logger.info(f"[near_optimum] exploring group '{group_key}'")
@@ -165,6 +166,7 @@ class Solver:
 
                     if not isinstance(self.initial_population, str):
                         initial_population_adjusted = broad_optimum.minimise_group_xs(self.initial_population, group_key)
+                    
                 case "max":
                     self.logger.info(f"[near_optimum] finding MAX for group '{group_key}'")
 
