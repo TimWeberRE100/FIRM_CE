@@ -391,8 +391,8 @@ def validate_reservoirs(reservoirs_dict, scenarios_list, scenario_fuels, scenari
             model_logger.error("'discount_rate' must be float in range [0,1]")
             flag = False
 
-        if not validate_enum(item["unit_type"], ["flexible", "flexible_annual"]):
-            model_logger.error("'unit_type' must be one of ['flexible', 'flexible_annual']")
+        if not validate_enum(item["unit_type"], ["hydro", "hybrid"]):
+            model_logger.error("'unit_type' must be one of ['hydro', 'hybrid']")
             flag = False
 
         if float(item["min_build_p"]) > float(item["max_build_p"]):
@@ -438,7 +438,7 @@ def validate_reservoirs(reservoirs_dict, scenarios_list, scenario_fuels, scenari
                 if scenario in scenarios_list:
                     flag = _validate_reservoir(flag)
                 else:
-                    model_logger.warning("scenario '%s' for generator.id %s not defined in scenarios.csv", scenario, idx)
+                    model_logger.warning("scenario '%s' for reservoir.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_reservoirs, flag
 
@@ -544,6 +544,8 @@ def validate_initial_guess(
 
         bound_length = len(
             scenario_generators[scenario]
+            + scenario_reservoirs[scenario]
+            + scenario_reservoirs[scenario]
             + scenario_storages[scenario]
             + scenario_storages[scenario]
             + scenario_lines[scenario]

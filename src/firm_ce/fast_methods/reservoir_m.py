@@ -1,6 +1,7 @@
+# type: ignore
 import numpy as np
 
-from firm_ce.common.constants import FASTMATH  # , TOLERANCE
+from firm_ce.common.constants import FASTMATH
 from firm_ce.common.exceptions import (
     raise_getting_unloaded_data_error,
     raise_static_modification_error,
@@ -75,6 +76,10 @@ def create_dynamic_copy(
 
     reservoir_copy.candidate_p_x_idx = reservoir_instance.candidate_p_x_idx
     reservoir_copy.candidate_e_x_idx = reservoir_instance.candidate_e_x_idx
+
+    reservoir_copy.data_status = reservoir_instance.data_status
+    reservoir_copy.data = reservoir_instance.data  # This remains static
+    reservoir_copy.lt_generation = reservoir_instance.lt_generation
 
     return reservoir_copy
 
@@ -220,10 +225,7 @@ def get_data(
 
 
 @njit(fastmath=FASTMATH)
-def allocate_memory(
-    reservoir_instance: Reservoir_InstanceType,
-    intervals_count: int64
-) -> None:
+def allocate_memory(reservoir_instance: Reservoir_InstanceType, intervals_count: int64) -> None:
     """
     Memory associated with endogenous time-series data for a Reservoir system is only allocated after a dynamic copy of
     the Reservoir instance is created. This is to minimise memory usage of the static instances.
@@ -249,6 +251,37 @@ def allocate_memory(
         raise_static_modification_error()
     reservoir_instance.dispatch_power = np.zeros(intervals_count, dtype=np.float64)
     reservoir_instance.stored_energy = np.zeros(intervals_count, dtype=np.float64)
+    return None
+
+
+@njit(fastmath=FASTMATH)
+def initialise_stored_energy(
+    reservoir_instance: Reservoir_InstanceType,
+) -> None:
+    """
+    Initialise the stored energy for a Storage system. Called at the start of the modelling period.
+
+    Parameters:
+    -------
+    reservoir_instance (Storage_InstanceType): An instance of the Reservoir jitclass.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Attributes modified for the Reservoir instance: stored_energy. The initial stored energy is stored
+    in the final time interval for simplicity. It is overwritten upon performing balancing for final time interval.
+
+    Raises:
+    -------
+    RuntimeError: Raised if static_instance is True. Only dynamic instances can be modified by this pseudo-method.
+    """
+    if reservoir_instance.static_instance:
+        raise_static_modification_error()
+    # TODO:  Make it possible for user to define custom value for initial stored energy in future
+    reservoir_instance.stored_energy[-1] = 0.5 * reservoir_instance.energy_capacity
     return None
 
 
@@ -294,12 +327,6 @@ def set_reservoir_max_t(
             reservoir_instance.power_capacity,
             reservoir_instance.stored_energy[interval - 1] * reservoir_instance.discharge_efficiency / resolution,
         )
-        reservoir_instance.charge_max_t = min(
-            reservoir_instance.data[interval] / reservoir_instance.charge_efficiency / resolution,
-            (reservoir_instance.energy_capacity - reservoir_instance.stored_energy[interval - 1])
-            / reservoir_instance.charge_efficiency
-            / resolution
-        )
 
     else:
         reservoir_instance.discharge_max_t = min(
@@ -307,10 +334,6 @@ def set_reservoir_max_t(
             (reservoir_instance.energy_capacity - reservoir_instance.stored_energy_temp_reverse)
             * reservoir_instance.discharge_efficiency
             / resolution,
-        )
-        reservoir_instance.charge_max_t = min(
-            reservoir_instance.data[interval] / reservoir_instance.charge_efficiency / resolution,
-            reservoir_instance.stored_energy_temp_reverse / reservoir_instance.charge_efficiency / resolution,
         )
 
     if merit_order_idx == 0:
@@ -398,14 +421,54 @@ def update_stored_energy(
     """
     if forward_time_flag:
         reservoir_instance.stored_energy[interval] = (
+            # starting point
             reservoir_instance.stored_energy[interval - 1]
+            # less discharge energy and discharge efficiency losses
             - max(reservoir_instance.dispatch_power[interval], 0) / reservoir_instance.discharge_efficiency * resolution
-            - min(reservoir_instance.data[interval], 0) * reservoir_instance.charge_efficiency * resolution
+            # plus inflows
+            + min(
+                # inflow energy less efficiency losses
+                reservoir_instance.data[interval] * reservoir_instance.charge_efficiency,
+                # clipped by energy capacity of reservoir
+                (
+                    # simple remaining energy capacity
+                    reservoir_instance.energy_capacity
+                    - reservoir_instance.stored_energy[interval - 1]
+                    # plus the energy capacity freed up by power dipstached this time interval
+                    + (
+                        reservoir_instance.dispatch_power[interval]
+                        / reservoir_instance.discharge_efficiency
+                        * resolution
+                    )
+                )
+                / reservoir_instance.charge_efficiency,
+            )
+            / resolution
         )
     else:
+        # + dispatch
         reservoir_instance.stored_energy_temp_reverse += (
             max(reservoir_instance.dispatch_power[interval], 0) / reservoir_instance.discharge_efficiency * resolution
-            + min(reservoir_instance.data[interval], 0) * reservoir_instance.charge_efficiency * resolution
+        )
+        # - charge
+        reservoir_instance.stored_energy_temp_reverse -= (
+            # charge is inflows clipped by energy capacity
+            min(
+                # inflows (energy)
+                reservoir_instance.data[interval] / reservoir_instance.charge_efficiency,
+                # energy capacity + energy dipsatched in same time interval
+                (
+                    reservoir_instance.stored_energy_temp_reverse
+                    + (
+                        reservoir_instance.dispatch_power[interval]
+                        / reservoir_instance.discharge_efficiency
+                        * resolution
+                    )
+                )
+                / reservoir_instance.charge_efficiency,
+            )
+            # energy to power
+            / resolution
         )
     return None
 
@@ -459,7 +522,12 @@ def calculate_variable_costs(reservoir_instance: Reservoir_InstanceType) -> floa
     Attributes modified for the referenced Reservoir.lt_costs: vom, fuel.
     """
     ltcosts_m.calculate_vom(reservoir_instance.lt_costs, reservoir_instance.lt_generation, reservoir_instance.cost)
-    ltcosts_m.calculate_fuel(reservoir_instance.lt_costs, reservoir_instance.lt_generation, reservoir_instance.unit_lt_hours, reservoir_instance.cost)
+    ltcosts_m.calculate_fuel(
+        reservoir_instance.lt_costs,
+        reservoir_instance.lt_generation,
+        reservoir_instance.unit_lt_hours,
+        reservoir_instance.cost,
+    )
     return ltcosts_m.get_variable(reservoir_instance.lt_costs)
 
 
@@ -497,7 +565,12 @@ def calculate_fixed_costs(
         "reservoir",
     )
     ltcosts_m.calculate_fom(
-        reservoir_instance.lt_costs, reservoir_instance.power_capacity, years_float, 0.0, reservoir_instance.cost, "reservoir"
+        reservoir_instance.lt_costs,
+        reservoir_instance.power_capacity,
+        years_float,
+        0.0,
+        reservoir_instance.cost,
+        "reservoir",
     )
     return ltcosts_m.get_fixed(reservoir_instance.lt_costs)
 

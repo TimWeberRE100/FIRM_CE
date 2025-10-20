@@ -1,3 +1,4 @@
+# type: ignore
 import csv
 import os
 from itertools import chain
@@ -20,7 +21,7 @@ from firm_ce.optimisation.broad_optimum import (
     write_broad_optimum_records,
 )
 from firm_ce.optimisation.single_time import Solution, evaluate_vectorised_xs
-from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Reservoir_InstanceType, Storage_InstanceType
 from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
 from firm_ce.system.topology import Line_InstanceType, Network_InstanceType
 
@@ -37,7 +38,6 @@ class Solver:
         scenario_name: str,
         initial_population: Union[NDArray[np.float64], str] = "latinhypercube",
     ) -> None:
-        print("Solver.__init__")
         self.config = config
         self.decision_x0 = initial_x_candidate if len(initial_x_candidate) > 0 else None
         self.parameters_static = parameters_static
@@ -54,15 +54,16 @@ class Solver:
 
     def get_bounds(self) -> NDArray[np.float64]:
         def power_capacity_bounds(
-            asset_list: Union[List[Generator_InstanceType], List[Storage_InstanceType], List[Line_InstanceType]],
+            asset_list: Union[List[Generator_InstanceType], List[Reservoir_InstanceType], List[Storage_InstanceType], List[Line_InstanceType]],
             build_cap_constraint: str,
         ) -> List[float]:
             return [getattr(asset, build_cap_constraint) for asset in asset_list]
 
-        def energy_capacity_bounds(storage_list: List[Storage_InstanceType], build_cap_constraint: str) -> List[float]:
-            return [getattr(s, build_cap_constraint) if s.duration == 0 else 0.0 for s in storage_list]
+        def energy_capacity_bounds(asset_list: Union[List[Storage_InstanceType], List[Reservoir_InstanceType]], build_cap_constraint: str) -> List[float]:
+            return [getattr(asset, build_cap_constraint) if asset.duration == 0 else 0.0 for asset in asset_list]
 
         generators = list(self.fleet_static.generators.values())
+        reservoirs = list(self.fleet_static.reservoirs.values())
         storages = list(self.fleet_static.storages.values())
         lines = list(self.network_static.major_lines.values())
 
@@ -70,6 +71,8 @@ class Solver:
             list(
                 chain(
                     power_capacity_bounds(generators, "min_build"),
+                    power_capacity_bounds(reservoirs, "min_build_p"),
+                    energy_capacity_bounds(reservoirs, "min_build_e"),
                     power_capacity_bounds(storages, "min_build_p"),
                     energy_capacity_bounds(storages, "min_build_e"),
                     power_capacity_bounds(lines, "min_build"),
@@ -81,6 +84,8 @@ class Solver:
             list(
                 chain(
                     power_capacity_bounds(generators, "max_build"),
+                    power_capacity_bounds(reservoirs, "max_build_p"),
+                    energy_capacity_bounds(reservoirs, "max_build_e"),
                     power_capacity_bounds(storages, "max_build_p"),
                     energy_capacity_bounds(storages, "max_build_e"),
                     power_capacity_bounds(lines, "max_build"),
@@ -91,7 +96,6 @@ class Solver:
         return lower_bounds, upper_bounds
 
     def initialise_callback(self) -> None:
-        print("Solver.initialise_callback")
         temp_dir = os.path.join("results", "temp")
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "callback.csv"), "w", newline="") as csvfile:
@@ -104,7 +108,6 @@ class Solver:
     def get_differential_evolution_args(
         self,
     ) -> Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float]:
-        print("Solver.get_differential_evolution_args")
         args = (
             self.parameters_static,
             self.fleet_static,
@@ -115,7 +118,6 @@ class Solver:
         return args
 
     def run_differential_evolution(self, objective_function: Callable, args: Tuple) -> OptimizeResult:
-        print("Solver.run_differential_evolution")
         result = differential_evolution(
             x0=self.decision_x0,
             func=objective_function,
@@ -137,10 +139,8 @@ class Solver:
         return result
 
     def single_time(self) -> None:
-        print("Solver.single_time")
         self.initialise_callback()
         self.result = self.run_differential_evolution(evaluate_vectorised_xs, self.get_differential_evolution_args())
-        print("End: Solver.single_time")
 
     def get_band_lcoe_max(self) -> float:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
@@ -247,7 +247,6 @@ class Solver:
         pass
 
     def evaluate(self) -> None:
-        print("Solver.evaluate")
         if self.config.type == "single_time":
             self.single_time()
         elif self.config.type == "near_optimum":
@@ -261,7 +260,6 @@ class Solver:
                 "Model type in config must be 'single_time' or 'capacity_expansion' or 'near_optimum' or"
                 "'midpoint_explore'"
             )
-        print("End: Solver.evaluate")
 
 
 def callback(intermediate_result: OptimizeResult) -> None:

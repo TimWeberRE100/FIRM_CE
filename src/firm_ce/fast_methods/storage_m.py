@@ -1,3 +1,4 @@
+# type: ignore
 import numpy as np
 
 from firm_ce.common.constants import FASTMATH, TOLERANCE
@@ -165,7 +166,9 @@ def allocate_memory(
 
 
 @njit(fastmath=FASTMATH)
-def initialise_stored_energy(storage_instance: Storage_InstanceType) -> None:
+def initialise_stored_energy(
+    storage_instance: Storage_InstanceType,
+) -> None:
     """
     Initialise the stored energy for a Storage system. Called at the start of the modelling period.
 
@@ -406,7 +409,9 @@ def calculate_lt_discharge(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_variable_costs(storage_instance: Storage_InstanceType) -> float64:
+def calculate_variable_costs(
+    storage_instance: Storage_InstanceType,
+) -> float64:
     """
     Calculate the total variable costs for a Storage system at the end of unit committment.
 
@@ -530,7 +535,9 @@ def update_deficit_block_bounds(
 
 
 @njit(fastmath=FASTMATH)
-def assign_precharging_reserves(storage_instance: Storage_InstanceType) -> None:
+def assign_precharging_reserves(
+    storage_instance: Storage_InstanceType,
+) -> None:
     """
     Calculates the precharge energy that the Storage system must charge during the precharging period in order
     to dispatch during the deficit block (for prechargers). Based upon the discontinuity between the forwards-time

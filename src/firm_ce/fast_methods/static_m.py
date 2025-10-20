@@ -1,3 +1,4 @@
+# type: ignore
 from typing import Tuple
 
 import numpy as np
@@ -12,7 +13,10 @@ from firm_ce.system.topology import Node_InstanceType
 
 
 @njit(fastmath=FASTMATH)
-def get_year_t_boundaries(static_instance: ScenarioParameters_InstanceType, year: int64) -> UniTuple(int64, 2):
+def get_year_t_boundaries(
+    static_instance: ScenarioParameters_InstanceType,
+    year: int64,
+) -> UniTuple(int64, 2):
     """
     Get the first and last time interval for a year in the modelling horizon. The first time interval of
     each year is stored in the year_first_t array of the ScenarioParameters instance.
@@ -37,7 +41,8 @@ def get_year_t_boundaries(static_instance: ScenarioParameters_InstanceType, year
 
 @njit(fastmath=FASTMATH)
 def set_year_energy_demand(
-    static_instance: ScenarioParameters_InstanceType, nodes_typed_dict: DictType(int64, Node_InstanceType)
+    static_instance: ScenarioParameters_InstanceType,
+    nodes_typed_dict: DictType(int64, Node_InstanceType),
 ) -> None:
     """
     Calculates the total operational demand [GWh] for each year in the modelling horizon.
@@ -72,7 +77,9 @@ def set_year_energy_demand(
 
 
 @njit(fastmath=FASTMATH)
-def unset_year_energy_demand(static_instance: ScenarioParameters_InstanceType) -> None:
+def unset_year_energy_demand(
+    static_instance: ScenarioParameters_InstanceType,
+) -> None:
     """
     Resets the total annual energy demand values to zero.
 
@@ -95,7 +102,9 @@ def unset_year_energy_demand(static_instance: ScenarioParameters_InstanceType) -
 
 @njit(fastmath=FASTMATH)
 def check_reliability_constraint(
-    static_instance: ScenarioParameters_InstanceType, year: int64, year_unserved_energy: float64
+    static_instance: ScenarioParameters_InstanceType,
+    year: int64,
+    year_unserved_energy: float64,
 ) -> boolean:
     """
     Check whether the unserved energy for a year is within the allowance defined by the reliability constraint for
@@ -117,7 +126,10 @@ def check_reliability_constraint(
 
 
 @njit(fastmath=FASTMATH)
-def set_block_resolutions(static_instance: ScenarioParameters_InstanceType, block_durations: int64[:]) -> None:
+def set_block_resolutions(
+    static_instance: ScenarioParameters_InstanceType,
+    block_durations: int64[:],
+) -> None:
     """
     Calculates the resolution of each time interval. Allows for variable time interval lengths for future
     simplified balancing methods. The block durations array specifies the number of original time intervals
@@ -143,7 +155,9 @@ def set_block_resolutions(static_instance: ScenarioParameters_InstanceType, bloc
     return None
 
 
-def get_block_intervals(block_lengths: NDArray[np.int64]) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
+def get_block_intervals(
+    block_lengths: NDArray[np.int64],
+) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Get the first and last time intervals contained within each block. Allows for variable time interval lengths (i.e., blocks)
     for future simplified balancing methods. Block data can then be apportioned into arrays with the same length as the

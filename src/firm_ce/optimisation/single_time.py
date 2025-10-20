@@ -1,3 +1,4 @@
+# type: ignore
 import time
 
 import numpy as np
@@ -104,7 +105,6 @@ class Solution:
         modified in the dynamic instances. Refer to docstrings for the fast pseudo-methods called within this special
         method for details on these modifications.
         """
-        print("Created a Solution instance")
         self.x = x
         self.evaluated = False
         self.lcoe = 0.0
@@ -133,7 +133,7 @@ class Solution:
         network_m.assign_reservoir_merit_orders(self.network, self.fleet.reservoirs)
         network_m.assign_flexible_merit_orders(self.network, self.fleet.generators)
 
-    def balance_residual_load(self, id_) -> boolean:
+    def balance_residual_load(self) -> boolean:
         """
         Evaluate the unit committment business rules over the entire modelling horizon.
 
@@ -141,8 +141,8 @@ class Solution:
         -------
         - At the end of each calendar year, the reliability constraint is evaluated. The method returns early
         if the reliability constraint is breached for any year.
-        - Stored energy in Storage systems is initialised at the start of the modelling period. Annual generation
-        limits for flexible Generators are initialised at the start of each calendar year.
+        - Stored energy in Reservoir and Storage systems is initialised at the start of the modelling period.
+        Annual generation limits for flexible Generators are initialised at the start of each calendar year.
 
         Parameters:
         -------
@@ -155,34 +155,25 @@ class Solution:
 
         Side-effects:
         -------
-        Dynamic jitlass instances are substantially modified within this method. The stored energy of Storage systems
-        and remaining energy for flexible Generators are initialised using Fleet pseudo-methods. The endogenous
-        time-series data and temporary values are modified throughout the balance_for_period function. Attributes
-        that are modified are marked using *Dynamic* or *Precharging* comments in the relevant jitclass definitions.
+        Dynamic jitlass instances are substantially modified within this method. The stored energy of Reservoirs and
+        Storage systems and remaining energy for flexible Generators are initialised using Fleet pseudo-methods. The
+        endogenous time-series data and temporary values are modified throughout the balance_for_period function.
+        Attributes that are modified are marked using *Dynamic* or *Precharging* comments in the relevant jitclass
+        definitions.
         """
-        print(id_ + " Initialising stored energies")
         fleet_m.initialise_stored_energies(self.fleet)
-        print(id_ + " Looping through years")
         for year in range(self.static.year_count):
-            print(id_ + " Getting year t boundaries")
             first_t, last_t = static_m.get_year_t_boundaries(self.static, year)
-            print(id_+" "+str(int(first_t))+"-"+str(int(last_t)))
-            print(id_ + " initialising annual limits")
             fleet_m.initialise_annual_limits(self.fleet, year, first_t)
-            print(id_ + " balance for period")
-            balance_for_period(first_t, last_t, self.balancing_type == "full", self, year, id_)
-            print(id_ + " annual unserved energy")
+            balance_for_period(first_t, last_t, self.balancing_type == "full", self, year)
             annual_unserved_energy = network_m.calculate_period_unserved_energy(
                 self.network, first_t, last_t, self.static.interval_resolutions
             )
 
             # End early if reliability constraint breached for any year
-            print(id_ + " checking reliability constraint")
             if not static_m.check_reliability_constraint(self.static, year, annual_unserved_energy):
                 self.penalties += (self.static.year_count - year) * annual_unserved_energy * PENALTY_MULTIPLIER
-                print(id_ + " returning false")
                 return False
-        print(id_ + " returning true")
         return True
 
     def calculate_fixed_costs(self) -> float64:
@@ -206,8 +197,8 @@ class Solution:
 
         Side-effects:
         -------
-        Attributes modified for values in Solution.fleet.generators, Solution.fleet.storages, Solution.network.major_lines,
-            Solution.network.minor_lines: lt_costs.
+        Attributes modified for values in Solution.fleet.generators, Solution.fleet.reservoirs, Solution.fleet.storages,
+            Solution.network.major_lines, Solution.network.minor_lines: lt_costs.
         Attributes modified for LTCosts instances referenced in the lt_costs attributes: fom, annualised_build.
         """
         total_costs = 0.0
@@ -246,8 +237,8 @@ class Solution:
 
         Side-effects:
         -------
-        Attributes modified for values in Solution.fleet.generators, Solution.fleet.storages, Solution.network.major_lines,
-            Solution.network.minor_lines: lt_costs.
+        Attributes modified for values in Solution.fleet.generators, Solution.fleet.reservoirs,
+            Solution.fleet.storages, Solution.network.major_lines, Solution.network.minor_lines: lt_costs.
         Attributes modified for LTCosts instances referenced in the lt_costs attributes: vom, fuel.
         """
         total_costs = 0.0
@@ -297,7 +288,7 @@ class Solution:
         """
         return (fixed_costs / sum(self.static.year_energy_demand) / 1000) < self.fixed_costs_threshold  # $/MWh_demand
 
-    def objective(self, id_):
+    def objective(self):
         """
         Evaluates the long-term energy planning system, through the calculation of investment and unit committment
         costs. Penalty functions are used to soft-constrain fixed costs and reliability.
@@ -323,8 +314,8 @@ class Solution:
         Side-effects:
         -------
         Attributes modified for Solution instance: lcoe, penalties.
-        Attributes modified for values in Solution.fleet.generators, Solution.fleet.storages, Solution.network.major_lines,
-            Solution.network.minor_lines: lt_costs.
+        Attributes modified for values in Solution.fleet.generators, Solution.fleet.reservoirs, Solution.fleet.storages,
+            Solution.network.major_lines, Solution.network.minor_lines: lt_costs.
         Attributes modified for LTCosts instances referenced in the lt_costs attributes: fom, annualised_build, vom, fuel.
 
         Dynamic jitlass instances are substantially modified within this method. The endogenous time-series data and temporary
@@ -332,23 +323,16 @@ class Solution:
         *Dynamic* or *Precharging* comments in the relevant jitclass definitions.
         """
 
-        print(id_+ " calculating fixed costs")
         total_costs = self.calculate_fixed_costs()
         if not self.check_fixed_costs(total_costs):
-            print(id_+"expensive -> returning early")
             return self.lcoe, total_costs * PENALTY_MULTIPLIER  # End early if fixed cost constraint breached
-        print(id_+ " balancing residual load")
-        reliability_check = self.balance_residual_load(id_)
+        reliability_check = self.balance_residual_load()
         if not reliability_check:
-            print(id_+ " unreliable -> returning early")
             return self.lcoe, self.penalties  # End early if reliability constraint breached
-        print(id_+ " calculating variable costs")
         total_costs += self.calculate_variable_costs()
-        print(id_+ " calculating line losses")
         total_line_losses = network_m.calculate_lt_line_losses(self.network)
 
         lcoe = total_costs / np.abs(sum(self.static.year_energy_demand) - total_line_losses) / 1000  # $/MWh
-        print(id_+ " Returning objective")
         return lcoe, self.penalties
 
     def evaluate(self):
@@ -364,11 +348,8 @@ class Solution:
         -------
         Attributes modified for Solution instance: lcoe, penalties, evaluated.
         """
-        id_ = str(int(10000*np.random.rand()))
-        print(id_+" Evaluating a Solution instance")
-        self.lcoe, self.penalties = self.objective(id_)
+        self.lcoe, self.penalties = self.objective()
         self.evaluated = True
-        print(id_+" Evaluated.")
         return self
 
 
@@ -412,7 +393,6 @@ def parallel_wrapper(
         population. The first row is the total energy (cost) of the objective function, second row is the LCOE, and
         third row is the penalties for each candidate solution.
     """
-    print("firm_ce.optimisation.single_time.parallel_wrapper")
     n_points = xs.shape[1]
     result = np.zeros((3, n_points), dtype=np.float64)
     for j in prange(n_points):
@@ -457,7 +437,6 @@ def evaluate_vectorised_xs(
         population. Each column is the energy of a different candidate solution. The energy is the sum of LCOE
         and the penalties. This is the value minimised by the differential evolution optimisation.
     """
-    print("firm_ce.optimisation.single_time.evaluate_vectorised_xs")
     start_time = time.time()
     result = parallel_wrapper(xs, static, fleet, network, balancing_type, fixed_costs_threshold)
     end_time = time.time()

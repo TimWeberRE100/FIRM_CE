@@ -1,3 +1,4 @@
+# type: ignore
 from firm_ce.common.constants import FASTMATH, TOLERANCE
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import boolean, float64, int64, unicode_type
@@ -44,8 +45,9 @@ def initialise_interval(
     Side-effects:
     -------
     Attributes modified for the Nodes referenced in Network.nodes: netload_t, discharge_max_t,
-        charge_max_t, flexible_max_t.
+        charge_max_t, reservoir_max_t, flexible_max_t.
     Attributes modified for the flexible Generators referenced in Fleet.generators: flexible_max_t, node.
+    Attributes modified for the Reservoirs referenced in Fleet.reservoirs: discharge_max_t, node.
     Attributes modified for the Storage systems referenced in Fleet.storages: discharge_max_t, charge_max_t,
         node.
     """
@@ -68,7 +70,10 @@ def initialise_interval(
 
 @njit(fastmath=FASTMATH)
 def balance_with_transmission(
-    interval: int64, network: Network_InstanceType, transmission_case: unicode_type, precharging_flag: boolean
+    interval: int64,
+    network: Network_InstanceType,
+    transmission_case: unicode_type,
+    precharging_flag: boolean,
 ) -> None:
     """
     Perform a transmission balancing step for the specified case and update netloads for each Node.
@@ -154,14 +159,13 @@ def balance_with_reservoir(
     fleet: Fleet_InstanceType,
 ) -> None:
     """
-    Dispatch Storage systems according to the merit order at each Node to balance remaining netload.
-    Positive netload requires Storage systems to discharge, negative netload provides electricity
-    for charging.
+    Dispatch Reservoir systems according to the merit order at each Node to balance remaining netload.
+    Positive netload requires Reservoir systems to discharge.
 
     Notes:
     -----
     - Nodes that have no remaining netload for balancing are skipped.
-    - Nodal storage power is reset before dispatching the Storage systems.
+    - Nodal reservoir power is reset before dispatching the Reservoir systems.
 
     Parameters:
     -------
@@ -175,8 +179,8 @@ def balance_with_reservoir(
 
     Side-effects:
     -------
-    Attributes modified for Nodes in Network.nodes: storage_power.
-    Attributes modified for the Storage systems in Fleet.storages: dispatch_power, node.
+    Attributes modified for Nodes in Network.nodes: reservoir_power.
+    Attributes modified for the Reservoir systems in Fleet.reservoirs: dispatch_power, node.
     """
     for node in network.nodes.values():
         if not node_m.check_remaining_netload(node, interval, "deficit"):
@@ -227,7 +231,11 @@ def balance_with_flexible(
 
 
 @njit(fastmath=FASTMATH)
-def energy_balance_for_interval(solution, interval: int64, forward_time_flag: boolean) -> None:
+def energy_balance_for_interval(
+    solution,
+    interval: int64,
+    forward_time_flag: boolean,
+) -> None:
     """
     The core sequence of unit committment business rules for balancing the residual load in a
     time interval. The high-level process is:
@@ -257,9 +265,11 @@ def energy_balance_for_interval(solution, interval: int64, forward_time_flag: bo
     Side-effects:
     -------
     Attributes modified for the Nodes referenced in Solution.network.nodes: netload_t, discharge_max_t,
-        charge_max_t, flexible_max_t, fill, surplus, available_imports, imports_exports, temp_surplus,
-        imports_exports_update, imports_exports_temp, storage_power, flexible_power.
+        charge_max_t, reservoir_max_t, flexible_max_t, fill, surplus, available_imports, imports_exports,
+        temp_surplus, imports_exports_update, imports_exports_temp, storage_power, reservoir_power, flexible_power.
     Attributes modified for the flexible Generators referenced in Solution.fleet.generators: flexible_max_t, node,
+        dispatch_power.
+    Attributes modified for the Reservoirs referenced in Solution.fleet.reservoirs: discharge_max_t, node,
         dispatch_power.
     Attributes modified for the Storage systems referenced in Solution.fleet.storages: discharge_max_t, charge_max_t,
         node, dispatch_power.
@@ -274,7 +284,6 @@ def energy_balance_for_interval(solution, interval: int64, forward_time_flag: bo
         solution.static.interval_resolutions[interval],
         forward_time_flag,
     )
-
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
         balance_with_transmission(interval, solution.network, "surplus", False)
         balance_with_storage(interval, solution.network, solution.fleet)  # Local storage
@@ -307,7 +316,6 @@ def balance_for_period(
     precharging_allowed: boolean,
     solution,
     year: int64,
-    id_
 ) -> None:
     """
     Iterates through the time intervals within a specified period and performs the unit committment.
@@ -343,22 +351,15 @@ def balance_for_period(
     ATTRIBUTES MODIFIED DURING PRECHARGING
     """
     perform_precharge = False
-    print(id_+" balance for period start loop")
     for t in range(start_t, end_t):
-        strt = str(int(t))
-        print(id_+" balance for interval "+strt)
         energy_balance_for_interval(solution, t, True)
-        print(id_+" spillage and deficit for interval "+strt)
         network_m.calculate_spillage_and_deficit(solution.network, t)
-        print(id_+" update stored energies "+strt)
         fleet_m.update_stored_energies(solution.fleet, t, solution.static.interval_resolutions[t], True)
-        print(id_+" update stored energies "+strt)
         fleet_m.update_remaining_flexible_energies(
             solution.fleet, t, solution.static.interval_resolutions[t], True, False
         )
 
         if not precharging_allowed:
-            print(id_+" skipping precharging "+strt)
             continue
 
         if not perform_precharge and network_m.check_remaining_netloads(solution.network, t, "deficit"):
@@ -369,12 +370,15 @@ def balance_for_period(
         ):
             precharge_storage(solution, t, year)
             perform_precharge = False
-    print(id_+" balance for period end loop")
     return None
 
 
 @njit(fastmath=FASTMATH)
-def determine_precharge_energies_for_deficit_block(interval: int64, solution, year: int64) -> int64:
+def determine_precharge_energies_for_deficit_block(
+    interval: int64,
+    solution,
+    year: int64,
+) -> int64:
     """
     Iterate backwards through the time intervals in a deficit block, dispatching Storage systems
     and flexible Generators according to reverse-time rules. Determines the amount of energy each
@@ -447,7 +451,10 @@ def determine_precharge_energies_for_deficit_block(interval: int64, solution, ye
 
 @njit(fastmath=FASTMATH)
 def initialise_precharging_interval(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Initialise state of all Node, Storage, and flexible Generator instances for a time interval in the
@@ -488,7 +495,10 @@ def initialise_precharging_interval(
 
 @njit(fastmath=FASTMATH)
 def perform_local_surplus_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Use any existing local (intranode) surplus generation to charge Storage prechargers.
@@ -538,7 +548,10 @@ def perform_local_surplus_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_transmitted_surplus_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Transmit any existing surplus generation between Nodes to charge Storage prechargers.
@@ -595,7 +608,10 @@ def perform_transmitted_surplus_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_intranode_interstorage_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Transfer energy within a Node from Storage trickle-chargers to Storage prechargers.
@@ -653,7 +669,10 @@ def perform_intranode_interstorage_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_internode_interstorage_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Transfer energy between Nodes from Storage trickle-chargers to Storage prechargers.
@@ -721,7 +740,10 @@ def perform_internode_interstorage_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_intranode_flexible_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Transfer energy within a Node from flexible Generator trickle-chargers to Storage prechargers.
@@ -781,7 +803,10 @@ def perform_intranode_flexible_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_internode_flexible_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+    resolution: float64,
 ) -> None:
     """
     Transfer energy between Nodes from flexible Generator trickle-chargers to Storage prechargers.
@@ -849,7 +874,10 @@ def perform_internode_flexible_transfers(
 
 
 @njit(fastmath=FASTMATH)
-def perform_flexible_precharging(solution, interval: int64) -> None:
+def perform_flexible_precharging(
+    solution,
+    interval: int64,
+) -> None:
     """
     Use flexible Generators to trickle-charge Storage prechargers for a given time interval within the
     precharging period.
@@ -900,7 +928,11 @@ def perform_flexible_precharging(solution, interval: int64) -> None:
 
 
 @njit(fastmath=FASTMATH)
-def determine_power_adjustments_for_precharging_period(interval: int64, solution, year: int64) -> int64:
+def determine_power_adjustments_for_precharging_period(
+    interval: int64,
+    solution,
+    year: int64,
+) -> int64:
     """
     Iterate backwards through the time intervals in the precharging period, adjusting the dispatch power of
     Storage systems and flexible Generators to transfer enough energy to Storage precharges to balance the
@@ -1010,7 +1042,11 @@ def determine_power_adjustments_for_precharging_period(interval: int64, solution
 
 
 @njit(fastmath=FASTMATH)
-def perform_fill_adjustment(interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType) -> None:
+def perform_fill_adjustment(
+    interval: int64,
+    network: Network_InstanceType,
+    fleet: Fleet_InstanceType,
+) -> None:
     """
     Increases Storage charging power (reduces discharge power) if there is still fill energy required by the
     node after a transmission step. This function is called when resolving the energy discontinuity at the
@@ -1044,7 +1080,9 @@ def perform_fill_adjustment(interval: int64, network: Network_InstanceType, flee
 
 @njit(fastmath=FASTMATH)
 def resolve_energy_discontinuities(
-    first_interval_precharge: int64, interval_after_deficit_block: int64, solution
+    first_interval_precharge: int64,
+    interval_after_deficit_block: int64,
+    solution,
 ) -> None:
     """
     Iterate forwards through the precharging period and deficit block, checking whether the dispatch
@@ -1131,7 +1169,11 @@ def resolve_energy_discontinuities(
 
 
 @njit(fastmath=FASTMATH)
-def precharge_storage(solution, interval_after_deficit_block: int64, year: int64) -> None:
+def precharge_storage(
+    solution,
+    interval_after_deficit_block: int64,
+    year: int64,
+) -> None:
     """
     Core unit committment business rules for precharging Storage systems. The high-level process is:
 

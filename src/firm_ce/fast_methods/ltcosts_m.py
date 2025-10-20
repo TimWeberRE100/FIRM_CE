@@ -1,3 +1,4 @@
+# type: ignore
 from firm_ce.common.constants import FASTMATH
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import float64, int64, unicode_type
@@ -209,9 +210,9 @@ def calculate_vom(
 
 @njit(fastmath=FASTMATH)
 def calculate_fuel(
-    ltcosts_instance: LTCosts_InstanceType, 
-    generation: float64, 
-    unit_hours: float64, 
+    ltcosts_instance: LTCosts_InstanceType,
+    generation: float64,
+    unit_hours: float64,
     unit_costs: UnitCost_InstanceType,
 ) -> None:
     """

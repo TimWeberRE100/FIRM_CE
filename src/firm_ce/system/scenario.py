@@ -101,6 +101,7 @@ class Scenario:
             self.network.minor_lines,
             self.network.nodes,
         )
+
         self.statistics = None
 
         self.assign_x_indices()
@@ -343,7 +344,6 @@ class Scenario:
         of candidate solutions evaluated (`populations.csv`), the energies of each population (`population_energies.csv`),
         and the best candidate solution from each iteration of the optimisation (`callback.csv`).
         """
-        print("Scenario.solve")
         solver = Solver(
             config, self.x0, self.static, self.fleet, self.network, self.logger, self.name, self.initial_population
         )

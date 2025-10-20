@@ -1,3 +1,4 @@
+# type: ignore
 from typing import Dict
 
 import numpy as np
@@ -45,7 +46,7 @@ def select_datafile(
 
 
 def load_datafiles_to_generators(
-    fleet: Fleet_InstanceType,  # type: ignore
+    fleet: Fleet_InstanceType,
     datafiles_imported_dict: Dict[str, DataFile],
     resolution: float,
 ) -> None:
@@ -87,19 +88,39 @@ def load_datafiles_to_generators(
 
 
 def load_datafiles_to_reservoirs(
-    fleet: Fleet_InstanceType,  # type: ignore
+    fleet: Fleet_InstanceType,
     datafiles_imported_dict: Dict[str, DataFile],
 ) -> None:
+    """
+    Iterates through all reservoirs in the fleet and loads their time-series data to each
+    instance. The reservoirs are expected to have an 'inflow' traces defining the inflow of
+    energy to the reservoir in each time interval.
+
+    Parameters:
+    -------
+    fleet (Fleet_InstanceType): A static instance of the Fleet jitclass.
+    datafiles_imported_dict (Dict[str, DataFile]): A dictionary of DataFile instances, where
+        the key is the id in `config/datafiles.csv`.
+    resolution (float): The time resolution of each interval for the input data [hours/interval].
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    The data_status, data, attributes of each reservoir object are modified.
+    """
     for reservoir in fleet.reservoirs.values():
         reservoir_m.load_data(
             reservoir,
-            select_datafile("flexible_inflows", reservoir.name, datafiles_imported_dict),
+            select_datafile("flexible_inflows", reservoir.name, datafiles_imported_dict) / 1000,  # MWh to GWh
         )
     return None
 
 
 def load_datafiles_to_network(
-    network: Network_InstanceType,  # type: ignore
+    network: Network_InstanceType,
     datafiles_imported_dict: Dict[str, DataFile],
 ) -> None:
     """
@@ -133,7 +154,7 @@ def load_datafiles_to_network(
 
 
 def unload_data_from_generators(
-        fleet: Fleet_InstanceType  # type: ignore
+        fleet: Fleet_InstanceType
 ):
     """
     Iterates through all generators and unloads time-series data. Allows large amounts of
@@ -158,7 +179,7 @@ def unload_data_from_generators(
 
 
 def unload_data_from_reservoirs(
-        fleet: Fleet_InstanceType  # type: ignore
+        fleet: Fleet_InstanceType
 ):
     """
     Iterates through all reservoirs and unloads time-series data. Allows large amounts of
@@ -174,8 +195,7 @@ def unload_data_from_reservoirs(
 
     Side-effects:
     -------
-    The data_status, data attributes of each generator object are
-    modified.
+    The data_status, data attributes of each generator object are modified.
     """
     for reservoir in fleet.reservoirs.values():
         reservoir_m.unload_data(reservoir)
@@ -183,7 +203,7 @@ def unload_data_from_reservoirs(
 
 
 def unload_data_from_network(
-        network: Network_InstanceType  # type: ignore
+        network: Network_InstanceType
 ):
     """
     Iterates through all nodes and unloads time-series data. Allows large amounts of

@@ -1,3 +1,4 @@
+# type: ignore
 import numpy as np
 
 from firm_ce.common.constants import JIT_ENABLED
@@ -41,11 +42,11 @@ class Fuel:
 
     def __init__(
         self,
-        static_instance: boolean,  # type: ignore
-        idx: int64,  # type: ignore
-        name: unicode_type,  # type: ignore
-        cost: float64,  # type: ignore
-        emissions: float64,  # type: ignore
+        static_instance: boolean,
+        idx: int64,
+        name: unicode_type,
+        cost: float64,
+        emissions: float64,
     ) -> None:
         """
         Initialise a Fuel instance.
@@ -180,21 +181,21 @@ class Generator:
 
     def __init__(
         self,
-        static_instance: boolean,  # type: ignore
-        idx: int64,  # type: ignore
-        order: int64,  # type: ignore
-        name: unicode_type,  # type: ignore
-        unit_size: float64,  # type: ignore
-        max_build: float64,  # type: ignore
-        min_build: float64,  # type: ignore
-        capacity: float64,  # type: ignore
-        unit_type: unicode_type,  # type: ignore
-        near_optimum_check: boolean,  # type: ignore
-        node: Node_InstanceType,  # type: ignore
-        fuel: Fuel_InstanceType,  # type: ignore
-        line: Line_InstanceType,  # type: ignore
-        group: unicode_type,  # type: ignore
-        cost: UnitCost_InstanceType,  # type: ignore
+        static_instance: boolean,
+        idx: int64,
+        order: int64,
+        name: unicode_type,
+        unit_size: float64,
+        max_build: float64,
+        min_build: float64,
+        capacity: float64,
+        unit_type: unicode_type,
+        near_optimum_check: boolean,
+        node: Node_InstanceType,
+        fuel: Fuel_InstanceType,
+        line: Line_InstanceType,
+        group: unicode_type,
+        cost: UnitCost_InstanceType,
     ) -> None:
         """
         Initialise a Generator instance.
@@ -274,10 +275,6 @@ if JIT_ENABLED:
         ("id", int64),
         ("order", int64),
         ("name", unicode_type),
-        ("unit_size", float64),
-        ("node", Node_InstanceType),
-        ("fuel", Fuel_InstanceType),
-        ("line", Line_InstanceType),
         ("initial_power_capacity", float64),
         ("initial_energy_capacity", float64),
         ("duration", int64),
@@ -289,6 +286,10 @@ if JIT_ENABLED:
         ("min_build_e", float64),
         ("unit_type", unicode_type),
         ("near_optimum_check", boolean),
+        ("unit_size", float64),
+        ("node", Node_InstanceType),
+        ("fuel", Fuel_InstanceType),
+        ("line", Line_InstanceType),
         ("group", unicode_type),
         ("cost", UnitCost_InstanceType),
         ("data_status", unicode_type),
@@ -344,12 +345,6 @@ class Reservoir:
 
     Attributes:
     -------
-    max_build_p (float64): Maximum build limit for power capacity, units GW.
-    max_build_e (float64): Maximum build limit for energy capacity, units GWh.
-    min_build_p (float64): Minimum build limit for power capacity, units GW.
-    min_build_e (float64): Minimum build limit for energy capacity, units GWh.
-
-
     static_instance (boolean): True value indicates 'static' instance, False indicates 'dynamic' instance.
         A static instance is unsafe to modify within a worker process for the unit committment process.
     id (int64): A model-level identifier for the Reservoir instance.
@@ -364,8 +359,9 @@ class Reservoir:
     max_build_e (float64): Maximum build limit for energy capacity, units GWh.
     min_build_p (float64): Minimum build limit for power capacity, units GW.
     min_build_e (float64): Minimum build limit for energy capacity, units GWh.
-    unit_type (unicode_type): Type of Reservoir (e.g., 'flexible', 'flexible_annual).
+    unit_type (unicode_type): Type of Reservoir (e.g., 'flexible').
     near_optimum_check (boolean): Flag to perform near-optimum optimisation.
+    unit_size (float64): Nameplate unit size in GW. A Reservoir could be formed from multiple units.
     node (Node_InstanceType): The Network Node where the Reservoir is located.
     fuel (Fuel_InstanceType): The Fuel consumed by the Reservoir.
     line (Line_InstanceType): Minor line connecting Reservoir to the transmission network.
@@ -375,49 +371,55 @@ class Reservoir:
     data_status (unicode_type): Status of data loading (e.g., 'unloaded').
     data (float64[:]): Interval inflow trace data. Each value represents the reservoir inflow of fuel (in GWh) in each time
         interval of the modelling horizon.
-    candidate_x_idx (int64): Index of the Reservoir's decision variable (new build capacity) in the candidate solution vector.
-    new_build (float64): Capacity built for the candidate solution, units GW.
-    capacity (float64): Current installed capacity, units GW.
+    candidate_p_x_idx (int64): Index of one Reservoir decision variable (new build power capacity) in the candidate
+        solution vector.
+    candidate_e_x_idx (int64): Index of one Reservoir decision variable (new build energy capacity) in the candidate
+        solution vector.
+    new_build_p (float64): New build power capacity, units GW.
+    new_build_e (float64): New build energy capacity, units GWh.
+    power_capacity (float64): Current installed power capacity, units GW.
+    energy_capacity (float64): Current installed energy capacity, units GWh.
     dispatch_power (float64[:]): Interval dispatch power of a flexible Reservoir, units GW.
-    remaining_energy (float64[:]): Remaining annual energy for flexible Reservoirs, units GWh.
-    reservoir_max_t (float64): Maximum dispatchable power in the current interval for a flexible Reservoir, units GW.
+    stored_energy (float64[:]): Remaining stored for flexible Reservoirs, units GWh.
+    discharge_max_t (float64): Maximum discharging power in the current interval, units GW.
+    charge_max_t (float64): Maximum charging power in the current interval, units GW.
     lt_generation (float64): Long-term total generation over the entire modelling horizon, units GWh.
     unit_lt_hours (float64): Total hours of operation per unit, units hours.
     lt_costs (LTCosts_InstanceType): Endogenously calculated long-term costs of the Reservoir over the modelling horizon.
-    remaining_energy_temp_reverse (float64): Temporary value for remaining energy when balancing deficit block in reverse time,
+    stored_energy_temp_reverse (float64): Temporary value for stored energy when balancing deficit block in reverse time,
         units GWh.
-    remaining_energy_temp_forward (float64): Temporary value for remaining energy when balancing deficit block in forward time,
+    stored_energy_temp_forward (float64): Temporary value for stored energy when balancing deficit block in forward time,
         units GWh.
-    deficit_block_max_energy (float64): Maximum value of remaining energy within a deficit block, units GWh.
-    deficit_block_min_energy (float64): Minimum value of remaining energy within a deficit block, units GWh.
+    deficit_block_min_storage (float64): Minimum value of stored energy within a deficit block, units GWh.
+    deficit_block_max_storage (float64): Maximum value of stored energy within a deficit block, units GWh.
     trickling_flag (boolean): Flag indicating if flexible Reservoir is a trickle-charger and can precharge Storage systems.
-    trickling_reserves (float64): Energy that must be retained during precharging so that flexible Reservoir can dispatch
+    trickling_reserves (float64): Energy that must be retained during precharging so that Reservoir can dispatch
         during deficit block, units GWh.
     remaining_trickling_reserves (float64): Energy remaining for trickle charging in the precharging period, units GWh.
     """
 
     def __init__(
         self,
-        static_instance: boolean,  # type: ignore
-        idx: int64,  # type: ignore
-        order: int64,  # type: ignore
-        name: unicode_type,  # type: ignore
-        unit_size: float64,  # type: ignore
-        power_capacity: float64,  # type: ignore
-        energy_capacity: float64,  # type: ignore
-        duration: float64,  # type: ignore
-        discharge_efficiency: float64,  # type: ignore
-        max_build_p: float64,  # type: ignore
-        max_build_e: float64,  # type: ignore
-        min_build_p: float64,  # type: ignore
-        min_build_e: float64,  # type: ignore
-        unit_type: unicode_type,  # type: ignore
-        near_optimum_check: boolean,  # type: ignore
-        node: Node_InstanceType,  # type: ignore
-        fuel: Fuel_InstanceType,  # type: ignore
-        line: Line_InstanceType,  # type: ignore
-        group: unicode_type,  # type: ignore
-        cost: UnitCost_InstanceType,  # type: ignore
+        static_instance: boolean,
+        idx: int64,
+        order: int64,
+        name: unicode_type,
+        unit_size: float64,
+        power_capacity: float64,
+        energy_capacity: float64,
+        duration: float64,
+        discharge_efficiency: float64,
+        max_build_p: float64,
+        max_build_e: float64,
+        min_build_p: float64,
+        min_build_e: float64,
+        unit_type: unicode_type,
+        near_optimum_check: boolean,
+        node: Node_InstanceType,
+        fuel: Fuel_InstanceType,
+        line: Line_InstanceType,
+        group: unicode_type,
+        cost: UnitCost_InstanceType,
     ) -> None:
         """
         Initialise a Reservoir instance.
@@ -628,25 +630,25 @@ class Storage:
 
     def __init__(
         self,
-        static_instance: boolean,  # type: ignore
-        idx: int64,  # type: ignore
-        order: int64,  # type: ignore
-        name: unicode_type,  # type: ignore
-        power_capacity: float64,  # type: ignore
-        energy_capacity: float64,  # type: ignore
-        duration: float64,  # type: ignore
-        charge_efficiency: float64,  # type: ignore
-        discharge_efficiency: float64,  # type: ignore
-        max_build_p: float64,  # type: ignore
-        max_build_e: float64,  # type: ignore
-        min_build_p: float64,  # type: ignore
-        min_build_e: float64,  # type: ignore
-        unit_type: unicode_type,  # type: ignore
-        near_optimum_check: boolean,  # type: ignore
-        node: Node_InstanceType,  # type: ignore
-        line: Line_InstanceType,  # type: ignore
-        group: unicode_type,  # type: ignore
-        cost: UnitCost_InstanceType,  # type: ignore
+        static_instance: boolean,
+        idx: int64,
+        order: int64,
+        name: unicode_type,
+        power_capacity: float64,
+        energy_capacity: float64,
+        duration: float64,
+        charge_efficiency: float64,
+        discharge_efficiency: float64,
+        max_build_p: float64,
+        max_build_e: float64,
+        min_build_p: float64,
+        min_build_e: float64,
+        unit_type: unicode_type,
+        near_optimum_check: boolean,
+        node: Node_InstanceType,
+        line: Line_InstanceType,
+        group: unicode_type,
+        cost: UnitCost_InstanceType,
     ) -> None:
         """
         Initialise a Storage instance.
@@ -762,10 +764,10 @@ class Fleet:
 
     def __init__(
         self,
-        static_instance: boolean,  # type: ignore
-        generators: DictType(int64, Generator_InstanceType),  # type: ignore
-        reservoirs: DictType(int64, Reservoir_InstanceType),  # type: ignore
-        storages: DictType(int64, Storage_InstanceType),  # type: ignore
+        static_instance: boolean,
+        generators: DictType(int64, Generator_InstanceType),
+        reservoirs: DictType(int64, Reservoir_InstanceType),
+        storages: DictType(int64, Storage_InstanceType),
     ):
         """
         Parameters:

@@ -1,3 +1,4 @@
+# type: ignore
 from typing import Dict
 
 import numpy as np
@@ -21,7 +22,7 @@ from firm_ce.system.topology import Line_InstanceType, Node_InstanceType
 
 def construct_Fuel_object(
         fuel_dict: Dict[str, str]
-) -> Fuel_InstanceType:  # type: ignore
+) -> Fuel_InstanceType:
     """
     Takes a fuel_dict, casts values into Numba-compatible types, and
     returns an instance of the Fuel jitclass.
@@ -45,10 +46,10 @@ def construct_Fuel_object(
 def construct_Generator_object(
     generator_dict: Dict[str, str],
     fuels_imported_dict: Dict[str, Dict[str, str]],
-    nodes_object_dict: DictType(int64, Node_InstanceType),  # type: ignore
-    lines_object_dict: DictType(int64, Line_InstanceType),  # type: ignore
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+    lines_object_dict: DictType(int64, Line_InstanceType),
     order: int,
-) -> Generator_InstanceType:  # type: ignore
+) -> Generator_InstanceType:
     """
     Takes data required to initialise a single generator object,
     casts values into Numba-compatible types, and returns an
@@ -127,10 +128,10 @@ def construct_Generator_object(
 def construct_Reservoir_object(
     reservoir_dict: Dict[str, str],
     fuels_imported_dict: Dict[str, Dict[str, str]],
-    nodes_object_dict: DictType(int64, Node_InstanceType),  # type: ignore
-    lines_object_dict: DictType(int64, Line_InstanceType),  # type: ignore
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+    lines_object_dict: DictType(int64, Line_InstanceType),
     order: int,
-) -> Reservoir_InstanceType:  # type: ignore
+) -> Reservoir_InstanceType:
     """
     Takes data required to initialise a single storage object,
     casts values into Numba-compatible types, and returns an
@@ -140,6 +141,8 @@ def construct_Reservoir_object(
     -------
     reservoir_dict (Dict[str,str]): A dictionary containing the attributes of
         a single reservoir object in `config/reservoirs.csv`.
+    fuels_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all fuels
+        imported from `config/fules.csv`.
     nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
     lines_object_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
@@ -220,10 +223,10 @@ def construct_Reservoir_object(
 
 def construct_Storage_object(
     storage_dict: Dict[str, str],
-    nodes_object_dict: DictType(int64, Node_InstanceType),  # type: ignore
-    lines_object_dict: DictType(int64, Line_InstanceType),  # type: ignore
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+    lines_object_dict: DictType(int64, Line_InstanceType),
     order: int,
-) -> Storage_InstanceType:  # type: ignore
+) -> Storage_InstanceType:
     """
     Takes data required to initialise a single storage object,
     casts values into Numba-compatible types, and returns an
@@ -309,9 +312,9 @@ def construct_Fleet_object(
     reservoirs_imported_dict: Dict[str, Dict[str, str]],
     storages_imported_dict: Dict[str, Dict[str, str]],
     fuels_imported_dict: Dict[str, Dict[str, str]],
-    lines_object_dict: DictType(int64, Line_InstanceType),  # type: ignore
-    nodes_object_dict: DictType(int64, Node_InstanceType),  # type: ignore
-) -> Fleet_InstanceType:  # type: ignore
+    lines_object_dict: DictType(int64, Line_InstanceType),
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+) -> Fleet_InstanceType:
     """
     Takes data required to initialise a single fleet object, casts values into Numba-compatible
     types, and returns an instance of the Fleet jitclass. The Fleet consists of all assets that
@@ -321,6 +324,8 @@ def construct_Fleet_object(
     -------
     generators_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
         generators imported from `config/generators.csv`.
+    reservoirs_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
+        reservoirs imported from `config/reservoirs.csv`.
     storages_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all
         storages imported from `config/storages.csv`.
     fuels_imported_dict (Dict[str, Dict[str, str]]): A dictionary containing data for all fuels
