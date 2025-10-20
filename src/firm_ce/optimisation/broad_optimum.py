@@ -215,7 +215,7 @@ class BroadOptimum:
 
     def minimise_group_xs(self, initial_population: NDArray[np.float64], group_key: str) -> NDArray[np.float64]:
         initial_population_adjusted = initial_population.copy()
-        for candidate_x_idx, asset_name, _, near_optimum_check, near_optimum_group, min_build, _ in self.variable_info:
+        for candidate_x_idx, _, _, near_optimum_check, near_optimum_group, min_build, _ in self.variable_info:
             if near_optimum_check and (near_optimum_group == group_key):
                 initial_population_adjusted[:, candidate_x_idx] = min_build
         return initial_population_adjusted
