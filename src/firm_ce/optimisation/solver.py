@@ -100,6 +100,8 @@ class Solver:
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "callback.csv"), "w", newline="") as csvfile:
             csv.writer(csvfile)
+        with open(os.path.join(temp_dir, "latest_population.csv"), "w", newline="") as csvfile:
+            csv.writer(csvfile)
         with open(os.path.join(temp_dir, "population.csv"), "w", newline="") as csvfile:
             csv.writer(csvfile)
         with open(os.path.join(temp_dir, "population_energies.csv"), "w", newline="") as csvfile:
