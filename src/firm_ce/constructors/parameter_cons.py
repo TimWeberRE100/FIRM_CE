@@ -69,7 +69,7 @@ def construct_ScenarioParameters_object(
     -------
     ScenarioParameters_InstanceType: A static instance of the ScenarioParameters jitclass.
     """
-    resolution = float(scenario_data_dict.get("resolution", 0.0))
+    resolution = float(scenario_data_dict["resolution"])
     allowance = float(scenario_data_dict.get("allowance", 0.0))
     first_year = int(scenario_data_dict.get("firstyear", 0))
     final_year = int(scenario_data_dict.get("finalyear", 0))
