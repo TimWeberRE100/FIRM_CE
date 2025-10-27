@@ -1,3 +1,4 @@
+# type: ignore
 from firm_ce.common.constants import FASTMATH, NP_FLOAT_MAX
 from firm_ce.common.jit_overload import njit
 from firm_ce.common.typing import DictType, TypedList, boolean, float64, int64
@@ -59,7 +60,10 @@ def create_dynamic_copy(
 
 
 @njit(fastmath=FASTMATH)
-def check_contains_line(route_instance: Route_InstanceType, new_line: Line_InstanceType) -> boolean:
+def check_contains_line(
+    route_instance: Route_InstanceType,
+    new_line: Line_InstanceType,
+) -> boolean:
     """
     Checks if a Route already contains a particular Line instance, identified by the unique 'order' of
     that Line. Routes can only contain one of each Line instance in order to prevent the formation of
@@ -82,7 +86,10 @@ def check_contains_line(route_instance: Route_InstanceType, new_line: Line_Insta
 
 
 @njit(fastmath=FASTMATH)
-def check_contains_node(route_instance: Route_InstanceType, new_node: Node_InstanceType) -> boolean:
+def check_contains_node(
+    route_instance: Route_InstanceType,
+    new_node: Node_InstanceType,
+) -> boolean:
     """
     Checks if a Route already contains a particular Node instance, identified by the unique 'order' of
     that Node. Routes can only contain one of each Node instance in order to prevent the formation of
@@ -106,7 +113,10 @@ def check_contains_node(route_instance: Route_InstanceType, new_node: Node_Insta
 
 
 @njit(fastmath=FASTMATH)
-def get_max_flow_update(route_instance: Route_InstanceType, interval: int64) -> float64:
+def get_max_flow_update(
+    route_instance: Route_InstanceType,
+    interval: int64,
+) -> float64:
     """
     During a transmission action, the maximum flow update for a Route represents the maximum
     amount of electricity that could be imported to the fill node along that Route. It is constrained
@@ -136,7 +146,10 @@ def get_max_flow_update(route_instance: Route_InstanceType, interval: int64) -> 
 
 
 @njit(fastmath=FASTMATH)
-def calculate_flow_update(route_instance: Route_InstanceType, interval: int64) -> None:
+def calculate_flow_update(
+    route_instance: Route_InstanceType,
+    interval: int64,
+) -> None:
     """
     During a transmission action, the flow update of each Route for a given fill node and route length
     is initially based upon the surplus energy at the final Node in the route. It is constrained by
@@ -180,7 +193,10 @@ def calculate_flow_update(route_instance: Route_InstanceType, interval: int64) -
 
 
 @njit(fastmath=FASTMATH)
-def update_exports(route_instance: Route_InstanceType, interval: int64) -> None:
+def update_exports(
+    route_instance: Route_InstanceType,
+    interval: int64,
+) -> None:
     """
     Once the flow updates for the Route instances corresponding to a particular start node and route length
     have been determined, the transmission action is executed.

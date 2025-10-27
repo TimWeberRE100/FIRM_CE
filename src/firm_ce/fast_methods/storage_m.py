@@ -1,3 +1,4 @@
+# type: ignore
 import numpy as np
 
 from firm_ce.common.constants import FASTMATH, TOLERANCE
@@ -79,7 +80,9 @@ def create_dynamic_copy(
 
 @njit(fastmath=FASTMATH)
 def build_capacity(
-    storage_instance: Storage_InstanceType, new_build_capacity: float64, capacity_type: unicode_type
+    storage_instance: Storage_InstanceType,
+    new_build_capacity: float64,
+    capacity_type: unicode_type,
 ) -> None:
     """
     Takes a new_build_capacity (either power capacity or energy capacity) and adds it to the corresponding existing capacity
@@ -130,7 +133,10 @@ def build_capacity(
 
 
 @njit(fastmath=FASTMATH)
-def allocate_memory(storage_instance: Storage_InstanceType, intervals_count: int64) -> None:
+def allocate_memory(
+    storage_instance: Storage_InstanceType,
+    intervals_count: int64
+) -> None:
     """
     Memory associated with endogenous time-series data for a Storage system is only allocated after a dynamic copy of
     the Storage instance is created. This is to minimise memory usage of the static instances.
@@ -160,7 +166,9 @@ def allocate_memory(storage_instance: Storage_InstanceType, intervals_count: int
 
 
 @njit(fastmath=FASTMATH)
-def initialise_stored_energy(storage_instance: Storage_InstanceType) -> None:
+def initialise_stored_energy(
+    storage_instance: Storage_InstanceType,
+) -> None:
     """
     Initialise the stored energy for a Storage system. Called at the start of the modelling period.
 
@@ -183,7 +191,7 @@ def initialise_stored_energy(storage_instance: Storage_InstanceType) -> None:
     """
     if storage_instance.static_instance:
         raise_static_modification_error()
-    # Make it possible for user to define custom value for initial stored energy in future
+    # TODO:  Make it possible for user to define custom value for initial stored energy in future
     storage_instance.stored_energy[-1] = 0.5 * storage_instance.energy_capacity
     return None
 
@@ -262,7 +270,11 @@ def set_dispatch_max_t(
 
 
 @njit(fastmath=FASTMATH)
-def dispatch(storage_instance: Storage_InstanceType, interval: int64, merit_order_idx: int64) -> None:
+def dispatch(
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+    merit_order_idx: int64,
+) -> None:
     """
     Dispatches the Storage system according to its place in the merit order for the Storage.node.
     The total storage power at that node is also updated according to the dispatch of the Storage
@@ -326,7 +338,10 @@ def dispatch(storage_instance: Storage_InstanceType, interval: int64, merit_orde
 
 @njit(fastmath=FASTMATH)
 def update_stored_energy(
-    storage_instance: Storage_InstanceType, interval: int64, resolution: float64, forward_time_flag: boolean
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+    resolution: float64,
+    forward_time_flag: boolean,
 ) -> None:
     """
     Once the dispatch power for a Storage system has been established for a time interval, the stored energy
@@ -364,7 +379,10 @@ def update_stored_energy(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_discharge(storage_instance: Storage_InstanceType, interval_resolutions: float64[:]) -> None:
+def calculate_lt_discharge(
+    storage_instance: Storage_InstanceType,
+    interval_resolutions: float64[:],
+) -> None:
     """
     Calculate the total energy discharged over the long-term modelling horizon for a Storage system.
 
@@ -391,7 +409,9 @@ def calculate_lt_discharge(storage_instance: Storage_InstanceType, interval_reso
 
 
 @njit(fastmath=FASTMATH)
-def calculate_variable_costs(storage_instance: Storage_InstanceType) -> float64:
+def calculate_variable_costs(
+    storage_instance: Storage_InstanceType,
+) -> float64:
     """
     Calculate the total variable costs for a Storage system at the end of unit committment.
 
@@ -414,7 +434,11 @@ def calculate_variable_costs(storage_instance: Storage_InstanceType) -> float64:
 
 
 @njit(fastmath=FASTMATH)
-def calculate_fixed_costs(storage_instance: Storage_InstanceType, years_float: float64, year_count: int64) -> float64:
+def calculate_fixed_costs(
+    storage_instance: Storage_InstanceType,
+    years_float: float64,
+    year_count: int64,
+) -> float64:
     """
     Calculate the total fixed costs for a Storage system.
 
@@ -449,7 +473,10 @@ def calculate_fixed_costs(storage_instance: Storage_InstanceType, years_float: f
 
 
 @njit(fastmath=FASTMATH)
-def initialise_deficit_block(storage_instance: Storage_InstanceType, interval: int64) -> None:
+def initialise_deficit_block(
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+) -> None:
     """
     Upon resolving a deficit block, initialise the temporary stored energy,
     max stored energy, and min stored energy values for a Storage system. These temporary
@@ -478,7 +505,10 @@ def initialise_deficit_block(storage_instance: Storage_InstanceType, interval: i
 
 
 @njit(fastmath=FASTMATH)
-def update_deficit_block_bounds(storage_instance: Storage_InstanceType, stored_energy: float64) -> None:
+def update_deficit_block_bounds(
+    storage_instance: Storage_InstanceType,
+    stored_energy: float64,
+) -> None:
     """
     Update the temporary minimum and maximum stored energy values for the Storage system in the
     deficit block. These values are updated in each time interval for the deficit block. The minimum
@@ -505,7 +535,9 @@ def update_deficit_block_bounds(storage_instance: Storage_InstanceType, stored_e
 
 
 @njit(fastmath=FASTMATH)
-def assign_precharging_reserves(storage_instance: Storage_InstanceType) -> None:
+def assign_precharging_reserves(
+    storage_instance: Storage_InstanceType,
+) -> None:
     """
     Calculates the precharge energy that the Storage system must charge during the precharging period in order
     to dispatch during the deficit block (for prechargers). Based upon the discontinuity between the forwards-time
@@ -544,7 +576,10 @@ def assign_precharging_reserves(storage_instance: Storage_InstanceType) -> None:
 
 
 @njit(fastmath=FASTMATH)
-def initialise_precharging_flags(storage_instance: Storage_InstanceType, interval: int64) -> None:
+def initialise_precharging_flags(
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+) -> None:
     """
     Initialises the trickling flag and precharge flag for a Storage system once precharging in the lead-up to the deficit
     block begins.
@@ -580,7 +615,10 @@ def initialise_precharging_flags(storage_instance: Storage_InstanceType, interva
 
 
 @njit(fastmath=FASTMATH)
-def update_precharging_flags(storage_instance: Storage_InstanceType, interval: int64) -> None:
+def update_precharging_flags(
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+) -> None:
     """
     At the start of a time interval within the precharging period, the remaining trickling reserves,
     trickling flag, and precharge flag for the Storage system is updated. The remaining trickling reserves define the
@@ -626,7 +664,10 @@ def update_precharging_flags(storage_instance: Storage_InstanceType, interval: i
 
 @njit(fastmath=FASTMATH)
 def set_precharging_max_t(
-    storage_instance: Storage_InstanceType, interval: int64, resolution: float64, merit_order_idx: int64
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+    resolution: float64,
+    merit_order_idx: int64,
 ) -> None:
     """
     Within the precharging period (leading up to the deficit block), the maximum dispatch power adjustment for a
@@ -829,7 +870,10 @@ def update_precharge_dispatch(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_available_dispatch(storage_instance: Storage_InstanceType, interval: int64) -> None:
+def calculate_available_dispatch(
+    storage_instance: Storage_InstanceType,
+    interval: int64,
+) -> None:
     """
     Calculate the maximum adjustment to dispatch power that is possible for a Storage system. When
     a precharging action is found to be infeasible (while attempting to dispatch according to the

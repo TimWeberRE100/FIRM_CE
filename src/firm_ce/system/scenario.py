@@ -11,8 +11,10 @@ from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_obj
 from firm_ce.constructors.topology_cons import construct_Network_object
 from firm_ce.constructors.traces_cons import (
     load_datafiles_to_generators,
+    load_datafiles_to_reservoirs,
     load_datafiles_to_network,
     unload_data_from_generators,
+    unload_data_from_reservoirs,
     unload_data_from_network,
 )
 from firm_ce.fast_methods import static_m
@@ -77,27 +79,29 @@ class Scenario:
         """
         self.logger, self.results_dir = model_data.logger, model_data.results_dir
 
-        self.scenario_data = model_data.scenarios.get(scenario_id)
+        self.scenario_data = model_data.scenarios[scenario_id]
 
         self.id = scenario_id
-        self.name = self.scenario_data.get("scenario_name", "")
-        self.type = self.scenario_data.get("type", "")
+        self.name = self.scenario_data["scenario_name"]
+        self.type = self.scenario_data["type"]
         self.x0 = self.get_initial_guess(model_data.x0s)
         self.initial_population = self.get_initial_pop()
 
         self.network = construct_Network_object(
             self.get_scenario_dicts(model_data.nodes),
             self.get_scenario_dicts(model_data.lines),
-            self.scenario_data.get("networksteps_max", 0),
+            self.scenario_data["networksteps_max"],
         )
         self.static = construct_ScenarioParameters_object(self.scenario_data, len(self.network.nodes))
         self.fleet = construct_Fleet_object(
             self.get_scenario_dicts(model_data.generators),
+            self.get_scenario_dicts(model_data.reservoirs),
             self.get_scenario_dicts(model_data.storages),
             self.get_scenario_dicts(model_data.fuels),
             self.network.minor_lines,
             self.network.nodes,
         )
+
         self.statistics = None
 
         self.assign_x_indices()
@@ -133,6 +137,7 @@ class Scenario:
         load_datafiles_to_network(self.network, datafiles)
 
         load_datafiles_to_generators(self.fleet, datafiles, self.static.resolution)
+        load_datafiles_to_reservoirs(self.fleet, datafiles)
 
         static_m.set_year_energy_demand(self.static, self.network.nodes)
 
@@ -162,6 +167,7 @@ class Scenario:
         unload_data_from_network(self.network)
 
         unload_data_from_generators(self.fleet)
+        unload_data_from_reservoirs(self.fleet)
 
         static_m.unset_year_energy_demand(self.static)
 
@@ -234,11 +240,11 @@ class Scenario:
         None: Returned if scenario is not a key in the initial guess dictionary.
         """
         for entry in all_x0s.values():
-            if entry.get("scenario") == self.name:
-                if isinstance(entry.get("x_0", ""), float) and np.isnan(entry.get("x_0", "")):
+            if entry["scenario"] == self.name:
+                if isinstance(entry["x_0"], float) and np.isnan(entry["x_0"]):
                     x0_list = []
                 else:
-                    x0_str = entry.get("x_0", "").strip()
+                    x0_str = entry["x_0"].strip()
                     x0_list = [float(x) for x in x0_str.split(",") if x.strip()]
                 return np.array(x0_list, dtype=np.float64)
         return None
@@ -264,12 +270,10 @@ class Scenario:
             each column represents a different decision variable.
         str: A default value of "latinhypercube" is returned if no initial population filename is assigned to the Scenario.
         """
-        if isinstance(self.scenario_data.get("initial_pop_filename", ""), float) and np.isnan(
-            self.scenario_data.get("initial_pop_filename", "")
-        ):
+        if np.isnan(self.scenario_data["initial_pop_filename"]):
             filename = None
         else:
-            filename = self.scenario_data.get("initial_pop_filename", None)
+            filename = self.scenario_data["initial_pop_filename"]
 
         if filename:
             return np.loadtxt(filename, delimiter=",")
@@ -300,6 +304,12 @@ class Scenario:
         x_index = 0
         for generator in self.fleet.generators.values():
             generator.candidate_x_idx = x_index
+            x_index += 1
+        for reservoir in self.fleet.reservoirs.values():
+            reservoir.candidate_p_x_idx = x_index
+            x_index += 1
+        for reservoir in self.fleet.reservoirs.values():
+            reservoir.candidate_e_x_idx = x_index
             x_index += 1
         for storage in self.fleet.storages.values():
             storage.candidate_p_x_idx = x_index

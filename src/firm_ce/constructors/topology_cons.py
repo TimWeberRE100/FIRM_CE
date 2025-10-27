@@ -1,3 +1,4 @@
+# type: ignore
 from typing import Dict, Any
 
 import numpy as np
@@ -18,7 +19,7 @@ from firm_ce.system.topology import (
 )
 
 
-def construct_Node_object(idx: int, order: int, node_dict: dict) -> Node_InstanceType:
+def construct_Node_object(order: int, node_dict: dict) -> Node_InstanceType:
     """
     Takes data required to initialise a single node object and returns an instance of the Node jitclass.
     The nodes (also called buses) represent a spatial location that is treated as a copper-plate. All
@@ -28,8 +29,6 @@ def construct_Node_object(idx: int, order: int, node_dict: dict) -> Node_Instanc
 
     Parameters:
     -------
-    idx (int): The model-level id associated with the node. Currently the same as Node.order since nodes
-        are defined at the scenario-level in `config/scenarios.csv`. May change in future.
     order (int): The scenario-level id associated with the node.
     node_name (str): A name associated with the node.
 
@@ -37,13 +36,13 @@ def construct_Node_object(idx: int, order: int, node_dict: dict) -> Node_Instanc
     -------
     Node_InstanceType: A static instance of the Node jitclass.
     """
-    return Node(True, idx, order, node_dict.get("name"))
+    return Node(True, node_dict["id"], order, node_dict["name"])
 
 
 def construct_Line_object(
+    order: int,
     line_dict: Dict[str, Any],
     nodes_object_dict: DictType(int64, Node_InstanceType),
-    order: int
 ) -> Line_InstanceType:
     """
     Takes data required to initialise a single line object, casts values into Numba-compatible
@@ -52,11 +51,11 @@ def construct_Line_object(
 
     Parameters:
     -------
+    order (int): The scenario-specific id for the Storage instance.
     line_dict (Dict[str,Any]): A dictionary containing the attributes of
         a single line object in `config/lines.csv`.
     nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
-    order (int): The scenario-specific id for the Storage instance.
 
     Returns:
     -------
@@ -70,10 +69,10 @@ def construct_Line_object(
     min_build = float(line_dict["min_build"])
     capacity = float(line_dict["initial_capacity"])
     unit_type = str(line_dict["unit_type"])
-    near_opt = str(line_dict.get("near_optimum", "")).lower() in ("true", "1", "yes")
-    minor_node = construct_Node_object(-1, -1, {"name": "MINOR_NODE"})
+    near_opt = str(line_dict["near_optimum"]).lower() in ("true", "1", "yes")
+    minor_node = construct_Node_object(-1, {"name": "MINOR_NODE", "id": -1})
 
-    raw_group = line_dict.get("range_group", "")
+    raw_group = line_dict["range_group"]
     group = (
         name
         if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == ""
@@ -329,10 +328,8 @@ def construct_Network_object(
     """
 
     nodes = TypedDict.empty(key_type=int64, value_type=Node_InstanceType)
-    for idx in range(len(nodes_imported_dict)):
-        nodes[idx] = construct_Node_object(
-            idx, idx, nodes_imported_dict[idx]
-        )  # Separate idx from order in future version for consistency?
+    for order in nodes_imported_dict:
+        nodes[order] = construct_Node_object(order, nodes_imported_dict[order])
 
     major_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)
     minor_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)
@@ -340,10 +337,10 @@ def construct_Network_object(
     order_minor = 0
     for idx in lines_imported_dict:
         if not is_nan(lines_imported_dict[idx]["node_start"]) and not is_nan(lines_imported_dict[idx]["node_end"]):
-            major_lines[order_major] = construct_Line_object(lines_imported_dict[idx], nodes, order_major)
+            major_lines[order_major] = construct_Line_object(order_major, lines_imported_dict[idx], nodes)
             order_major += 1
         else:
-            minor_lines[order_minor] = construct_Line_object(lines_imported_dict[idx], nodes, order_minor)
+            minor_lines[order_minor] = construct_Line_object(order_minor, lines_imported_dict[idx], nodes)
             order_minor += 1
 
     routes = build_routes_typed_dict(networksteps_max, nodes, major_lines)
