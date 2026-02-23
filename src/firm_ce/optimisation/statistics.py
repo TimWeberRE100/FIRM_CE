@@ -19,6 +19,33 @@ from firm_ce.system.topology import Network_InstanceType
 class Statistics:
     @staticmethod
     def initialise_header_rows(col_count: int, row_labels_flag: bool = True) -> NDArray[object]:
+        """
+        Allocate an empty 5-row header array for a result file.
+
+        The five rows correspond to Asset Name, Asset Type, Asset ID, Column Name,
+        and Column Units. When row_labels_flag is True an extra leading column is
+        included to hold row label strings.
+
+        Parameters:
+        -------
+        col_count (int): Number of data columns (excluding the optional row-label
+            column).
+        row_labels_flag (bool): If True (default), prepend a row-label column to
+            the header array.
+
+        Returns:
+        -------
+        NDArray[object]: A 2-D object array of shape (5, col_count + 1) when
+            row_labels_flag is True, or (5, col_count) otherwise.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         if row_labels_flag:
             header = np.empty((5, col_count + 1), dtype=object)
             header[:, 0] = np.array(
@@ -46,6 +73,41 @@ class Statistics:
         fixed_costs_threshold: float,
         copy_callback: bool = True,
     ):
+        """
+        Evaluate a candidate solution and prepare the output directory for results.
+
+        Parameters:
+        -------
+        x_candidate (NDArray[np.float64]): Decision variable vector representing
+            the candidate solution to evaluate and report on.
+        parameters_static (ScenarioParameters_InstanceType): A static instance of the
+            ScenarioParameters jitclass.
+        fleet_static (Fleet_InstanceType): A static instance of the Fleet jitclass.
+        network_static (Network_InstanceType): A static instance of the Network jitclass.
+        solution_results_directory (str): Parent directory under which a
+            scenario-specific subdirectory will be created.
+        scenario_name (str): Name of the scenario, combined with balancing_type
+            to form the output subdirectory name.
+        balancing_type (str): Balancing method identifier, appended to
+            scenario_name in the output directory.
+        fixed_costs_threshold (float): Threshold below which fixed costs are
+            excluded from the LCOE calculation.
+        copy_callback (bool): If True (default), copies the differential evolution
+            callback CSV files from results/temp into the solution directory.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Evaluates the solution, prints evaluation time and LCOE/penalty summary,
+        creates the output directory, and optionally copies temp CSV files.
+
+        Exceptions:
+        -------
+        None.
+        """
         self.solution = Solution(
             x_candidate, parameters_static, fleet_static, network_static, balancing_type, fixed_costs_threshold
         )
@@ -67,12 +129,63 @@ class Statistics:
         )
 
     def create_solution_directory(self, result_directory: str, solution_name: str) -> str:
+        """
+        Create and return a sanitised subdirectory path for this solution's outputs.
+
+        Non-alphanumeric characters (except underscores and hyphens) in
+        solution_name are replaced with underscores to produce a safe directory
+        name.
+
+        Parameters:
+        -------
+        result_directory (str): Parent directory in which to create the solution
+            subdirectory.
+        solution_name (str): Desired name for the solution subdirectory. Will be
+            sanitised before use.
+
+        Returns:
+        -------
+        str: Path to the created solution directory.
+
+        Side-effects:
+        -------
+        Creates the directory if it does not already exist.
+
+        Exceptions:
+        -------
+        None.
+        """
         safe_name = re.sub(r"[^a-zA-Z0-9_\-]", "_", solution_name)
         solution_dir = os.path.join(result_directory, safe_name)
         os.makedirs(solution_dir, exist_ok=True)
         return solution_dir
 
     def copy_temp_files(self, copy_callback: bool) -> None:
+        """
+        Copy differential evolution progress files from the temp directory into
+        the solution results directory.
+
+        When copy_callback is True, always copies callback.csv. Additionally
+        copies latest_population.csv, population.csv, and population_energies.csv
+        if SAVE_POPULATION is enabled.
+
+        Parameters:
+        -------
+        copy_callback (bool): If True, copy the temp CSV files into the solution
+            results directory.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Copies files from results/temp into self.results_directory.
+
+        Exceptions:
+        -------
+        None.
+        """
         if copy_callback:
             temp_dir = os.path.join("results", "temp")
             shutil.copy(os.path.join(temp_dir, "callback.csv"), os.path.join(self.results_directory, "callback.csv"))
@@ -92,6 +205,33 @@ class Statistics:
         return None
 
     def expand_block_data(self, block_array: NDArray[np.float64]) -> NDArray[np.float64]:
+        """
+        Expand block-aggregated time series data to the full hourly interval count.
+
+        When the model uses temporal blocks (where multiple consecutive intervals
+        share identical values), dispatch and state arrays are stored at block
+        resolution. This method replicates each block value across the underlying
+        intervals to reconstruct the full time series. If the model runs at full
+        hourly resolution, the array is returned unchanged.
+
+        Parameters:
+        -------
+        block_array (NDArray[np.float64]): 1-D array of values at block resolution,
+            with length equal to the number of model intervals (blocks).
+
+        Returns:
+        -------
+        NDArray[np.float64]: 1-D array of values at full hourly resolution, with
+            length equal to self.full_intervals_count.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         if self.full_intervals_count == self.solution.static.intervals_count:
             return block_array
 
@@ -102,6 +242,30 @@ class Statistics:
         return expanded_array
 
     def generate_result_files(self) -> None:
+        """
+        Generate all result file objects and store them in self.result_files.
+
+        Calls each individual generate_* method to build ResultFile objects for
+        capacities, component costs, energy balance (assets, nodes, and network
+        aggregations), levelised costs, summary, and the raw decision vector.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Populates self.result_files with a dict of ResultFile objects keyed by
+        result type name.
+
+        Exceptions:
+        -------
+        None.
+        """
         self.result_files = {
             "capacities": self.generate_capacities_file(),
             "component_costs": self.generate_component_costs_file(),
@@ -115,6 +279,27 @@ class Statistics:
         return None
 
     def write_results(self) -> None:
+        """
+        Write all generated result files to the solution results directory.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Calls write() on each ResultFile in self.result_files, producing CSV
+        output files in self.results_directory. Prints a warning if the solution
+        has not been evaluated.
+
+        Exceptions:
+        -------
+        None.
+        """
         if not self.solution.evaluated:
             print("WARNING: Solution must be evaluated before writing statistics.")
         for result_file in self.result_files.values():
@@ -122,6 +307,28 @@ class Statistics:
         return None
 
     def get_col_count(self, result_file: str) -> int:
+        """
+        Return the number of data columns for a given result file type.
+
+        Parameters:
+        -------
+        result_file (str): Name of the result file type. One of "capacities",
+            "component_costs", "energy_balance_ASSETS", "energy_balance_NODES",
+            "energy_balance_NETWORK", "levelised_costs", or "summary".
+
+        Returns:
+        -------
+        int: Number of data columns (excluding the row-label column) for the
+            specified result file. Returns 0 for unrecognised file types.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         col_count = 0
         match result_file:
             case "capacities":
@@ -168,6 +375,30 @@ class Statistics:
         return col_count
 
     def generate_capacities_file(self) -> ResultFile:
+        """
+        Generate the capacities result file for all assets.
+
+        Builds a ResultFile containing total capacity, new build capacity, and
+        min/max build bounds for every generator (power), storage system (power
+        and energy), major line, and minor line in the system.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with header and data arrays ready to write
+            to capacities.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         col_count = self.get_col_count("capacities")
         header = self.initialise_header_rows(col_count)
 
@@ -233,6 +464,30 @@ class Statistics:
         return result_file
 
     def generate_component_costs_file(self) -> ResultFile:
+        """
+        Generate the component costs result file for all assets.
+
+        Builds a ResultFile containing annualised build cost, fixed O&M, variable
+        O&M, and fuel cost for every generator, storage system, major line, and
+        minor line in the system.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with header and data arrays ready to write
+            to component_costs.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         col_count = self.get_col_count("component_costs")
         header = self.initialise_header_rows(col_count)
 
@@ -278,6 +533,34 @@ class Statistics:
         return result_file
 
     def generate_energy_balance_file(self, aggregation_type: str) -> ResultFile:
+        """
+        Generate an energy balance time series result file at a specified aggregation level.
+
+        Produces a full-resolution time series (intervals expanded from block data)
+        for one of three aggregation levels:
+        - "assets": one column per individual asset (demand, dispatch, stored energy,
+          spillage, deficit, and line flows).
+        - "nodes": columns summed by node and unit type (solar, wind, baseload,
+          flexible, storage) plus spillage, deficit, and line flows.
+        - "network": single network-wide totals for all quantities.
+
+        Parameters:
+        -------
+        aggregation_type (str): One of "assets", "nodes", or "network".
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with header and data arrays ready to write
+            to energy_balance_{AGGREGATION_TYPE}.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         match aggregation_type:
             case "assets":
                 col_count = self.get_col_count("energy_balance_ASSETS")
@@ -454,6 +737,31 @@ class Statistics:
         return result_file
 
     def generate_levelised_costs_file(self) -> ResultFile:
+        """
+        Generate the levelised costs result file.
+
+        Computes system-level LCOE, LCOG (levelised cost of generation), LCOB
+        (levelised cost of balancing), LCOB_storage, LCOB_transmission, and
+        LCOB_losses_spillage, as well as per-asset LCOE, LCOG/LCOS/LCOT values
+        for generators, storage systems, major lines, and minor lines respectively.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with header and data arrays ready to write
+            to levelised_costs.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         col_count = self.get_col_count("levelised_costs")
         header = self.initialise_header_rows(col_count)
         header[:, 1:7] = np.array(
@@ -594,6 +902,32 @@ class Statistics:
         return result_file
 
     def calculate_annual_energies(self, arr: NDArray[np.float64], decimals: int = 3) -> float:
+        """
+        Compute annual energy totals from an interval-resolution power array.
+
+        Integrates arr over the interval resolutions within each model year and
+        appends an overall total for the full horizon as the final element.
+
+        Parameters:
+        -------
+        arr (NDArray[np.float64]): 1-D array of values at block (interval) resolution,
+            with length equal to the number of model intervals.
+        decimals (int): Number of decimal places to round each annual total to
+            (default 3).
+
+        Returns:
+        -------
+        float: 1-D array of length (year_count + 1) containing the annual energy
+            totals followed by the full-horizon total, all in GWh.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         annual_energies_arr = np.zeros(self.solution.static.year_count + 1, dtype=np.float64)
         for year in range(self.solution.static.year_count):
             first_t, last_t = static_m.get_year_t_boundaries(self.solution.static, year)
@@ -605,6 +939,31 @@ class Statistics:
         return annual_energies_arr
 
     def generate_summary_file(self) -> ResultFile:
+        """
+        Generate the annual summary result file.
+
+        Produces per-year and total-horizon energy figures for node demand,
+        generator annual generation, storage annual discharge, node spillage,
+        node deficit, and major line flows. Rows correspond to each model year
+        followed by a totals row.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with header and data arrays ready to write
+            to summary.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         col_count = self.get_col_count("summary")
         header = self.initialise_header_rows(col_count)
 
@@ -657,10 +1016,52 @@ class Statistics:
         return result_file
 
     def generate_x_file(self) -> ResultFile:
+        """
+        Generate a result file containing the raw decision variable vector.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        ResultFile: A ResultFile object with no header and a single-row data array
+            containing the candidate solution vector, ready to write to x.csv.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
         result_file = ResultFile("x", self.results_directory, [], [self.solution.x], decimals=None)
         return result_file
 
     def dump(self):
+        """
+        Write supplementary diagnostic files for debugging purposes.
+
+        Writes per-node residual load time series and the block length array to
+        the solution results directory.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Writes residual_load.csv and block_lengths.csv to self.results_directory.
+
+        Exceptions:
+        -------
+        None.
+        """
         residual_load_header = [node.name for node in self.solution.network.nodes.values()]
         residual_load_data = np.array(
             [node.residual_load for node in self.solution.network.nodes.values()], dtype=np.float64

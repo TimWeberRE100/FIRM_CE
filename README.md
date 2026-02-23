@@ -1,14 +1,7 @@
 # FIRM_CE
+FIRM_CE is a business rules-based long-term planning model (BR-LTP) for electricity systems. The electricity network is defined as a network of spatial nodes connected by major transmission lines. Generators and energy storage systems are located at each node. 
 
-- Installation instructions
-
-- Data download link
-
-- Basic configuration instructions
-
-- Basic FIRM overview
-
-- Broad optimum test
+The capacity of generators, storage systems, and transmission lines is optimised through an evolutionary algorithm in an attempt to minimise cost while retaining system reliability. For each candidate solution, assets are dispatched in accordance with a set of deterministic business rules to determine whether load can be balanced by generation in every time interval over the entire model horizon. Business rules attempt to capture the most important dispatch behaviour of each asset, while remaining simple enough to evaluate each candidate solution in a matter of seconds. No temporal aggregation is required.
 
 ## Installation
 For usage:
@@ -18,6 +11,19 @@ For usage:
 For development:
 
 `pip install -e .[dev]`
+
+## Model Configuration
+Example input data is provided in the `inputs` folder. 
+
+Time-independent inputs are stored in `inputs/config` and are used to define the network topology, electricity generation and storage assets, fules, scenarios, and overall model configuration. Each row represents a separate instance for the corresponding class of objects.
+
+Time-series data is stored in `inputs/data`. Data includes loads at each node; availability traces for solar, wind, and baseload generators; and annual generation limits for flexible generators.
+
+## Example Models
+The `examples` folder contains two scripts that demonstrate how to build and run the evolutionary optimisation for a new model (`model_build_and_solve.py`) and how to build a model and generate results for a set of candidate solutions stored as initial guesses (`model_build_and_statistics.py`).
+
+## Australian National Electricity Market (NEM)
+Inputs for a model of the NEM, based on the Australian Energy Market Operator's publicly available 2024 ISP Model for PLEXOS, are available on the ANU Data Commons: TBD
 
 ## Python Tools
 
