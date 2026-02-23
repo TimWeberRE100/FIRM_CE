@@ -113,8 +113,9 @@ class Solver:
         -------
         None.
         """
+
         def power_capacity_bounds(
-            asset_list: Union[List[Generator_InstanceType], List[Storage_InstanceType], List[Line_InstanceType]],
+            asset_list: List[Generator_InstanceType] | List[Storage_InstanceType] | List[Line_InstanceType],
             build_cap_constraint: str,
         ) -> List[float]:
             return [getattr(asset, build_cap_constraint) for asset in asset_list]
@@ -164,7 +165,7 @@ class Solver:
 
         Side-effects:
         -------
-        Creates the results/temp directory if it does not exist and writes callback.csv, 
+        Creates the results/temp directory if it does not exist and writes callback.csv,
         population.csv, and population_energies.csvwith empty contents.
 
         Exceptions:

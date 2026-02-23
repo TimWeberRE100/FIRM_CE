@@ -74,7 +74,7 @@ class ModelData:
         return model_name
 
 
-def validate_range(val: Any, min_val: float, max_val: float=None, inclusive: bool=True) -> bool:
+def validate_range(val: Any, min_val: float, max_val: float = None, inclusive: bool = True) -> bool:
     """
     Check that a value falls within a numeric range.
 
@@ -322,9 +322,7 @@ def validate_fuels(fuels_dict: dict, scenarios_list: list, model_logger: Logger)
             if scenario in scenarios_list:
                 scenario_fuels[scenario].append(item["name"])
             else:
-                model_logger.warning(
-                    "'scenario' %s for fuel.id %s not defined in scenarios.csv", scenario, idx
-                )
+                model_logger.warning("'scenario' %s for fuel.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_fuels, flag
 
@@ -386,9 +384,7 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
                     if val < 0:
                         raise ValueError
             except ValueError:
-                model_logger.error(
-                    "'%s' must be a valid %s in appropriate range", field, cast.__name__
-                )
+                model_logger.error("'%s' must be a valid %s in appropriate range", field, cast.__name__)
                 flag = False
                 if field in ("min_build", "max_build"):
                     fields_valid = False
@@ -399,7 +395,7 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
             except (TypeError, ValueError):
-                pass 
+                pass
 
         for scenario in parse_list(item.get("scenarios")):
             if scenario in scenarios_list:
@@ -420,15 +416,18 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
                 if any(is_nan(item.get(n)) for n in ["node_start", "node_end"]):
                     scenario_minor_lines[scenario].append(item["name"])
             else:
-                model_logger.warning(
-                    "'scenario' %s for line.id %s not defined in scenarios.csv", scenario, idx
-                )
+                model_logger.warning("'scenario' %s for line.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_lines, scenario_minor_lines, flag
 
 
 def validate_generators(
-    generators_dict: dict, scenarios_list: list, scenario_fuels: dict, scenario_lines: dict, scenario_nodes: dict, model_logger: Logger
+    generators_dict: dict,
+    scenarios_list: list,
+    scenario_fuels: dict,
+    scenario_lines: dict,
+    scenario_nodes: dict,
+    model_logger: Logger,
 ) -> tuple:
     """
     Validate all rows in generators.csv and build per-scenario generator indexes.
@@ -490,14 +489,12 @@ def validate_generators(
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
             except (TypeError, ValueError):
-                pass  
+                pass
 
         for scenario in parse_list(item.get("scenarios")):
             if scenario in scenarios_list:
                 if item["name"] in scenario_generators[scenario]:
-                    model_logger.error(
-                        "Duplicate generator name '%s' in scenario %s", item["name"], scenario
-                    )
+                    model_logger.error("Duplicate generator name '%s' in scenario %s", item["name"], scenario)
                     flag = False
                 else:
                     scenario_generators[scenario].append(item["name"])
@@ -532,14 +529,14 @@ def validate_generators(
                     )
                     flag = False
             else:
-                model_logger.warning(
-                    "'scenario' %s for generator.id %s not defined in scenarios.csv", scenario, idx
-                )
+                model_logger.warning("'scenario' %s for generator.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_generators, scenario_baseload, flag
 
 
-def validate_storages(storages_dict: dict, scenarios_list: list, scenario_nodes: dict, scenario_lines: dict, model_logger: Logger) -> tuple:
+def validate_storages(
+    storages_dict: dict, scenarios_list: list, scenario_nodes: dict, scenario_lines: dict, model_logger: Logger
+) -> tuple:
     """
     Validate all rows in storages.csv and build a per-scenario storage index.
 
@@ -593,7 +590,7 @@ def validate_storages(storages_dict: dict, scenarios_list: list, scenario_nodes:
                         model_logger.error("'%s' must be <= '%s'", min_field, max_field)
                         flag = False
                 except (TypeError, ValueError):
-                    pass  
+                    pass
 
         for field in ["lifetime", "duration"]:
             try:
@@ -616,9 +613,7 @@ def validate_storages(storages_dict: dict, scenarios_list: list, scenario_nodes:
         for scenario in parse_list(item.get("scenarios")):
             if scenario in scenarios_list:
                 if item["name"] in scenario_storages[scenario]:
-                    model_logger.error(
-                        "Duplicate storage name '%s' in scenario %s", item["name"], scenario
-                    )
+                    model_logger.error("Duplicate storage name '%s' in scenario %s", item["name"], scenario)
                     flag = False
                 else:
                     scenario_storages[scenario].append(item["name"])
@@ -641,9 +636,7 @@ def validate_storages(storages_dict: dict, scenarios_list: list, scenario_nodes:
                     )
                     flag = False
             else:
-                model_logger.warning(
-                    "'scenario' %s for storage.id %s not defined in scenarios.csv", scenario, idx
-                )
+                model_logger.warning("'scenario' %s for storage.id %s not defined in scenarios.csv", scenario, idx)
 
     return scenario_storages, flag
 
@@ -689,9 +682,7 @@ def validate_initial_guess(
         scenario = item["scenario"]
 
         if scenario not in scenarios_list:
-            model_logger.warning(
-                "'scenario' %s in initial_guess.csv not defined in scenarios.csv", scenario
-            )
+            model_logger.warning("'scenario' %s in initial_guess.csv not defined in scenarios.csv", scenario)
 
         initial_guess_scenarios.append(scenario)
 
@@ -715,9 +706,7 @@ def validate_initial_guess(
 
     for scenario in scenarios_list:
         if scenario not in initial_guess_scenarios:
-            model_logger.error(
-                "'scenario' %s is defined in scenarios.csv but missing from initial_guess.csv", scenario
-            )
+            model_logger.error("'scenario' %s is defined in scenarios.csv but missing from initial_guess.csv", scenario)
             flag = False
 
     return flag
@@ -831,22 +820,16 @@ def validate_electricity(file_path: str, node_list: list, model_logger: Logger) 
     if node_list is not None:
         for node in node_list:
             if node not in df.columns:
-                model_logger.error(
-                    "Demand file '%s' is missing column for node '%s'", file_path, node
-                )
+                model_logger.error("Demand file '%s' is missing column for node '%s'", file_path, node)
                 flag = False
 
     data_cols = [c for c in df.columns if c not in required_time_cols]
     for col in data_cols:
         if df[col].isna().any():
-            model_logger.error(
-                "Column '%s' in demand file '%s' contains NaN values", col, file_path
-            )
+            model_logger.error("Column '%s' in demand file '%s' contains NaN values", col, file_path)
             flag = False
         elif not pd.api.types.is_numeric_dtype(df[col]):
-            model_logger.error(
-                "Column '%s' in demand file '%s' contains non-numeric values", col, file_path
-            )
+            model_logger.error("Column '%s' in demand file '%s' contains non-numeric values", col, file_path)
             flag = False
 
     return flag
@@ -888,9 +871,7 @@ def validate_generation(
     required_time_cols = ["Year", "Month", "Day", "Interval"]
     for col in required_time_cols:
         if col not in df.columns:
-            model_logger.error(
-                "Generation file '%s' is missing required column '%s'", file_path, col
-            )
+            model_logger.error("Generation file '%s' is missing required column '%s'", file_path, col)
             flag = False
 
     if not flag:
@@ -942,9 +923,7 @@ def validate_generation(
 
     for col in data_cols:
         if df[col].isna().any():
-            model_logger.error(
-                "Column '%s' in generation file '%s' contains NaN values", col, file_path
-            )
+            model_logger.error("Column '%s' in generation file '%s' contains NaN values", col, file_path)
             flag = False
         elif not df[col].between(0, 1).all():
             model_logger.error(
@@ -988,9 +967,7 @@ def validate_flexible_limits(file_path: str, flexible_list: list, model_logger: 
         return False
 
     if "Year" not in df.columns:
-        model_logger.error(
-            "Flexible limits file '%s' is missing required column 'Year'", file_path
-        )
+        model_logger.error("Flexible limits file '%s' is missing required column 'Year'", file_path)
         return False
 
     try:
@@ -1014,14 +991,10 @@ def validate_flexible_limits(file_path: str, flexible_list: list, model_logger: 
     data_cols = [c for c in df.columns if c != "Year"]
     for col in data_cols:
         if df[col].isna().any():
-            model_logger.error(
-                "Column '%s' in flexible limits file '%s' contains NaN values", col, file_path
-            )
+            model_logger.error("Column '%s' in flexible limits file '%s' contains NaN values", col, file_path)
             flag = False
         elif (df[col] < 0).any():
-            model_logger.error(
-                "Column '%s' in flexible limits file '%s' contains negative values", col, file_path
-            )
+            model_logger.error("Column '%s' in flexible limits file '%s' contains negative values", col, file_path)
             flag = False
 
     return flag
@@ -1052,9 +1025,7 @@ def validate_config(model_data: ModelData) -> bool:
     else:
         model_logger.info("config.csv validated!")
 
-    scenarios_list, scenario_nodes, _, flag = validate_scenarios(
-        model_data.scenarios, model_logger
-    )
+    scenarios_list, scenario_nodes, _, flag = validate_scenarios(model_data.scenarios, model_logger)
     if not flag:
         model_logger.error("scenarios.csv contains errors.")
         config_flag = False
@@ -1190,25 +1161,17 @@ def validate_data(
     for filename in scenario_files_by_type["generation"]:
         file_path = os.path.join(datafiles_directory, filename)
         if not validate_generation(file_path, solar_list, wind_list, baseload_list, model_logger):
-            model_logger.error(
-                "Generation file '%s' contains errors for scenario %s.", filename, scenario_name
-            )
+            model_logger.error("Generation file '%s' contains errors for scenario %s.", filename, scenario_name)
             flag = False
         else:
-            model_logger.info(
-                "Generation file '%s' validated for scenario %s!", filename, scenario_name
-            )
+            model_logger.info("Generation file '%s' validated for scenario %s!", filename, scenario_name)
 
     for filename in scenario_files_by_type["flexible_annual_limit"]:
         file_path = os.path.join(datafiles_directory, filename)
         if not validate_flexible_limits(file_path, flexible_list, model_logger):
-            model_logger.error(
-                "Flexible limits file '%s' contains errors for scenario %s.", filename, scenario_name
-            )
+            model_logger.error("Flexible limits file '%s' contains errors for scenario %s.", filename, scenario_name)
             flag = False
         else:
-            model_logger.info(
-                "Flexible limits file '%s' validated for scenario %s!", filename, scenario_name
-            )
+            model_logger.info("Flexible limits file '%s' validated for scenario %s!", filename, scenario_name)
 
     return flag

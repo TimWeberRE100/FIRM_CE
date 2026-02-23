@@ -80,7 +80,7 @@ class Statistics:
         -------
         x_candidate (NDArray[np.float64]): Decision variable vector representing
             the candidate solution to evaluate and report on.
-        parameters_static (ScenarioParameters_InstanceType): A static instance of the 
+        parameters_static (ScenarioParameters_InstanceType): A static instance of the
             ScenarioParameters jitclass.
         fleet_static (Fleet_InstanceType): A static instance of the Fleet jitclass.
         network_static (Network_InstanceType): A static instance of the Network jitclass.
