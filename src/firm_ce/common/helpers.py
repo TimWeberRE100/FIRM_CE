@@ -8,10 +8,11 @@ def parse_comma_separated(value: str, lower: bool = True) -> List[str]:
     Parameters:
     -------
     value (str): A string containing comma-separated values.
+    lower (bool): If True, converts each item to lowercase before returning. Defaults to True.
 
     Returns:
     -------
-    List[str]: A list of cleaned strings with whitespace removed and empty entries excluded.
+    List[str]: A list of strings with leading/trailing whitespace removed and empty entries excluded.
     """
     if lower:
         return [item.strip().lower() for item in value.split(",") if item.strip()]
