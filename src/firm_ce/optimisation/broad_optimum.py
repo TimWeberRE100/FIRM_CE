@@ -16,6 +16,26 @@ from firm_ce.system.topology import Network_InstanceType
 
 
 def near_optimum_path(root: str, scenario_name: str):
+    """
+    Construct and create the output directory path for near-optimum results.
+
+    Parameters:
+    -------
+    root (str): Root subdirectory name under the results directory.
+    scenario_name (str): Name of the scenario, used as a further subdirectory.
+
+    Returns:
+    -------
+    str: The path to the created directory.
+
+    Side-effects:
+    -------
+    Creates the directory at the returned path if it does not already exist.
+
+    Exceptions:
+    -------
+    None.
+    """
     base = os.path.join("results", root, scenario_name)
     os.makedirs(base, exist_ok=True)
     return base
@@ -24,6 +44,28 @@ def near_optimum_path(root: str, scenario_name: str):
 def create_broad_optimum_vars_record(
     candidate_x_idx: int, asset_name: str, near_optimum_check: bool, near_optimum_group: str
 ) -> BroadOptimumVars_Type:
+    """
+    Create a record for a single broad optimum decision variable.
+
+    Parameters:
+    -------
+    candidate_x_idx (int): Index of the decision variable in the candidate solution vector.
+    asset_name (str): Name of the asset associated with this decision variable.
+    near_optimum_check (bool): Whether this variable participates in near-optimum exploration.
+    near_optimum_group (str): Group key used to aggregate variables during near-optimum analysis.
+
+    Returns:
+    -------
+    BroadOptimumVars_Type: A tuple of (candidate_x_idx, asset_name, near_optimum_check, near_optimum_group).
+
+    Side-effects:
+    -------
+    None.
+
+    Exceptions:
+    -------
+    None.
+    """
     return (
         candidate_x_idx,
         asset_name,
@@ -35,10 +77,31 @@ def create_broad_optimum_vars_record(
 def build_broad_optimum_var_info(
     fleet: Fleet_InstanceType, network: Network_InstanceType
 ) -> List[BroadOptimumVars_Type]:
-    """create a list of records mapping each decision variable index to:
-    - its name
-    - near_optimum on or off
-    - its group key (to aggregate)"""
+    """
+    Build a list of records mapping each decision variable index to its metadata.
+
+    Iterates over all generators, storage power capacity variables, storage energy capacity variables,
+    and major transmission lines in the system to produce one record per decision
+    variable, capturing its name, near-optimum participation flag, and group key.
+
+    Parameters:
+    -------
+    fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
+    network (Network_InstanceType): An instance of the Network jitclass.
+
+    Returns:
+    -------
+    List[BroadOptimumVars_Type]: Ordered list of records, one per decision variable,
+        each containing (candidate_x_idx, asset_name, near_optimum_check, group).
+
+    Side-effects:
+    -------
+    None.
+
+    Exceptions:
+    -------
+    None.
+    """
 
     broad_optimum_var_info = []
 
@@ -80,6 +143,37 @@ def create_evaluation_record(
     solution_index: int,
     target_group_var_sum: float | None = None,
 ) -> EvaluationRecord_Type:
+    """
+    Create a single evaluation record for a feasible candidate solution.
+
+    Parameters:
+    -------
+    group_key (str): The group being explored (e.g. asset group name).
+    band_type (str): Type of band search, one of "min", "max", or "Midpoint N".
+    population_lcoes (List[float]): LCOE values for each candidate in the population.
+    de_population_penalties (List[float]): Operational penalty values from differential
+        evolution for each candidate in the population.
+    band_population_penalties (List[float]): Band constraint penalty values for each
+        candidate in the population.
+    band_population_candidates (List[List[float]]): 2-D array of candidate solution
+        vectors (rows = variables, columns = candidates).
+    solution_index (int): Index into the population arrays for the candidate to record.
+    target_group_var_sum (float | None): Target sum of group variables for midpoint
+        searches. Stored as "N/A" when None.
+
+    Returns:
+    -------
+    EvaluationRecord_Type: A tuple of (group_key, band_type, target_group_var_sum,
+        lcoe, de_penalty, band_penalty, candidate_x_array).
+
+    Side-effects:
+    -------
+    None.
+
+    Exceptions:
+    -------
+    None.
+    """
     return (
         group_key,
         band_type,
@@ -102,7 +196,48 @@ def broad_optimum_objective(
     target_group_var_sum: float | None = None,
     midpoint_number: int | None = None,
 ) -> float:
+    """
+    Objective function for broad optimum band and midpoint searches.
 
+    Evaluates a population of candidate solutions, appends feasible solutions to
+    evaluation_records, and returns a scalar fitness array guiding differential
+    evolution. For "min" and "max" band searches the fitness steers towards the
+    minimum or maximum group variable sum respectively. For "midpoint" searches
+    the fitness steers towards a specified target group variable sum.
+
+    Parameters:
+    -------
+    band_population_candidates (List[List[float]]): 2-D array of candidate solution
+        vectors (rows = variables, columns = candidates).
+    differential_evolution_args: Arguments forwarded to parallel_wrapper for solution
+        evaluation (fleet, network, etc.).
+    group_key (str): The asset group currently being explored.
+    band_lcoe_max (float): Maximum allowable LCOE for a feasible solution. Candidates
+        exceeding this incur a band penalty.
+    bo_group_orders (List[int]): Row indices into band_population_candidates
+        corresponding to the variables in the current group.
+    evaluation_records (List[EvaluationRecord_Type]): Accumulator list; feasible
+        candidate records are appended in-place.
+    band_type (str): One of "min", "max", or "midpoint".
+    target_group_var_sum (float | None): Target sum of group variables used when
+        band_type is "midpoint". Ignored otherwise.
+    midpoint_number (int | None): Label index for the midpoint, used to name the
+        band_type field in appended records. Ignored when band_type is not "midpoint".
+
+    Returns:
+    -------
+    float: Array of population energies, one per candidate, to minimise during differential
+        evolution. Returns None if band_type is unrecognised.
+
+    Side-effects:
+    -------
+    Feasible candidates (zero operational and band penalties) are appended to
+    evaluation_records.
+
+    Exceptions:
+    -------
+    None.
+    """
     _, population_lcoes, de_population_penalties = parallel_wrapper(
         band_population_candidates, *differential_evolution_args
     )
@@ -163,6 +298,30 @@ def write_broad_optimum_records(
     evaluation_records: List[EvaluationRecord_Type],
     broad_optimum_var_info: List[BroadOptimumVars_Type],
 ) -> None:
+    """
+    Write all broad optimum evaluation records to a CSV file.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario, used to determine the output directory.
+    evaluation_records (List[EvaluationRecord_Type]): List of feasible candidate
+        records produced during the broad optimum search.
+    broad_optimum_var_info (List[BroadOptimumVars_Type]): Variable metadata list used
+        to generate column headers (one column per asset variable).
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Writes the file near_optimal_space.csv inside the near_optimum
+    results directory for the given scenario.
+
+    Exceptions:
+    -------
+    None.
+    """
     space_dir = near_optimum_path("near_optimum", scenario_name)
 
     space_path = os.path.join(space_dir, "near_optimal_space.csv")
@@ -184,6 +343,27 @@ def write_broad_optimum_records(
 
 
 def get_broad_optimum_bands_path(scenario_name: str) -> str:
+    """
+    Return the file path for the near-optimal bands CSV file.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario.
+
+    Returns:
+    -------
+    str: Absolute or relative path to near_optimal_bands.csv in the scenario's
+        near_optimum results directory.
+
+    Side-effects:
+    -------
+    Creates the near_optimum results directory for the scenario if it does not
+    already exist.
+
+    Exceptions:
+    -------
+    None.
+    """
     space_dir = near_optimum_path("near_optimum", scenario_name)
     return os.path.join(space_dir, "near_optimal_bands.csv")
 
@@ -196,6 +376,38 @@ def write_broad_optimum_bands(
     band_lcoe_max: float,
     groups: Dict[str, List[int]],
 ) -> None:
+    """
+    Evaluate and write the min/max band candidate solutions to a CSV file.
+
+    For each group, re-evaluates the stored min and max candidate solutions to
+    compute their LCOE and penalty values, then writes one row per band endpoint
+    to the near-optimal bands CSV.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario, used to determine the output path.
+    broad_optimum_var_info (List[BroadOptimumVars_Type]): Variable metadata list
+        used to map variable indices to asset names and filter near-optimum variables.
+    bands (BandCandidates_Type): Dictionary mapping group keys to a tuple of
+        (min_candidate_x, max_candidate_x) solution vectors.
+    de_args: Arguments forwarded to Solution for evaluation (fleet, network, etc.).
+    band_lcoe_max (float): Maximum allowable LCOE used to compute the band penalty.
+    groups (Dict[str, List[int]]): Mapping from group key to list of decision
+        variable indices belonging to that group.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Writes the file near_optimal_bands.csv inside the near_optimum
+    results directory for the given scenario.
+
+    Exceptions:
+    -------
+    None.
+    """
     bands_path = get_broad_optimum_bands_path(scenario_name)
     near_optimal_asset_names = [
         asset_name for _, asset_name, near_optimum_check, _ in broad_optimum_var_info if near_optimum_check
@@ -231,7 +443,30 @@ def write_broad_optimum_bands(
 def read_broad_optimum_bands(
     scenario_name: str,
     broad_optimum_var_info: List[BroadOptimumVars_Type],
-) -> None:
+) -> Dict[str, Dict[str, float]]:
+    """
+    Read the near-optimal bands CSV and return the min/max group variable sums.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario used to locate the bands CSV.
+    broad_optimum_var_info (List[BroadOptimumVars_Type]): Variable metadata list
+        used to identify which assets belong to each group.
+
+    Returns:
+    -------
+    Dict[str, Dict[str, float]]: Dictionary mapping each group key to a nested dict with keys "min" and
+        "max", each holding the summed decision variable values for that band
+        endpoint across all near-optimum assets in the group.
+
+    Side-effects:
+    -------
+    None.
+
+    Exceptions:
+    -------
+    None.
+    """
     bands_path = get_broad_optimum_bands_path(scenario_name)
 
     group_names = {}
@@ -253,11 +488,53 @@ def read_broad_optimum_bands(
 
 
 def get_midpoint_csv_path(scenario_name: str) -> str:
+    """
+    Return the file path for the midpoint exploration CSV file.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario.
+
+    Returns:
+    -------
+    str: Absolute or relative path to midpoint_space.csv in the scenario's
+        midpoint_explore results directory.
+
+    Side-effects:
+    -------
+    Creates the midpoint_explore results directory for the scenario if it does
+    not already exist.
+
+    Exceptions:
+    -------
+    None.
+    """
     midpoint_dir = near_optimum_path("midpoint_explore", scenario_name)
     return os.path.join(midpoint_dir, "midpoint_space.csv")
 
 
 def create_midpoint_csv(scenario_name: str, broad_optimum_var_info: List[BroadOptimumVars_Type]) -> str:
+    """
+    Create an empty midpoint exploration CSV file with the appropriate header row.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario used to determine the output path.
+    broad_optimum_var_info (List[BroadOptimumVars_Type]): Variable metadata list
+        used to generate one column per asset variable in the header.
+
+    Returns:
+    -------
+    str: Path to the created CSV file.
+
+    Side-effects:
+    -------
+    Creates the file midpoint_space.csv inside the midpoint_explore results directory for the given scenario.
+
+    Exceptions:
+    -------
+    None.
+    """
     csv_path = get_midpoint_csv_path(scenario_name)
 
     with open(csv_path, "w", newline="") as f:
@@ -276,7 +553,32 @@ def create_midpoint_csv(scenario_name: str, broad_optimum_var_info: List[BroadOp
     return csv_path
 
 
-def create_groups_dict(broad_optimum_var_info):
+def create_groups_dict(broad_optimum_var_info: List[BroadOptimumVars_Type]) -> Dict[str, List[int]]:
+    """
+    Build a mapping from group keys to lists of decision variable indices.
+
+    Only variables with near_optimum_check enabled are included. Variables with
+    no group key are placed in their own singleton group keyed by their variable
+    index.
+
+    Parameters:
+    -------
+    broad_optimum_var_info (List[BroadOptimumVars_Type]): Variable metadata list
+        containing (candidate_x_idx, asset_name, near_optimum_check, group) tuples.
+
+    Returns:
+    -------
+    Dict[str, List[int]]: Mapping from group key (str or int) to a list of decision variable
+        indices belonging to that group.
+
+    Side-effects:
+    -------
+    None.
+
+    Exceptions:
+    -------
+    None.
+    """
     groups = {}
     for record in broad_optimum_var_info:
         candidate_x_idx, _, near_optimum_check, group = record
@@ -291,7 +593,30 @@ def create_groups_dict(broad_optimum_var_info):
 def append_to_midpoint_csv(
     scenario_name: str,
     evaluation_records: List[EvaluationRecord_Type],
-):
+) -> None:
+    """
+    Append midpoint evaluation records to the midpoint exploration CSV file.
+
+    Parameters:
+    -------
+    scenario_name (str): Name of the scenario used to locate the CSV file.
+    evaluation_records (List[EvaluationRecord_Type]): List of feasible candidate
+        records to append, each containing group, band_type, target_value, lcoe,
+        de_penalty, band_penalty, and the candidate solution vector.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Appends rows to midpoint_space.csv in the midpoint_explore results directory
+    for the given scenario.
+
+    Exceptions:
+    -------
+    None.
+    """
     csv_path = get_midpoint_csv_path(scenario_name)
     with open(csv_path, "a", newline="") as f:
         writer = csv.writer(f)
