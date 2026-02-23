@@ -95,7 +95,7 @@ def validate_range(val: Any, min_val: float, max_val: float = None, inclusive: b
             return min_val <= val <= max_val if max_val is not None else min_val <= val
         else:
             return min_val < val < max_val if max_val is not None else min_val < val
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -113,7 +113,7 @@ def validate_positive_int(val: Any) -> bool:
     """
     try:
         return int(val) > 0
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return False
 
 
@@ -394,7 +394,7 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
                 if float(item["min_build"]) > float(item["max_build"]):
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
 
         for scenario in parse_list(item.get("scenarios")):
@@ -488,7 +488,7 @@ def validate_generators(
                 if float(item["min_build"]) > float(item["max_build"]):
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 pass
 
         for scenario in parse_list(item.get("scenarios")):
@@ -589,7 +589,7 @@ def validate_storages(
                     if float(item[min_field]) > float(item[max_field]):
                         model_logger.error("'%s' must be <= '%s'", min_field, max_field)
                         flag = False
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     pass
 
         for field in ["lifetime", "duration"]:
@@ -597,7 +597,7 @@ def validate_storages(
                 if int(item[field]) < 0:
                     model_logger.error("'%s' must be int >= 0", field)
                     flag = False
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 model_logger.error("'%s' must be a valid integer", field)
                 flag = False
 
