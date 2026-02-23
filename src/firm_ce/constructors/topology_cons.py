@@ -43,9 +43,7 @@ def construct_Node_object(node_dict: Dict[str, Any], order: int) -> Node_Instanc
 
 
 def construct_Line_object(
-    line_dict: Dict[str, Any],
-    nodes_object_dict: DictType(int64, Node_InstanceType),
-    order: int
+    line_dict: Dict[str, Any], nodes_object_dict: DictType(int64, Node_InstanceType), order: int
 ) -> Line_InstanceType:
     """
     Takes data required to initialise a single line object, casts values into Numba-compatible
@@ -164,11 +162,7 @@ def construct_new_Route_object(
 
 
 def extend_route(
-    route: Route_InstanceType,
-    new_node: Node_InstanceType,
-    new_line: Line_InstanceType,
-    line_direction: int,
-    leg: int
+    route: Route_InstanceType, new_node: Node_InstanceType, new_line: Line_InstanceType, line_direction: int, leg: int
 ) -> Route_InstanceType:
     """
     Takes an existing route, extends it by a single leg, and returns the extended
@@ -332,8 +326,8 @@ def construct_Network_object(
 
     nodes = TypedDict.empty(key_type=int64, value_type=Node_InstanceType)
     order_node = 0
-    for idx in range(len(nodes_imported_dict)):
-        nodes[idx] = construct_Node_object(nodes_imported_dict[idx], order_node)
+    for idx in nodes_imported_dict:
+        nodes[order_node] = construct_Node_object(nodes_imported_dict[idx], order_node)
         order_node += 1
 
     major_lines = TypedDict.empty(key_type=int64, value_type=Line_InstanceType)

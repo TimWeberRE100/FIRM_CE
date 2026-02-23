@@ -1,6 +1,6 @@
 import os
 
-from typing import Any, Collection
+from typing import Any, Collection, Dict, List
 from logging import Logger
 
 import numpy as np
@@ -96,7 +96,7 @@ def validate_range(val: Any, min_val: float, max_val: float = None, inclusive: b
             return min_val <= val <= max_val if max_val is not None else min_val <= val
         else:
             return min_val < val < max_val if max_val is not None else min_val < val
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
 
 
@@ -114,7 +114,7 @@ def validate_positive_int(val: Any) -> bool:
     """
     try:
         return int(val) > 0
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
 
 
@@ -134,7 +134,7 @@ def validate_enum(val: Any, options: Collection) -> bool:
     return val in options
 
 
-def parse_list(val: str | float, lower = True) -> list:
+def parse_list(val: str | float, lower=True) -> list:
     """
     Parse a comma-separated string into a list, returning an empty list for NaN.
 
@@ -165,7 +165,7 @@ def is_nan(val: str | float) -> bool:
     return isinstance(val, float) and np.isnan(val)
 
 
-def validate_model_config(config_dict: dict, model_logger: Logger) -> bool:
+def validate_model_config(config_dict: Dict[int, Dict[str, Any]], model_logger: Logger) -> bool:
     """
     Validate all entries in config.csv against their expected types and ranges.
 
@@ -175,7 +175,7 @@ def validate_model_config(config_dict: dict, model_logger: Logger) -> bool:
 
     Parameters:
     -------
-    config_dict (dict): Mapping of row index to {"name": ..., "value": ...} dicts
+    config_dict (Dict[int, Dict[str, Any]]): Mapping of row index to {"name": ..., "value": ...} dicts
         as loaded from config.csv.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
@@ -226,7 +226,7 @@ def validate_model_config(config_dict: dict, model_logger: Logger) -> bool:
     return flag
 
 
-def validate_scenarios(scenarios_dict: dict, model_logger: Logger) -> tuple:
+def validate_scenarios(scenarios_dict: Dict[int, Dict[str, Any]], model_logger: Logger) -> tuple:
     """
     Validate all rows in scenarios.csv and extract per-scenario node/line lists.
 
@@ -235,16 +235,16 @@ def validate_scenarios(scenarios_dict: dict, model_logger: Logger) -> tuple:
 
     Parameters:
     -------
-    scenarios_dict (dict): Mapping of row index to scenario attribute dicts as loaded
+    scenarios_dict (Dict[int, Dict[str, Any]]): Mapping of row index to scenario attribute dicts as loaded
         from scenarios.csv.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
     -------
     tuple: A 4-tuple (scenarios_list, scenario_nodes, scenario_lines, flag) where:
-        scenarios_list (list) is an ordered list of scenario name strings;
-        scenario_nodes (dict) maps scenario name to a list of node names;
-        scenario_lines (dict) maps scenario name to a list of line names sourced from
+        scenarios_list (List[str]) is an ordered list of scenario name strings;
+        scenario_nodes (Dict[str, List[str]]) maps scenario name to a list of node names;
+        scenario_lines (Dict[str, List[str]]) maps scenario name to a list of line names sourced from
         the lines column of scenarios.csv;
         flag (bool) is False if any validation error was found, True otherwise.
     """
@@ -283,7 +283,26 @@ def validate_scenarios(scenarios_dict: dict, model_logger: Logger) -> tuple:
     return scenarios_list, flag
 
 
-def validate_nodes(nodes_dict, scenarios_list, model_logger):
+def validate_nodes(nodes_dict: Dict[int, Dict[str, Any]], scenarios_list: List[str], model_logger: Logger) -> tuple:
+    """
+    Validate all rows in nodes.csv and build a per-scenario node index.
+
+    Checks for duplicate node names and that any scenario references exist in
+    scenarios.csv. Errors if a referenced scenario is not defined.
+
+    Parameters:
+    -------
+    nodes_dict (Dict[int, Dict[str, Any]]): Mapping of node index to node attribute dicts as loaded from
+        nodes.csv.
+    scenarios_list (List[str]): List of valid scenario names from validate_scenarios.
+    model_logger (logging.Logger): Logger instance for recording errors and warnings.
+
+    Returns:
+    -------
+    tuple: A 2-tuple (scenario_nodes, flag) where:
+        scenario_nodes (Dict[str, List[str]]) maps scenario name to a list of node name strings;
+        flag (bool) is False if any validation error was found, True otherwise.
+    """
     flag = True
     scenario_nodes = {s: [] for s in scenarios_list}
 
@@ -310,7 +329,7 @@ def validate_nodes(nodes_dict, scenarios_list, model_logger):
     return scenario_nodes, flag
 
 
-def validate_fuels(fuels_dict: dict, scenarios_list: list, model_logger: Logger) -> tuple:
+def validate_fuels(fuels_dict: Dict[int, Dict[str, Any]], scenarios_list: List[str], model_logger: Logger) -> tuple:
     """
     Validate all rows in fuels.csv and build a per-scenario fuel index.
 
@@ -319,15 +338,15 @@ def validate_fuels(fuels_dict: dict, scenarios_list: list, model_logger: Logger)
 
     Parameters:
     -------
-    fuels_dict (dict): Mapping of row index to fuel attribute dicts as loaded from
+    fuels_dict (Dict[int, Dict[str, Any]]): Mapping of row index to fuel attribute dicts as loaded from
         fuels.csv.
-    scenarios_list (list): List of valid scenario names from validate_scenarios.
+    scenarios_list (List[str]): List of valid scenario names from validate_scenarios.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
     -------
     tuple: A 2-tuple (scenario_fuels, flag) where:
-        scenario_fuels (dict) maps scenario name to a list of fuel name strings;
+        scenario_fuels (Dict[str, list]) maps scenario name to a list of fuel name strings;
         flag (bool) is False if any validation error was found, True otherwise.
     """
     flag = True
@@ -356,7 +375,12 @@ def validate_fuels(fuels_dict: dict, scenarios_list: list, model_logger: Logger)
     return scenario_fuels, flag
 
 
-def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict, model_logger: Logger) -> tuple:
+def validate_lines(
+    lines_dict: Dict[int, Dict[str, Any]],
+    scenarios_list: List[str],
+    scenario_nodes: Dict[str, List[str]],
+    model_logger: Logger,
+) -> tuple:
     """
     Validate all rows in lines.csv and build per-scenario line indexes.
 
@@ -366,17 +390,17 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
 
     Parameters:
     -------
-    lines_dict (dict): Mapping of row index to line attribute dicts as loaded from
+    lines_dict (Dict[int, Dict[str, Any]]): Mapping of row index to line attribute dicts as loaded from
         lines.csv.
-    scenarios_list (list): List of valid scenario names from validate_scenarios.
-    scenario_nodes (dict): Mapping of scenario name to a list of valid node names.
+    scenarios_list (List[str]): List of valid scenario names from validate_scenarios.
+    scenario_nodes (Dict[str, List[str]]): Mapping of scenario name to a list of valid node names.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
     -------
     tuple: A 3-tuple (scenario_lines, scenario_minor_lines, flag) where:
-        scenario_lines (dict) maps scenario name to a list of line name strings;
-        scenario_minor_lines (dict) maps scenario name to a list of line names that are
+        scenario_lines (Dict[str, List[str]]) maps scenario name to a list of line name strings;
+        scenario_minor_lines (Dict[str, List[str]]) maps scenario name to a list of line names that are
         missing at least one endpoint node;
         flag (bool) is False if any validation error was found, True otherwise.
     """
@@ -423,24 +447,24 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
                 if float(item["min_build"]) > float(item["max_build"]):
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
 
-        def _validate_line(flag):
-            scenario_lines[scenario].append(item["name"])
+        def _validate_line(flag, validator_scenario, validator_item):
+            scenario_lines[validator_scenario].append(validator_item["name"])
 
-            if any(is_nan(item.get(n)) for n in ["node_start", "node_end"]):
-                scenario_minor_lines[scenario].append(item["name"])
+            if any(is_nan(validator_item.get(n)) for n in ["node_start", "node_end"]):
+                scenario_minor_lines[validator_scenario].append(validator_item["name"])
 
             for endpoint in ["node_start", "node_end"]:
-                node_val = item.get(endpoint)
-                if (node_val not in scenario_nodes[scenario]) and not is_nan(node_val):
+                node_val = validator_item.get(endpoint)
+                if (node_val not in scenario_nodes[validator_scenario]) and not is_nan(node_val):
                     model_logger.error(
                         "'%s' %s for line %s is not defined in scenario %s",
                         endpoint,
                         node_val,
-                        item["name"],
-                        scenario,
+                        validator_item["name"],
+                        validator_scenario,
                     )
                     return False
             return flag
@@ -448,12 +472,12 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
         scenarios = parse_list(item.get("scenarios"))
         if scenarios == ["all"]:
             for scenario in scenarios_list:
-                flag = _validate_line(flag)
+                flag = _validate_line(flag, scenario, item)
 
         else:
             for scenario in scenarios:
                 if scenario in scenarios_list:
-                    flag = _validate_line(flag)
+                    flag = _validate_line(flag, scenario, item)
                 else:
                     model_logger.warning("scenario '%s' for line.id %s not defined in scenarios.csv", scenario, idx)
 
@@ -461,11 +485,11 @@ def validate_lines(lines_dict: dict, scenarios_list: list, scenario_nodes: dict,
 
 
 def validate_generators(
-    generators_dict: dict,
-    scenarios_list: list,
-    scenario_fuels: dict,
-    scenario_lines: dict,
-    scenario_nodes: dict,
+    generators_dict: Dict[int, Dict[str, Any]],
+    scenarios_list: List[str],
+    scenario_fuels: Dict[str, List[str]],
+    scenario_lines: Dict[str, List[str]],
+    scenario_nodes: Dict[str, List[str]],
     model_logger: Logger,
 ) -> tuple:
     """
@@ -477,19 +501,19 @@ def validate_generators(
 
     Parameters:
     -------
-    generators_dict (dict): Mapping of row index to generator attribute dicts as loaded
+    generators_dict (Dict[int, Dict[str, Any]]): Mapping of row index to generator attribute dicts as loaded
         from generators.csv.
-    scenarios_list (list): List of valid scenario names.
-    scenario_fuels (dict): Mapping of scenario name to a list of valid fuel names.
-    scenario_lines (dict): Mapping of scenario name to a list of valid line names.
-    scenario_nodes (dict): Mapping of scenario name to a list of valid node names.
+    scenarios_list (List[str]): List of valid scenario names.
+    scenario_fuels (Dict[str, List[str]]): Mapping of scenario name to a list of valid fuel names.
+    scenario_lines (Dict[str, List[str]]): Mapping of scenario name to a list of valid line names.
+    scenario_nodes (Dict[str, List[str]]): Mapping of scenario name to a list of valid node names.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
     -------
     tuple: A 3-tuple (scenario_generators, scenario_baseload, flag) where:
-        scenario_generators (dict) maps scenario name to a list of generator names;
-        scenario_baseload (dict) maps scenario name to a list of baseload generator names;
+        scenario_generators (Dict[str, List[str]]) maps scenario name to a list of generator names;
+        scenario_baseload (Dict[str, List[str]]) maps scenario name to a list of baseload generator names;
         flag (bool) is False if any validation error was found, True otherwise.
     """
     flag = True
@@ -527,34 +551,45 @@ def validate_generators(
                 if float(item["min_build"]) > float(item["max_build"]):
                     model_logger.error("'min_build' must be less than or equal to 'max_build'")
                     flag = False
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 pass
 
-        def _validate_generator(flag):
-            if item["name"] in scenario_generators[scenario]:
-                model_logger.error("Duplicate generator name '%s' in scenario %s", item["name"], scenario)
+        def _validate_generator(flag, validator_scenario, validator_item):
+            if validator_item["name"] in scenario_generators[validator_scenario]:
+                model_logger.error(
+                    "Duplicate generator name '%s' in scenario %s", validator_item["name"], validator_scenario
+                )
                 flag = False
             else:
-                scenario_generators[scenario].append(item["name"])
+                scenario_generators[validator_scenario].append(validator_item["name"])
 
-            if item["unit_type"] == "baseload":
-                scenario_baseload[scenario].append(item["name"])
+            if validator_item["unit_type"] == "baseload":
+                scenario_baseload[validator_scenario].append(validator_item["name"])
 
-            if item["node"] not in scenario_nodes[scenario]:
+            if validator_item["node"] not in scenario_nodes[validator_scenario]:
                 model_logger.error(
-                    "'node' %s for generator %s is not defined in scenario %s", item["node"], item["name"], scenario
+                    "'node' %s for generator %s is not defined in scenario %s",
+                    validator_item["node"],
+                    validator_item["name"],
+                    validator_scenario,
                 )
                 flag = False
 
-            if item["fuel"] not in scenario_fuels[scenario]:
+            if validator_item["fuel"] not in scenario_fuels[validator_scenario]:
                 model_logger.error(
-                    "'fuel' %s for generator %s is not defined in scenario %s", item["fuel"], item["name"], scenario
+                    "'fuel' %s for generator %s is not defined in scenario %s",
+                    validator_item["fuel"],
+                    validator_item["name"],
+                    validator_scenario,
                 )
                 flag = False
 
-            if item["line"] not in scenario_lines[scenario]:
+            if validator_item["line"] not in scenario_lines[validator_scenario]:
                 model_logger.error(
-                    "'line' %s for generator %s is not defined in scenario %s", item["line"], item["name"], scenario
+                    "'line' %s for generator %s is not defined in scenario %s",
+                    validator_item["line"],
+                    validator_item["name"],
+                    validator_scenario,
                 )
                 flag = False
             return flag
@@ -562,19 +597,25 @@ def validate_generators(
         scenarios = parse_list(item.get("scenarios"))
         if scenarios == ["all"]:
             for scenario in scenarios_list:
-                flag = _validate_generator(flag)
+                flag = _validate_generator(flag, scenario, item)
         else:
             for scenario in scenarios:
                 if scenario in scenarios_list:
-                    flag = _validate_generator(flag)
+                    flag = _validate_generator(flag, scenario, item)
                 else:
-                    model_logger.warning("scenario '%s' for generator.id %s not defined in scenarios.csv", scenario, idx)
+                    model_logger.warning(
+                        "scenario '%s' for generator.id %s not defined in scenarios.csv", scenario, idx
+                    )
 
     return scenario_generators, scenario_baseload, flag
 
 
 def validate_storages(
-    storages_dict: dict, scenarios_list: list, scenario_nodes: dict, scenario_lines: dict, model_logger: Logger
+    storages_dict: Dict[int, Dict[str, Any]],
+    scenarios_list: List[str],
+    scenario_nodes: Dict[str, List[str]],
+    scenario_lines: Dict[str, List[str]],
+    model_logger: Logger,
 ) -> tuple:
     """
     Validate all rows in storages.csv and build a per-scenario storage index.
@@ -588,15 +629,15 @@ def validate_storages(
     -------
     storages_dict (dict): Mapping of row index to storage attribute dicts as loaded
         from storages.csv.
-    scenarios_list (list): List of valid scenario names.
-    scenario_nodes (dict): Mapping of scenario name to a list of valid node names.
-    scenario_lines (dict): Mapping of scenario name to a list of valid line names.
+    scenarios_list (List[str]): List of valid scenario names.
+    scenario_nodes (Dict[str, List[str]]): Mapping of scenario name to a list of valid node names.
+    scenario_lines (Dict[str, List[str]]): Mapping of scenario name to a list of valid line names.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
     -------
     tuple: A 2-tuple (scenario_storages, flag) where:
-        scenario_storages (dict) maps scenario name to a list of storage names;
+        scenario_storages (Dict[str, List[str]]) maps scenario name to a list of storage names;
         flag (bool) is False if any validation error was found, True otherwise.
     """
     flag = True
@@ -628,7 +669,7 @@ def validate_storages(
                     if float(item[min_field]) > float(item[max_field]):
                         model_logger.error("'%s' must be <= '%s'", min_field, max_field)
                         flag = False
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     pass
 
         for field in ["lifetime", "duration"]:
@@ -636,7 +677,7 @@ def validate_storages(
                 if int(item[field]) < 0:
                     model_logger.error("'%s' must be int >= 0", field)
                     flag = False
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 model_logger.error("'%s' must be a valid integer", field)
                 flag = False
 
@@ -649,22 +690,30 @@ def validate_storages(
             model_logger.error("'discount_rate' must be float in [0,1]")
             flag = False
 
-        def _validate_storage(flag):
-            if item["name"] in scenario_storages[scenario]:
-                model_logger.error("Duplicate storage name '%s' in scenario %s", item["name"], scenario)
+        def _validate_storage(flag, validator_scenario, validator_item):
+            if validator_item["name"] in scenario_storages[validator_scenario]:
+                model_logger.error(
+                    "Duplicate storage name '%s' in scenario %s", validator_item["name"], validator_scenario
+                )
                 flag = False
             else:
-                scenario_storages[scenario].append(item["name"])
+                scenario_storages[validator_scenario].append(validator_item["name"])
 
-            if item["node"] not in scenario_nodes[scenario]:
+            if validator_item["node"] not in scenario_nodes[validator_scenario]:
                 model_logger.error(
-                    "'node' %s for storage %s is not defined in scenario %s", item["node"], item["name"], scenario
+                    "'node' %s for storage %s is not defined in scenario %s",
+                    validator_item["node"],
+                    validator_item["name"],
+                    validator_scenario,
                 )
                 flag = False
 
-            if item["line"] not in scenario_lines[scenario]:
+            if validator_item["line"] not in scenario_lines[validator_scenario]:
                 model_logger.error(
-                    "'line' %s for storage %s is not defined in scenario %s", item["line"], item["name"], scenario
+                    "'line' %s for storage %s is not defined in scenario %s",
+                    validator_item["line"],
+                    validator_item["name"],
+                    validator_scenario,
                 )
                 flag = False
             return flag
@@ -672,11 +721,11 @@ def validate_storages(
         scenarios = parse_list(item.get("scenarios"))
         if scenarios == ["all"]:
             for scenario in scenarios_list:
-                flag = _validate_storage(flag)
+                flag = _validate_storage(flag, scenario, item)
         else:
             for scenario in scenarios:
                 if scenario in scenarios_list:
-                    flag = _validate_storage(flag)
+                    flag = _validate_storage(flag, scenario, item)
                 else:
                     model_logger.warning("scenario '%s' for storage.id %s not defined in scenarios.csv", scenario, idx)
 
@@ -684,13 +733,13 @@ def validate_storages(
 
 
 def validate_initial_guess(
-    x0s_dict: dict,
-    scenarios_list: list,
-    scenario_generators: dict,
-    scenario_storages: dict,
-    scenario_lines: dict,
-    scenario_baseload: dict,
-    scenario_minor_lines: dict,
+    x0s_dict: Dict[int, Dict[str, Any]],
+    scenarios_list: List[str],
+    scenario_generators: Dict[str, List[str]],
+    scenario_storages: Dict[str, List[str]],
+    scenario_lines: Dict[str, List[str]],
+    scenario_baseload: Dict[str, List[str]],
+    scenario_minor_lines: Dict[str, List[str]],
     model_logger: Logger,
 ) -> bool:
     """
@@ -702,14 +751,14 @@ def validate_initial_guess(
 
     Parameters:
     -------
-    x0s_dict (dict): Mapping of row index to initial-guess attribute dicts as loaded
+    x0s_dict (Dict[int, Dict[str, Any]]): Mapping of row index to initial-guess attribute dicts as loaded
         from initial_guess.csv.
-    scenarios_list (list): List of valid scenario names.
-    scenario_generators (dict): Mapping of scenario name to a list of generator names.
-    scenario_storages (dict): Mapping of scenario name to a list of storage names.
-    scenario_lines (dict): Mapping of scenario name to a list of line names.
-    scenario_baseload (dict): Mapping of scenario name to a list of baseload generator names.
-    scenario_minor_lines (dict): Mapping of scenario name to a list of minor line names
+    scenarios_list (List[str]): List of valid scenario names.
+    scenario_generators (Dict[str, List[str]]): Mapping of scenario name to a list of generator names.
+    scenario_storages (Dict[str, List[str]]): Mapping of scenario name to a list of storage names.
+    scenario_lines (Dict[str, List[str]]): Mapping of scenario name to a list of line names.
+    scenario_baseload (Dict[str, List[str]]): Mapping of scenario name to a list of baseload generator names.
+    scenario_minor_lines (Dict[str, List[str]]): Mapping of scenario name to a list of minor line names
         (lines without both endpoints).
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
@@ -755,16 +804,16 @@ def validate_initial_guess(
 
 
 def validate_datafiles_config(
-    scenario_filenames: list, scenario_datafile_types: list, model_logger: Logger, datafiles_directory: str
+    scenario_filenames: List[str], scenario_datafile_types: List[str], model_logger: Logger, datafiles_directory: str
 ) -> bool:
     """
     Check that all referenced data files exist on disk and have valid types.
 
     Parameters:
     -------
-    scenario_filenames (list): List of filenames expected to be present in
+    scenario_filenames (List[str]): List of filenames expected to be present in
         datafiles_directory.
-    scenario_datafile_types (list): List of datafile type strings corresponding to each
+    scenario_datafile_types (List[str]): List of datafile type strings corresponding to each
         filename. Valid values are "demand", "generation", and "flexible_annual_limit".
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
     datafiles_directory (str): Absolute path to the directory containing data files.
@@ -790,7 +839,7 @@ def validate_datafiles_config(
     return flag
 
 
-def validate_electricity(file_path: str, node_list: list, model_logger: Logger) -> bool:
+def validate_electricity(file_path: str, node_list: List[str], model_logger: Logger) -> bool:
     """
     Validate a demand profile CSV file.
 
@@ -800,7 +849,7 @@ def validate_electricity(file_path: str, node_list: list, model_logger: Logger) 
     Parameters:
     -------
     file_path (str): Absolute path to the demand CSV file.
-    node_list (list): List of node names expected as columns in the file. If None, column
+    node_list (List[str]): List of node names expected as columns in the file. If None, column
         name validation is skipped and only value ranges are checked.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
@@ -878,7 +927,7 @@ def validate_electricity(file_path: str, node_list: list, model_logger: Logger) 
 
 
 def validate_generation(
-    file_path: str, solar_list: list, wind_list: list, baseload_list: list, model_logger: Logger
+    file_path: str, solar_list: List[str], wind_list: List[str], baseload_list: List[str], model_logger: Logger
 ) -> bool:
     """
     Validate a generation trace CSV file for solar, wind, or baseload units.
@@ -890,10 +939,10 @@ def validate_generation(
     Parameters:
     -------
     file_path (str): Absolute path to the generation trace CSV file.
-    solar_list (list): List of solar generator names for the scenario. If all three
+    solar_list (List[str]): List of solar generator names for the scenario. If all three
         generator lists are None, column name validation is skipped.
-    wind_list (list): List of wind generator names for the scenario.
-    baseload_list (list): List of baseload generator names for the scenario.
+    wind_list (List[str]): List of wind generator names for the scenario.
+    baseload_list (List[str]): List of baseload generator names for the scenario.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
     Returns:
@@ -978,7 +1027,7 @@ def validate_generation(
     return flag
 
 
-def validate_flexible_limits(file_path: str, flexible_list: list, model_logger: Logger) -> bool:
+def validate_flexible_limits(file_path: str, flexible_list: List[str], model_logger: Logger) -> bool:
     """
     Validate a flexible annual generation limit CSV file.
 
@@ -990,7 +1039,7 @@ def validate_flexible_limits(file_path: str, flexible_list: list, model_logger: 
     Parameters:
     -------
     file_path (str): Absolute path to the flexible annual limit CSV file.
-    flexible_list (list): List of flexible generator names expected as columns in the file.
+    flexible_list (List[str]): List of flexible generator names expected as columns in the file.
         If None, column name validation is skipped and only value ranges are checked.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
 
@@ -1134,15 +1183,15 @@ def validate_config(model_data: ModelData) -> bool:
 
 
 def validate_data(
-    all_datafiles: dict,
+    all_datafiles: Dict[int, Dict[str, Any]],
     scenario_name: str,
     model_logger: Logger,
     datafiles_directory: str,
-    node_list: list = None,
-    solar_list: list = None,
-    wind_list: list = None,
-    baseload_list: list = None,
-    flexible_list: list = None,
+    node_list: List[str] = None,
+    solar_list: List[str] = None,
+    wind_list: List[str] = None,
+    baseload_list: List[str] = None,
+    flexible_list: List[str] = None,
 ) -> bool:
     """
     Validate the data files referenced by a specific scenario.
@@ -1158,20 +1207,20 @@ def validate_data(
 
     Parameters:
     -------
-    all_datafiles (dict): Mapping of row index to datafile attribute dicts as loaded
+    all_datafiles (Dict[int, Dict[str, Any]]): Mapping of row index to datafile attribute dicts as loaded
         from datafiles.csv.
     scenario_name (str): The name of the scenario whose data files should be validated.
     model_logger (logging.Logger): Logger instance for recording errors and warnings.
     datafiles_directory (str): Absolute path to the directory containing data files.
-    node_list (list): List of node names expected in demand files for this scenario.
+    node_list (List[str]): List of node names expected in demand files for this scenario.
         Defaults to None (skips column name validation).
-    solar_list (list): List of solar generator names for this scenario.
+    solar_list (List[str]): List of solar generator names for this scenario.
         Defaults to None (skips column name validation).
-    wind_list (list): List of wind generator names for this scenario.
+    wind_list (List[str]): List of wind generator names for this scenario.
         Defaults to None (skips column name validation).
-    baseload_list (list): List of baseload generator names for this scenario.
+    baseload_list (List[str]): List of baseload generator names for this scenario.
         Defaults to None (skips column name validation).
-    flexible_list (list): List of flexible generator names expected in annual limit files.
+    flexible_list (List[str]): List of flexible generator names expected in annual limit files.
         Defaults to None (skips column name validation).
 
     Returns:
