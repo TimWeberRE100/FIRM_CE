@@ -35,6 +35,7 @@
 
 ## Releases
 
-### v0.0.1 (2025-10-??)
+### v0.0.1 (2026-02-23)
 
-- TBD
+- Added missing docstrings and validation of time-series data inputs.
+- Release of model developed for "Replacing Gas with Low-cost, Abundant Long-duration Pumped Hydro in Electricity Systems"
