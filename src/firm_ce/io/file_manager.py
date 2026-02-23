@@ -33,6 +33,7 @@ class ImportCSV:
         self.repository = Path(repository)
         self.config_filenames = (
             "scenarios",
+            "nodes",
             "generators",
             "fuels",
             "lines",

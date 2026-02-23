@@ -86,7 +86,7 @@ class Scenario:
         self.initial_population = self.get_initial_pop()
 
         self.network = construct_Network_object(
-            self.scenario_data.get("nodes", "").split(","),
+            self.get_scenario_dicts(model_data.nodes),
             self.get_scenario_dicts(model_data.lines),
             self.scenario_data.get("networksteps_max", 0),
         )
@@ -187,6 +187,7 @@ class Scenario:
             idx: imported_dict[idx]
             for idx in imported_dict
             if self.name in parse_comma_separated(imported_dict[idx]["scenarios"])
+            or parse_comma_separated(imported_dict[idx]["scenarios"]) == ["all"]
         }
 
     def get_datafiles(self, all_datafiles: Dict[str, Dict[str, str]], data_directory: str) -> Dict[str, DataFile]:
@@ -212,6 +213,7 @@ class Scenario:
             idx: DataFile(all_datafiles[idx]["filename"], all_datafiles[idx]["datafile_type"], data_directory)
             for idx in all_datafiles
             if self.name in parse_comma_separated(all_datafiles[idx]["scenarios"])
+            or parse_comma_separated(all_datafiles[idx]["scenarios"]) == ["all"]
         }
 
     def get_initial_guess(self, all_x0s: Dict[str, Dict[str, str]]) -> NDArray[np.float64] | None:

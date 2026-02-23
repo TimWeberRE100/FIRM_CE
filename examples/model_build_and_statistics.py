@@ -14,7 +14,7 @@ from firm_ce.model import Model
 from firm_ce.optimisation.statistics import Statistics
 
 start_time = time.time()
-model = Model()
+model = Model(config_directory="inputs/config", data_directory="inputs/data", logging_flag=True)
 model_build_time = time.time()
 print(f"Model build time: {model_build_time - start_time:.4f} seconds")
 

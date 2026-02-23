@@ -1,18 +1,21 @@
 from typing import List
 
 
-def parse_comma_separated(value: str) -> List[str]:
+def parse_comma_separated(value: str, lower: bool = True) -> List[str]:
     """
     Parse a comma-separated string into a list of trimmed, non-empty strings.
 
     Parameters:
     -------
     value (str): A string containing comma-separated values.
+    lower (bool): If True, converts each item to lowercase before returning. Defaults to True.
 
     Returns:
     -------
-    List[str]: A list of cleaned strings with whitespace removed and empty entries excluded.
+    List[str]: A list of strings with leading/trailing whitespace removed and empty entries excluded.
     """
+    if lower:
+        return [item.strip().lower() for item in value.split(",") if item.strip()]
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
