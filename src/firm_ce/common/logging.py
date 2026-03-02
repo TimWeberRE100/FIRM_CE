@@ -1,12 +1,22 @@
 import logging
 import os
 from datetime import datetime
-from typing import Tuple
 
 logging.getLogger("numba").setLevel(logging.WARNING)
 
 
-def init_model_logger(model_name: str, logging_flag: bool) -> Tuple[logging.Logger, str]:
+def get_logger() -> logging.Logger:
+    """
+    Return the firm_ce logger.
+
+    Returns:
+    -------
+    logging.Logger: The firm_ce logger instance.
+    """
+    return logging.getLogger("firm_ce")
+
+
+def init_model_logger(model_name: str, logging_flag: bool) -> str:
     """
     Initialize a logger for the model run, configured to log both to console and a log file.
     Logger does not work within JIT compiled code.
@@ -15,10 +25,17 @@ def init_model_logger(model_name: str, logging_flag: bool) -> Tuple[logging.Logg
     - All messages (DEBUG and above) to a log file in a new `results/Model_<timestamp>` directory.
     - INFO and higher messages to the console.
 
+    Use get_logger() to retrieve the configured logger instance from anywhere in the codebase.
+
+    Parameters:
+    -------
+    model_name (str): Name used to label the results directory, based on the model instance name.
+    logging_flag (bool): If True, writes to a timestamped directory. If False, writes to
+        `results/temp`.
+
     Returns:
     -------
-    Tuple[logging.Logger, str]: A tuple containing the configured `Logger` instance and the path to the results
-        directory.
+    str: Path to the results directory created for this model run.
     """
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -30,9 +47,10 @@ def init_model_logger(model_name: str, logging_flag: bool) -> Tuple[logging.Logg
 
     log_path = os.path.join(results_dir, "log.txt")
 
-    logger = logging.getLogger()
+    logger = logging.getLogger("firm_ce")
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
+    logger.propagate = False
 
     file_handler = logging.FileHandler(log_path)
     file_handler.setLevel(logging.DEBUG)
@@ -45,7 +63,6 @@ def init_model_logger(model_name: str, logging_flag: bool) -> Tuple[logging.Logg
 
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
-    logger.propagate = False
 
     logger.info(f"Logger initialized. Writing to {log_path}")
-    return logger, results_dir
+    return results_dir

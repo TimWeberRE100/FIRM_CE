@@ -20,6 +20,7 @@ def initialise_interval(
     fleet: Fleet_InstanceType,
     resolution: float64,
     forward_time_flag: boolean,
+    year_idx: int64,
 ) -> None:
     """
     Initialise state of all Node, Storage, and flexible Generator instances for a time interval. This
@@ -35,6 +36,7 @@ def initialise_interval(
     resolution (float64): Length of the time interval, units hours.
     forward_time_flag (boolean): True for forward-time balancing and when resolving the discontinuity
         created after the precharging period, False for reverse-time deficit block balancing.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -57,7 +59,9 @@ def initialise_interval(
                 fleet.generators[flexible_order], interval, resolution, idx, forward_time_flag
             )
         for idx, storage_order in enumerate(node.storage_merit_order):
-            storage_m.set_dispatch_max_t(fleet.storages[storage_order], interval, resolution, idx, forward_time_flag)
+            storage_m.set_dispatch_max_t(
+                fleet.storages[storage_order], interval, resolution, idx, forward_time_flag, year_idx
+            )
     return None
 
 
@@ -107,6 +111,7 @@ def balance_with_storage(
     interval: int64,
     network: Network_InstanceType,
     fleet: Fleet_InstanceType,
+    year_idx: int64,
 ) -> None:
     """
     Dispatch Storage systems according to the merit order at each Node to balance remaining netload.
@@ -123,6 +128,7 @@ def balance_with_storage(
     interval (int64): Index of the time interval to balance.
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -147,6 +153,7 @@ def balance_with_flexible(
     interval: int64,
     network: Network_InstanceType,
     fleet: Fleet_InstanceType,
+    year_idx: int64,
 ) -> None:
     """
     Dispatch flexible Generators according to the merit order at each Node to balance remaining netload.
@@ -162,6 +169,7 @@ def balance_with_flexible(
     interval (int64): Index of the time interval to balance.
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -182,7 +190,7 @@ def balance_with_flexible(
 
 
 @njit(fastmath=FASTMATH)
-def energy_balance_for_interval(solution, interval: int64, forward_time_flag: boolean) -> None:
+def energy_balance_for_interval(solution, interval: int64, forward_time_flag: boolean, year_idx: int64) -> None:
     """
     The core sequence of unit committment business rules for balancing the residual load in a
     time interval. The high-level process is:
@@ -204,6 +212,7 @@ def energy_balance_for_interval(solution, interval: int64, forward_time_flag: bo
     interval (int64): Index of the time interval to balance.
     forward_time_flag (boolean): True for forward-time balancing and when resolving the discontinuity
         created after the precharging period, False for reverse-time deficit block balancing.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -226,26 +235,27 @@ def energy_balance_for_interval(solution, interval: int64, forward_time_flag: bo
         interval,
         solution.network,
         solution.fleet,
-        solution.static.interval_resolutions[interval],
+        solution.interval_resolutions[interval],
         forward_time_flag,
+        year_idx,
     )
 
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
         balance_with_transmission(interval, solution.network, "surplus", False)
-        balance_with_storage(interval, solution.network, solution.fleet)  # Local storage
+        balance_with_storage(interval, solution.network, solution.fleet, year_idx)  # Local storage
 
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
         balance_with_transmission(interval, solution.network, "storage_discharge", False)
-        balance_with_storage(interval, solution.network, solution.fleet)  # Neighbouring and local storage
-        balance_with_flexible(interval, solution.network, solution.fleet)  # Local flexible
+        balance_with_storage(interval, solution.network, solution.fleet, year_idx)  # Neighbouring and local storage
+        balance_with_flexible(interval, solution.network, solution.fleet, year_idx)  # Local flexible
 
     if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
         balance_with_transmission(interval, solution.network, "flexible", False)
-        balance_with_flexible(interval, solution.network, solution.fleet)  # Neighbouring and local flexible
+        balance_with_flexible(interval, solution.network, solution.fleet, year_idx)  # Neighbouring and local flexible
 
     if network_m.check_remaining_netloads(solution.network, interval, "spillage"):
         balance_with_transmission(interval, solution.network, "storage_charge", False)
-        balance_with_storage(interval, solution.network, solution.fleet)  # Charge neighbouring storage
+        balance_with_storage(interval, solution.network, solution.fleet, year_idx)  # Charge neighbouring storage
 
     return None
 
@@ -256,7 +266,7 @@ def balance_for_period(
     end_t: int64,
     precharging_allowed: boolean,
     solution,
-    year: int64,
+    year_idx: int64,
 ) -> None:
     """
     Iterates through the time intervals within a specified period and performs the unit committment.
@@ -270,7 +280,7 @@ def balance_for_period(
         deficit block, this argument is False.
     solution (Solution_InstanceType): An instance of the Solution jitclass providing a complete description
         of the system for this candidate solution.
-    year (int64): Year index used manage flexible Generator remaining energy constraints during precharging.
+    year_idx (int64): Year index used manage flexible Generator remaining energy constraints during precharging.
 
     Returns:
     -------
@@ -294,14 +304,12 @@ def balance_for_period(
     perform_precharge = False
 
     for t in range(start_t, end_t):
-        energy_balance_for_interval(solution, t, True)
+        energy_balance_for_interval(solution, t, True, year_idx)
 
         network_m.calculate_spillage_and_deficit(solution.network, t)
 
-        fleet_m.update_stored_energies(solution.fleet, t, solution.static.interval_resolutions[t], True)
-        fleet_m.update_remaining_flexible_energies(
-            solution.fleet, t, solution.static.interval_resolutions[t], True, False
-        )
+        fleet_m.update_stored_energies(solution.fleet, t, solution.interval_resolutions[t], True, year_idx)
+        fleet_m.update_remaining_flexible_energies(solution.fleet, t, solution.interval_resolutions[t], True, False)
 
         if not precharging_allowed:
             continue
@@ -312,13 +320,13 @@ def balance_for_period(
         if perform_precharge and (
             not network_m.check_remaining_netloads(solution.network, t, "deficit") or t == end_t - 1
         ):
-            precharge_storage(solution, t, year)
+            precharge_storage(solution, t, year_idx)
             perform_precharge = False
     return None
 
 
 @njit(fastmath=FASTMATH)
-def determine_precharge_energies_for_deficit_block(interval: int64, solution, year: int64) -> int64:
+def determine_precharge_energies_for_deficit_block(interval: int64, solution, year_idx: int64) -> int64:
     """
     Iterate backwards through the time intervals in a deficit block, dispatching Storage systems
     and flexible Generators according to reverse-time rules. Determines the amount of energy each
@@ -330,7 +338,7 @@ def determine_precharge_energies_for_deficit_block(interval: int64, solution, ye
     interval (int64): Interval immediately after the deficit block.
     solution (Solution_InstanceType): An instance of the Solution jitclass providing a complete description
         of the system for this candidate solution.
-    year (int64): Year index for the time interval immediately after the deficit block.
+    year_idx (int64): Year index for the time interval immediately after the deficit block.
 
     Returns:
     -------
@@ -354,14 +362,16 @@ def determine_precharge_energies_for_deficit_block(interval: int64, solution, ye
     """
     fleet_m.initialise_deficit_block(solution.fleet, interval)
     previous_year_flag = False
-    precharging_year = year
-    first_t, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+    precharging_year = year_idx
+    first_t_abs, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+    first_t = first_t_abs - solution.first_t  # Rebase to optimisation window
 
     while True:
         if interval == first_t:
             previous_year_flag = True
             precharging_year -= 1
-            first_t, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+            first_t_abs, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+            first_t = first_t_abs - solution.first_t  # Rebase to optimisation window
 
         interval -= 1
 
@@ -372,17 +382,19 @@ def determine_precharge_energies_for_deficit_block(interval: int64, solution, ye
         network_m.reset_dispatch(solution.network, interval)
         fleet_m.reset_dispatch(solution.fleet, interval)
 
-        energy_balance_for_interval(solution, interval, False)
+        energy_balance_for_interval(solution, interval, False, precharging_year)
 
-        fleet_m.update_stored_energies(solution.fleet, interval, solution.static.interval_resolutions[interval], False)
+        fleet_m.update_stored_energies(
+            solution.fleet, interval, solution.interval_resolutions[interval], False, precharging_year
+        )
         fleet_m.update_remaining_flexible_energies(
-            solution.fleet, interval, solution.static.interval_resolutions[interval], False, previous_year_flag
+            solution.fleet, interval, solution.interval_resolutions[interval], False, previous_year_flag
         )
         fleet_m.update_deficit_block(solution.fleet)
 
         if network_m.check_precharging_end(solution.network, interval):
             fleet_m.assign_precharging_values(
-                solution.fleet, interval, solution.static.interval_resolutions[interval], year
+                solution.fleet, interval, solution.interval_resolutions[interval], year_idx
             )
             return interval
 
@@ -391,7 +403,7 @@ def determine_precharge_energies_for_deficit_block(interval: int64, solution, ye
 
 @njit(fastmath=FASTMATH)
 def initialise_precharging_interval(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Initialise state of all Node, Storage, and flexible Generator instances for a time interval in the
@@ -403,6 +415,7 @@ def initialise_precharging_interval(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -424,7 +437,7 @@ def initialise_precharging_interval(
         node_m.reset_dispatch_max_t(node)
 
         for idx, storage_order in enumerate(node.storage_merit_order):
-            storage_m.set_precharging_max_t(fleet.storages[storage_order], interval, resolution, idx)
+            storage_m.set_precharging_max_t(fleet.storages[storage_order], interval, resolution, idx, year_idx)
         for idx, flexible_order in enumerate(node.flexible_merit_order):
             generator_m.set_precharging_max_t(fleet.generators[flexible_order], interval, resolution, idx)
     return None
@@ -432,7 +445,7 @@ def initialise_precharging_interval(
 
 @njit(fastmath=FASTMATH)
 def perform_local_surplus_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Use any existing local (intranode) surplus generation to charge Storage prechargers.
@@ -449,6 +462,7 @@ def perform_local_surplus_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -474,7 +488,7 @@ def perform_local_surplus_transfers(
 
             dispatch_power_update = min(max(node.existing_surplus, -fleet.storages[storage_order].charge_max_t), 0.0)
             storage_m.update_precharge_dispatch(
-                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
             )
             node.existing_surplus -= dispatch_power_update
     return None
@@ -482,7 +496,7 @@ def perform_local_surplus_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_transmitted_surplus_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Transmit any existing surplus generation between Nodes to charge Storage prechargers.
@@ -499,6 +513,7 @@ def perform_transmitted_surplus_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -531,7 +546,7 @@ def perform_transmitted_surplus_transfers(
                 max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
             )
             storage_m.update_precharge_dispatch(
-                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
             )
             node.imports_exports_update -= dispatch_power_update
     return None
@@ -539,7 +554,7 @@ def perform_transmitted_surplus_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_intranode_interstorage_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Transfer energy within a Node from Storage trickle-chargers to Storage prechargers.
@@ -556,6 +571,7 @@ def perform_intranode_interstorage_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -582,14 +598,14 @@ def perform_intranode_interstorage_transfers(
             if fleet.storages[storage_order].trickling_flag:
                 dispatch_power_update = max(min(intranode_trickle, fleet.storages[storage_order].discharge_max_t), 0.0)
                 storage_m.update_precharge_dispatch(
-                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, False, idx
+                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, False, idx, year_idx
                 )
                 intranode_trickle -= dispatch_power_update
 
             if fleet.storages[storage_order].precharge_flag:
                 dispatch_power_update = min(max(intranode_precharge, -fleet.storages[storage_order].charge_max_t), 0.0)
                 storage_m.update_precharge_dispatch(
-                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
                 )
                 intranode_precharge -= dispatch_power_update
     return None
@@ -597,7 +613,7 @@ def perform_intranode_interstorage_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_internode_interstorage_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Transfer energy between Nodes from Storage trickle-chargers to Storage prechargers.
@@ -614,6 +630,7 @@ def perform_internode_interstorage_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -648,7 +665,7 @@ def perform_internode_interstorage_transfers(
                     min(node.imports_exports_update, fleet.storages[storage_order].discharge_max_t), 0.0
                 )
                 storage_m.update_precharge_dispatch(
-                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, False, idx
+                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, False, idx, year_idx
                 )
                 node.imports_exports_update -= dispatch_power_update
 
@@ -657,7 +674,7 @@ def perform_internode_interstorage_transfers(
                     max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
                 )
                 storage_m.update_precharge_dispatch(
-                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                    fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
                 )
                 node.imports_exports_update -= dispatch_power_update
     return None
@@ -665,7 +682,7 @@ def perform_internode_interstorage_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_intranode_flexible_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Transfer energy within a Node from flexible Generator trickle-chargers to Storage prechargers.
@@ -682,6 +699,7 @@ def perform_intranode_flexible_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -717,7 +735,7 @@ def perform_intranode_flexible_transfers(
 
             dispatch_power_update = min(max(intranode_precharge, -fleet.storages[storage_order].charge_max_t), 0.0)
             storage_m.update_precharge_dispatch(
-                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
             )
             intranode_precharge -= dispatch_power_update
     return None
@@ -725,7 +743,7 @@ def perform_intranode_flexible_transfers(
 
 @njit(fastmath=FASTMATH)
 def perform_internode_flexible_transfers(
-    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64
+    interval: int64, network: Network_InstanceType, fleet: Fleet_InstanceType, resolution: float64, year_idx: int64
 ) -> None:
     """
     Transfer energy between Nodes from flexible Generator trickle-chargers to Storage prechargers.
@@ -742,6 +760,7 @@ def perform_internode_flexible_transfers(
     network (Network_InstanceType): An instance of the Network jitclass.
     fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
     resolution (float64): Length of the time interval, units hours.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -786,14 +805,14 @@ def perform_internode_flexible_transfers(
                 max(node.imports_exports_update, -fleet.storages[storage_order].charge_max_t), 0.0
             )
             storage_m.update_precharge_dispatch(
-                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx
+                fleet.storages[storage_order], interval, resolution, dispatch_power_update, True, idx, year_idx
             )
             node.imports_exports_update -= dispatch_power_update
     return None
 
 
 @njit(fastmath=FASTMATH)
-def perform_flexible_precharging(solution, interval: int64) -> None:
+def perform_flexible_precharging(solution, interval: int64, year_idx: int64) -> None:
     """
     Use flexible Generators to trickle-charge Storage prechargers for a given time interval within the
     precharging period.
@@ -801,9 +820,8 @@ def perform_flexible_precharging(solution, interval: int64) -> None:
     Parameters:
     -------
     interval (int64): Index of the time interval within the precharging period.
-    network (Network_InstanceType): An instance of the Network jitclass.
-    fleet (Fleet_InstanceType): An instance of the Fleet jitclass.
-    resolution (float64): Length of the time interval, units hours.
+    solution (Solution_InstanceType): An instance of the Solution jitclass.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -830,21 +848,23 @@ def perform_flexible_precharging(solution, interval: int64) -> None:
         interval,
         solution.network,
         solution.fleet,
-        solution.static.interval_resolutions[interval],
+        solution.interval_resolutions[interval],
+        year_idx,
     )
 
     perform_internode_flexible_transfers(
         interval,
         solution.network,
         solution.fleet,
-        solution.static.interval_resolutions[interval],
+        solution.interval_resolutions[interval],
+        year_idx,
     )
 
     return None
 
 
 @njit(fastmath=FASTMATH)
-def determine_power_adjustments_for_precharging_period(interval: int64, solution, year: int64) -> int64:
+def determine_power_adjustments_for_precharging_period(interval: int64, solution, year_idx: int64) -> int64:
     """
     Iterate backwards through the time intervals in the precharging period, adjusting the dispatch power of
     Storage systems and flexible Generators to transfer enough energy to Storage precharges to balance the
@@ -868,7 +888,7 @@ def determine_power_adjustments_for_precharging_period(interval: int64, solution
     interval (int64): Index of the first interval of the deficit block.
     solution (Solution_InstanceType): An instance of the Solution jitclass providing a complete description
         of the system for this candidate solution.
-    year (int64): Year index for the time interval immediately after the deficit block.
+    year_idx (int64): Year index for the time interval immediately after the deficit block.
 
     Returns:
     -------
@@ -890,13 +910,15 @@ def determine_power_adjustments_for_precharging_period(interval: int64, solution
     """
     first_interval_precharge = 0
     fleet_m.initialise_precharging_flags(solution.fleet, interval)
-    precharging_year = year
-    first_t, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+    precharging_year = year_idx
+    first_t_abs, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+    first_t = first_t_abs - solution.first_t  # Rebase to Solution window
 
     while True:
         if interval == first_t:
             precharging_year -= 1
-            first_t, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+            first_t_abs, _ = static_m.get_year_t_boundaries(solution.static, precharging_year)
+            first_t = first_t_abs - solution.first_t  # Rebase to Solution window
             fleet_m.reset_flexible_reserves(solution.fleet)
 
         interval -= 1
@@ -909,7 +931,8 @@ def determine_power_adjustments_for_precharging_period(interval: int64, solution
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
+            precharging_year,
         )
         network_m.set_storage_precharge_fills_and_surpluses(solution.network)
 
@@ -917,32 +940,36 @@ def determine_power_adjustments_for_precharging_period(interval: int64, solution
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
+            precharging_year,
         )
 
         perform_transmitted_surplus_transfers(
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
+            precharging_year,
         )
 
         perform_intranode_interstorage_transfers(
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
+            precharging_year,
         )
 
         perform_internode_interstorage_transfers(
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
+            precharging_year,
         )
 
         if fleet_m.check_precharge_remaining(solution.fleet):
-            perform_flexible_precharging(solution, interval)
+            perform_flexible_precharging(solution, interval, precharging_year)
 
         if (not fleet_m.check_precharge_remaining(solution.fleet)) or (
             not fleet_m.check_trickling_remaining(solution.fleet)
@@ -988,7 +1015,7 @@ def perform_fill_adjustment(interval: int64, network: Network_InstanceType, flee
 
 @njit(fastmath=FASTMATH)
 def resolve_energy_discontinuities(
-    first_interval_precharge: int64, interval_after_deficit_block: int64, solution
+    first_interval_precharge: int64, interval_after_deficit_block: int64, solution, year_idx: int64
 ) -> None:
     """
     Iterate forwards through the precharging period and deficit block, checking whether the dispatch
@@ -1009,6 +1036,7 @@ def resolve_energy_discontinuities(
     interval_after_deficit_block (int64): First interval after the deficit block.
     solution (Solution_InstanceType): An instance of the Solution jitclass providing a complete description
         of the system for this candidate solution.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -1032,8 +1060,9 @@ def resolve_energy_discontinuities(
             interval,
             solution.network,
             solution.fleet,
-            solution.static.interval_resolutions[interval],
+            solution.interval_resolutions[interval],
             True,
+            year_idx,
         )
 
         infeasible_flag = fleet_m.determine_feasible_storage_dispatch(solution.fleet, interval)
@@ -1043,11 +1072,13 @@ def resolve_energy_discontinuities(
             fleet_m.reset_flexible(solution.fleet, interval)
 
             balance_with_transmission(interval, solution.network, "precharging_adjust_storage", False)
-            balance_with_flexible(interval, solution.network, solution.fleet)  # Local flexible
+            balance_with_flexible(interval, solution.network, solution.fleet, year_idx)  # Local flexible
 
             if network_m.check_remaining_netloads(solution.network, interval, "deficit"):
                 balance_with_transmission(interval, solution.network, "flexible", False)
-                balance_with_flexible(interval, solution.network, solution.fleet)  # Neighbouring and local flexible
+                balance_with_flexible(
+                    interval, solution.network, solution.fleet, year_idx
+                )  # Neighbouring and local flexible
         else:
             infeasible_flag = fleet_m.determine_feasible_flexible_dispatch(solution.fleet, interval)
             if infeasible_flag:
@@ -1067,15 +1098,17 @@ def resolve_energy_discontinuities(
 
         network_m.calculate_spillage_and_deficit(solution.network, interval)
 
-        fleet_m.update_stored_energies(solution.fleet, interval, solution.static.interval_resolutions[interval], True)
+        fleet_m.update_stored_energies(
+            solution.fleet, interval, solution.interval_resolutions[interval], True, year_idx
+        )
         fleet_m.update_remaining_flexible_energies(
-            solution.fleet, interval, solution.static.interval_resolutions[interval], True, False
+            solution.fleet, interval, solution.interval_resolutions[interval], True, False
         )
     return None
 
 
 @njit(fastmath=FASTMATH)
-def precharge_storage(solution, interval_after_deficit_block: int64, year: int64) -> None:
+def precharge_storage(solution, interval_after_deficit_block: int64, year_idx: int64) -> None:
     """
     Core unit committment business rules for precharging Storage systems. The high-level process is:
 
@@ -1095,7 +1128,7 @@ def precharge_storage(solution, interval_after_deficit_block: int64, year: int64
     solution (Solution_InstanceType): An instance of the Solution jitclass providing a complete description
         of the system for this candidate solution.
     interval_after_deficit_block (int64): First interval after the deficit block.
-    year (int64): Year index for the time interval immediately after the deficit block.
+    year_idx (int64): Year index for the time interval immediately after the deficit block.
 
     Returns:
     -------
@@ -1107,12 +1140,12 @@ def precharge_storage(solution, interval_after_deficit_block: int64, year: int64
     docstrings of the functions called below for details.
     """
     first_interval_deficit_block = determine_precharge_energies_for_deficit_block(
-        interval_after_deficit_block, solution, year
+        interval_after_deficit_block, solution, year_idx
     )
 
     first_interval_precharge = determine_power_adjustments_for_precharging_period(
-        first_interval_deficit_block, solution, year
+        first_interval_deficit_block, solution, year_idx
     )
 
-    resolve_energy_discontinuities(first_interval_precharge, interval_after_deficit_block + 1, solution)
+    resolve_energy_discontinuities(first_interval_precharge, interval_after_deficit_block + 1, solution, year_idx)
     return None

@@ -1,28 +1,28 @@
-id,name,fuel,capex,fom,vom,lifetime,discount_rate,heat_rate_base,heat_rate_incr,unit_size,node,max_build,min_build,initial_capacity,line,unit_type,scenarios,near_optimum,range_group
-0,pv_qld,solar,1463,12,0,30,0.05,0,0,0.001,QLD,50,0,0,pv_connection,solar,all,FALSE,
-1,pv_nsw,solar,1463,12,0,30,0.05,0,0,0.001,NSW,50,0,0,pv_connection,solar,all,FALSE,
-2,pv_sa,solar,1463,12,0,30,0.05,0,0,0.001,SA,50,0,0,pv_connection,solar,all,FALSE,
-3,pv_vic,solar,1463,12,0,30,0.05,0,0,0.001,VIC,50,0,0,pv_connection,solar,all,FALSE,
-4,pv_tas,solar,1463,12,0,30,0.05,0,0,0.001,TAS,50,0,0,pv_connection,solar,all,FALSE,
-5,wind_qld,wind,3223,28,0,25,0.05,0,0,0.001,QLD,50,0,0,wind_connection,wind,all,FALSE,
-6,wind_nsw,wind,3223,28,0,25,0.05,0,0,0.001,NSW,50,0,0,wind_connection,wind,all,FALSE,
-7,wind_sa,wind,3223,28,0,25,0.05,0,0,0.001,SA,50,0,0,wind_connection,wind,all,FALSE,
-8,wind_vic,wind,3223,28,0,25,0.05,0,0,0.001,VIC,50,0,0,wind_connection,wind,all,FALSE,
-9,wind_tas,wind,3223,28,0,25,0.05,0,0,0.001,TAS,50,0,0,wind_connection,wind,all,FALSE,
-10,hydro_qld,water,0,69.51,8.5503,0,0.05,0,0,0.5,QLD,0,0,0.5,other_connections,flexible,all,FALSE,
-11,hydro_nsw,water,0,69.51,8.5503,0,0.05,0,0,0.5,NSW,0,0,0.5,other_connections,flexible,all,FALSE,
-12,hydro_vic,water,0,69.51,8.5503,0,0.05,0,0,0.5,VIC,0,0,0.5,other_connections,flexible,all,FALSE,
-13,hydro_tas,water,0,69.51,8.5503,0,0.05,0,0,0.5,TAS,0,0,0.5,other_connections,flexible,all,FALSE,
-14,gas_qld,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.001,QLD,15,0,0,other_connections,flexible,gas,TRUE,gas
-15,gas_nsw,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.001,NSW,15,0,0,other_connections,flexible,gas,TRUE,gas
-16,gas_sa,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.001,SA,15,0,0,other_connections,flexible,gas,TRUE,gas
-17,gas_vic,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.001,VIC,15,0,0,other_connections,flexible,gas,TRUE,gas
-18,gas_tas,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.001,TAS,15,0,0,other_connections,flexible,gas,TRUE,gas
-19,coal_qld,black coal,0,64.9,4.7,0,0.05,0,0,0.5,QLD,0,0,0.5,other_connections,baseload,all,FALSE,
-20,coal_nsw,black coal,0,64.9,4.7,0,0.05,0,0,0.5,NSW,0,0,0.5,other_connections,baseload,all,FALSE,
-21,coal_vic,brown coal,0,69,5.3,0,0.05,0,0,0.5,VIC,0,0,0.5,other_connections,baseload,all,FALSE,
-22,gas_qld,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.265,QLD,15,0,0,other_connections,flexible,gas_hr,TRUE,gas
-23,gas_nsw,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.265,NSW,15,0,0,other_connections,flexible,gas_hr,TRUE,gas
-24,gas_sa,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.265,SA,15,0,0,other_connections,flexible,gas_hr,TRUE,gas
-25,gas_vic,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.265,VIC,15,0,0,other_connections,flexible,gas_hr,TRUE,gas
-26,gas_tas,gas,943,14.1,8.1,25,0.05,720.7293,8.2115,0.265,TAS,15,0,0,other_connections,flexible,gas_hr,TRUE,gas
+id,name,unit_type,scenarios,near_optimum,range_group,fuel,lifetime,node,line
+0,pv_qld,solar,all,FALSE,,solar,30,QLD,pv_connection
+1,pv_nsw,solar,all,FALSE,,solar,30,NSW,pv_connection
+2,pv_sa,solar,all,FALSE,,solar,30,SA,pv_connection
+3,pv_vic,solar,all,FALSE,,solar,30,VIC,pv_connection
+4,pv_tas,solar,all,FALSE,,solar,30,TAS,pv_connection
+5,wind_qld,wind,all,FALSE,,wind,25,QLD,wind_connection
+6,wind_nsw,wind,all,FALSE,,wind,25,NSW,wind_connection
+7,wind_sa,wind,all,FALSE,,wind,25,SA,wind_connection
+8,wind_vic,wind,all,FALSE,,wind,25,VIC,wind_connection
+9,wind_tas,wind,all,FALSE,,wind,25,TAS,wind_connection
+10,hydro_qld,flexible,all,FALSE,,water,0,QLD,other_connections
+11,hydro_nsw,flexible,all,FALSE,,water,0,NSW,other_connections
+12,hydro_vic,flexible,all,FALSE,,water,0,VIC,other_connections
+13,hydro_tas,flexible,all,FALSE,,water,0,TAS,other_connections
+14,gas_qld,flexible,gas,TRUE,gas,gas,25,QLD,other_connections
+15,gas_nsw,flexible,gas,TRUE,gas,gas,25,NSW,other_connections
+16,gas_sa,flexible,gas,TRUE,gas,gas,25,SA,other_connections
+17,gas_vic,flexible,gas,TRUE,gas,gas,25,VIC,other_connections
+18,gas_tas,flexible,gas,TRUE,gas,gas,25,TAS,other_connections
+19,coal_qld,baseload,all,FALSE,,black coal,0,QLD,other_connections
+20,coal_nsw,baseload,all,FALSE,,black coal,0,NSW,other_connections
+21,coal_vic,baseload,all,FALSE,,brown coal,0,VIC,other_connections
+22,gas_qld,flexible,gas_hr,TRUE,gas,gas,25,QLD,other_connections
+23,gas_nsw,flexible,gas_hr,TRUE,gas,gas,25,NSW,other_connections
+24,gas_sa,flexible,gas_hr,TRUE,gas,gas,25,SA,other_connections
+25,gas_vic,flexible,gas_hr,TRUE,gas,gas,25,VIC,other_connections
+26,gas_tas,flexible,gas_hr,TRUE,gas,gas,25,TAS,other_connections

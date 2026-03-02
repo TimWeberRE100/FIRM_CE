@@ -1,14 +1,14 @@
 import csv
 import os
 from itertools import chain
-from logging import Logger
-from typing import Dict, List, Tuple, Callable
+from typing import Dict, Tuple, Callable
 
 import numpy as np
 from numpy.typing import NDArray
 from scipy.optimize import OptimizeResult, differential_evolution
 
 from firm_ce.common.constants import SAVE_POPULATION
+from firm_ce.common.logging import get_logger
 from firm_ce.optimisation.broad_optimum import (
     append_to_midpoint_csv,
     broad_optimum_objective,
@@ -19,10 +19,11 @@ from firm_ce.optimisation.broad_optimum import (
     write_broad_optimum_bands,
     write_broad_optimum_records,
 )
+from firm_ce.optimisation.capacity_expansion import run_capacity_expansion
 from firm_ce.optimisation.single_time import Solution, evaluate_vectorised_xs
-from firm_ce.system.components import Fleet_InstanceType, Generator_InstanceType, Storage_InstanceType
+from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
-from firm_ce.system.topology import Line_InstanceType, Network_InstanceType
+from firm_ce.system.topology import Network_InstanceType
 
 
 class Solver:
@@ -33,7 +34,6 @@ class Solver:
         parameters_static: ScenarioParameters_InstanceType,
         fleet_static: Fleet_InstanceType,
         network_static: Network_InstanceType,
-        scenario_logger: Logger,
         scenario_name: str,
         initial_population: NDArray[np.float64] | str = "latinhypercube",
     ) -> None:
@@ -51,7 +51,6 @@ class Solver:
             parameters used during solution evaluation.
         fleet_static (Fleet_InstanceType): A static instance of the Fleet jitclass.
         network_static (Network_InstanceType): A static instance of the Network jitclass.
-        scenario_logger (Logger): Logger instance for scenario-level messages.
         scenario_name (str): Name of the scenario, used for output file paths.
         initial_population (NDArray[np.float64] | str): Initial population
             for differential evolution. Either a 2-D array or a scipy initialisation
@@ -75,7 +74,6 @@ class Solver:
         self.parameters_static = parameters_static
         self.fleet_static = fleet_static
         self.network_static = network_static
-        self.logger = scenario_logger
         self.lower_bounds, self.upper_bounds = self.get_bounds()
         self.broad_optimum_var_info = build_broad_optimum_var_info(fleet_static, network_static)
         self.scenario_name = scenario_name
@@ -84,7 +82,7 @@ class Solver:
         self.initial_population = initial_population
         self.iterations = config.iterations
 
-    def get_bounds(self) -> NDArray[np.float64]:
+    def get_bounds(self) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
         """
         Compute lower and upper bounds for all decision variables.
 
@@ -96,14 +94,21 @@ class Solver:
         ratio is specified (i.e. duration != 0), as the energy capacity is then
         derived from power capacity rather than optimised independently.
 
+        For 'single_time' models, a single row of bounds is returned (using year 0
+        values), as a single optimisation is performed over the full horizon. For
+        'capacity_expansion' models, one row per modelling year is returned, since
+        each year may have independent build limits.
+
         Parameters:
         -------
         None.
 
         Returns:
         -------
-        NDArray[np.float64]: A tuple of (lower_bounds, upper_bounds), each a 1-D
-            array of length equal to the number of decision variables.
+        Tuple[NDArray[np.float64], NDArray[np.float64]]: A tuple of (lower_bounds,
+            upper_bounds). Each array has shape (year_count, n_vars), where year_count
+            is 1 for 'single_time' and the number of modelling years for
+            'capacity_expansion'.
 
         Side-effects:
         -------
@@ -113,43 +118,38 @@ class Solver:
         -------
         None.
         """
-
-        def power_capacity_bounds(
-            asset_list: List[Generator_InstanceType] | List[Storage_InstanceType] | List[Line_InstanceType],
-            build_cap_constraint: str,
-        ) -> List[float]:
-            return [getattr(asset, build_cap_constraint) for asset in asset_list]
-
-        def energy_capacity_bounds(storage_list: List[Storage_InstanceType], build_cap_constraint: str) -> List[float]:
-            return [getattr(s, build_cap_constraint) if s.duration == 0 else 0.0 for s in storage_list]
-
         generators = list(self.fleet_static.generators.values())
         storages = list(self.fleet_static.storages.values())
         lines = list(self.network_static.major_lines.values())
 
-        lower_bounds = np.array(
-            list(
-                chain(
-                    power_capacity_bounds(generators, "min_build"),
-                    power_capacity_bounds(storages, "min_build_p"),
-                    energy_capacity_bounds(storages, "min_build_e"),
-                    power_capacity_bounds(lines, "min_build"),
+        year_count = 1 if self.config.type == "single_time" else self.parameters_static.year_count
+
+        lower_rows = []
+        upper_rows = []
+
+        for year in range(year_count):
+            lower_rows.append(
+                list(
+                    chain(
+                        [generator.min_build[year] for generator in generators],
+                        [storage.min_build_p[year] for storage in storages],
+                        [storage.min_build_e[year] if storage.duration[year] == 0 else 0.0 for storage in storages],
+                        [line.min_build[year] for line in lines],
+                    )
                 )
             )
-        )
-
-        upper_bounds = np.array(
-            list(
-                chain(
-                    power_capacity_bounds(generators, "max_build"),
-                    power_capacity_bounds(storages, "max_build_p"),
-                    energy_capacity_bounds(storages, "max_build_e"),
-                    power_capacity_bounds(lines, "max_build"),
+            upper_rows.append(
+                list(
+                    chain(
+                        [generator.max_build[year] for generator in generators],
+                        [storage.max_build_p[year] for storage in storages],
+                        [storage.max_build_e[year] if storage.duration[year] == 0 else 0.0 for storage in storages],
+                        [line.max_build[year] for line in lines],
+                    )
                 )
             )
-        )
 
-        return lower_bounds, upper_bounds
+        return np.array(lower_rows), np.array(upper_rows)
 
     def initialise_callback(self) -> None:
         """
@@ -183,10 +183,15 @@ class Solver:
 
     def get_differential_evolution_args(
         self,
-    ) -> Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float]:
+    ) -> Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float, int, int]:
         """
         Assemble the argument tuple passed to solution evaluation functions. Static instances are
         copied to form dynamic instances within each worker process of the differential evolution.
+
+        Notes:
+        -------
+        For 'single_time' models, first_t is 0 and last_t is the total interval count, covering the full
+        modelling horizon.
 
         Parameters:
         -------
@@ -194,9 +199,9 @@ class Solver:
 
         Returns:
         -------
-        Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType,
-            Network_InstanceType, str, float]: A tuple of (parameters_static,
-            fleet_static, network_static, balancing_type, fixed_costs_threshold).
+        Tuple[ScenarioParameters_InstanceType, Fleet_InstanceType, Network_InstanceType, str, float, int, int]:
+            A tuple of (parameters_static, fleet_static, network_static, balancing_type,
+            fixed_costs_threshold, first_t, last_t).
 
         Side-effects:
         -------
@@ -212,6 +217,8 @@ class Solver:
             self.network_static,
             self.config.balancing_type,
             self.config.fixed_costs_threshold,
+            0,
+            self.parameters_static.intervals_count,
         )
         return args
 
@@ -244,7 +251,7 @@ class Solver:
         result = differential_evolution(
             x0=self.decision_x0,
             func=objective_function,
-            bounds=list(zip(self.lower_bounds, self.upper_bounds)),
+            bounds=list(zip(self.lower_bounds[0], self.upper_bounds[0])),
             args=args,
             tol=0,
             maxiter=self.iterations,
@@ -316,7 +323,7 @@ class Solver:
         solution = Solution(self.decision_x0, *self.get_differential_evolution_args())
 
         if solution.penalties > 1:
-            self.logger.warning(
+            get_logger().warning(
                 f"Initial guess (assumed optimal solution) has a penalty of {solution.penalties}."
                 f"It is recommended to double-check initial_guess.csv contains the correct optimal solution."
             )
@@ -360,15 +367,15 @@ class Solver:
         groups = create_groups_dict(self.broad_optimum_var_info)
 
         for group_key, idx_list in groups.items():
-            self.logger.info(f"[near_optimum] exploring group '{group_key}'")
+            get_logger().info(f"[near_optimum] exploring group '{group_key}'")
 
             bands_record = []
             for band_type in ("min", "max"):
                 match band_type:
                     case "min":
-                        self.logger.info(f"[near_optimum] finding MIN for group '{group_key}'")
+                        get_logger().info(f"[near_optimum] finding MIN for group '{group_key}'")
                     case "max":
-                        self.logger.info(f"[near_optimum] finding MAX for group '{group_key}'")
+                        get_logger().info(f"[near_optimum] finding MAX for group '{group_key}'")
 
                 args = (
                     self.get_differential_evolution_args(),
@@ -425,7 +432,7 @@ class Solver:
         -------
         None.
         """
-        self.logger.info(f"[midpoint_explore] beginning midpoint exploration: {self.config.midpoint_count} per group")
+        get_logger().info(f"[midpoint_explore] beginning midpoint exploration: {self.config.midpoint_count} per group")
         band_lcoe_max = self.get_band_lcoe_max()
         group_bands = read_broad_optimum_bands(self.scenario_name, self.broad_optimum_var_info)
         csv_path = create_midpoint_csv(self.scenario_name, self.broad_optimum_var_info)
@@ -437,14 +444,14 @@ class Solver:
                 variable["idx"] for variable in self.broad_optimum_var_info if (variable[0] or variable[3]) == group_key
             ]
 
-            self.logger.info(
+            get_logger().info(
                 f"[midpoint_explore] group '{group_key}'  min={band_min:.3f}  max={band_max:.3f}  step={step_size:.3f}"
             )
 
             for midpoint in range(1, self.config.midpoint_count + 1):
                 evaluation_records = []
                 group_target = band_min + midpoint * step_size
-                self.logger.info(
+                get_logger().info(
                     f"[midpoint_explore] midpoint {midpoint}/{self.config.midpoint_count}: "
                     f"target sum ≈ {group_target:.3f}"
                 )
@@ -464,12 +471,42 @@ class Solver:
 
                 append_to_midpoint_csv(self.scenario_name, evaluation_records)
 
-        self.logger.info(f"[midpoint_explore] finished; wrote {len(evaluation_records)} feasible points to {csv_path}")
+        get_logger().info(f"[midpoint_explore] finished; wrote {len(evaluation_records)} feasible points to {csv_path}")
 
         return None
 
-    def capacity_expansion(self):
-        return
+    def capacity_expansion(self) -> None:
+        """
+        Run a capacity expansion solve by iterating over each year in the modelling horizon.
+
+        Delegates to run_capacity_expansion, which creates and evaluates a Solution instance
+        for each year.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        None.
+
+        Exceptions:
+        -------
+        None.
+        """
+        run_capacity_expansion(
+            self.parameters_static,
+            self.fleet_static,
+            self.network_static,
+            self.config.balancing_type,
+            self.config.fixed_costs_threshold,
+            self.lower_bounds,
+            self.upper_bounds,
+        )
 
     def evaluate(self) -> None:
         """

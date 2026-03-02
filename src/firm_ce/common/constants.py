@@ -13,3 +13,6 @@ PENALTY_MULTIPLIER = 1e6
 TOLERANCE = 1e-6
 NUM_THREADS = int(os.getenv("NUM_THREADS", os.cpu_count()))
 FASTMATH = True
+YEAR_ALL_STR = "all"
+SCENARIOS_ALL_STR = "all"
+MULTIYEAR_FILENAMES = {"generators", "fuels", "lines", "storages"}

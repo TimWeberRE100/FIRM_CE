@@ -143,6 +143,51 @@ def set_block_resolutions(static_instance: ScenarioParameters_InstanceType, bloc
     return None
 
 
+@njit(fastmath=FASTMATH)
+def get_year_idx_from_interval(static_instance: ScenarioParameters_InstanceType, interval: int64) -> int64:
+    """
+    Get the year_idx corresponding to a given time interval index.
+
+    Parameters:
+    -------
+    static_instance (ScenarioParameters_InstanceType): An instance of the ScenarioParameters jitclass. All of these
+        parameters are static and should not be modified during unit committment.
+    interval (int64): Time interval index.
+
+    Returns:
+    -------
+    int64: Year corresponding to the given time interval index.
+    """
+    year_idx = 0
+    while year_idx < static_instance.year_count and static_instance.year_first_t[year_idx] < interval:
+        year_idx += 1
+    return year_idx
+
+
+@njit(fastmath=FASTMATH)
+def get_bounded_year_count(static_instance: ScenarioParameters_InstanceType, first_t: int64, last_t: int64) -> int64:
+    """
+    Get the number of years between two time intervals in the modelling horizon.
+
+    Parameters:
+    -------
+    static_instance (ScenarioParameters_InstanceType): An instance of the ScenarioParameters jitclass. All of these
+        parameters are static and should not be modified during unit committment.
+    first_t (int64): First time interval index.
+    last_t (int64): Last time interval index.
+
+    Returns:
+    -------
+    int64: Number of years in the modelling horizon.
+    """
+    year_count = 0
+    year_idx = get_year_idx_from_interval(static_instance, first_t)
+    while year_idx < static_instance.year_count and static_instance.year_first_t[year_idx] < last_t:
+        year_count += 1
+        year_idx += 1
+    return year_count
+
+
 def get_block_intervals(block_lengths: NDArray[np.int64]) -> Tuple[NDArray[np.int64], NDArray[np.int64]]:
     """
     Get the first and last time intervals contained within each block. Allows for variable time interval lengths (i.e., blocks)

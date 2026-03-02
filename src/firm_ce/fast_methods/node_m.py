@@ -13,7 +13,7 @@ from firm_ce.system.topology import Node, Node_InstanceType
 
 
 @njit(fastmath=FASTMATH)
-def create_dynamic_copy(node_instance: Node_InstanceType) -> Node_InstanceType:
+def create_dynamic_copy(node_instance: Node_InstanceType, first_t: int64, last_t: int64) -> Node_InstanceType:
     """
     A 'static' instance of the Node jitclass (Node.static_instance=True) is copied
     and marked as a 'dynamic' instance (Node.static_instance=False).
@@ -34,6 +34,10 @@ def create_dynamic_copy(node_instance: Node_InstanceType) -> Node_InstanceType:
     Parameters:
     -------
     node_instance (Node_InstanceType): A static instance of the Node jitclass.
+    first_t (int64): First interval index (inclusive) of the evaluation window. The residual_load
+        array is sliced to [first_t, last_t) so that dynamic arrays use rebased 0-based interval
+        indexing within the evaluation window.
+    last_t (int64): Last interval index (exclusive) of the evaluation window.
 
     Returns:
     -------
@@ -42,7 +46,7 @@ def create_dynamic_copy(node_instance: Node_InstanceType) -> Node_InstanceType:
     node_copy = Node(False, node_instance.id, node_instance.order, node_instance.name)
     node_copy.data_status = node_instance.data_status
     node_copy.data = node_instance.data  # This remains static
-    node_copy.residual_load = node_instance.residual_load.copy()
+    node_copy.residual_load = node_instance.residual_load[first_t:last_t].copy()
     return node_copy
 
 
@@ -254,7 +258,7 @@ def surplus_available(node_instance: Node_InstanceType) -> boolean:
 
 @njit(fastmath=FASTMATH)
 def assign_storage_merit_order(
-    node_instance: Node_InstanceType, storages_typed_dict: DictType(int64, Storage_InstanceType)
+    node_instance: Node_InstanceType, storages_typed_dict: DictType(int64, Storage_InstanceType), year_idx: int64
 ) -> None:
     """
     Identifies Storage instances located at the Node and sorts them from shortest to longest storage duration.
@@ -271,6 +275,7 @@ def assign_storage_merit_order(
     node_instance (Node_InstanceType): An instance of the Node jitclass.
     storages_typed_dict (DictType(int64, Storage_InstanceType)): Typed dictionary of Storage instances within
         the scenario, keyed by Storage.order.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -288,7 +293,7 @@ def assign_storage_merit_order(
     for storage_order, storage in storages_typed_dict.items():
         if storage.node.order == node_instance.order:
             temp_orders[idx] = storage_order
-            temp_durations[idx] = storage.duration
+            temp_durations[idx] = storage.duration[year_idx]
             idx += 1
 
     if idx == 0:
@@ -304,7 +309,7 @@ def assign_storage_merit_order(
 
 @njit(fastmath=FASTMATH)
 def assign_flexible_merit_order(
-    node_instance: Node_InstanceType, generators_typed_dict: DictType(int64, Generator_InstanceType)
+    node_instance: Node_InstanceType, generators_typed_dict: DictType(int64, Generator_InstanceType), year_idx: int64
 ) -> None:
     """
     Identifies flexible Generator instances located at the Node and sorts them from cheapest to most expensive marginal
@@ -322,6 +327,7 @@ def assign_flexible_merit_order(
     node_instance (Node_InstanceType): An instance of the Node jitclass.
     generators_typed_dict (DictType(int64, Generators_InstanceType)): Typed dictionary of Generator
         instances within the scenario, keyed by Generator.order.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -343,9 +349,9 @@ def assign_flexible_merit_order(
         if generator.node.order == node_instance.order:
             temp_orders[idx] = generator_order
             temp_marginal_costs[idx] = (
-                generator.cost.vom
-                + generator.cost.fuel_cost_mwh
-                + generator.cost.fuel_cost_h * 1000 * generator.unit_size
+                generator.cost[year_idx].vom
+                + generator.cost[year_idx].fuel_cost_mwh
+                + generator.cost[year_idx].fuel_cost_h * 1000 * generator.unit_size[year_idx]
             )
             idx += 1
 

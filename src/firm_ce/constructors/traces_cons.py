@@ -48,6 +48,8 @@ def load_datafiles_to_generators(
     fleet: Fleet_InstanceType,
     datafiles_imported_dict: Dict[str, DataFile],
     resolution: float,
+    year_first_t: NDArray[np.int64],
+    intervals_count: int,
 ) -> None:
     """
     Iterates through all generators in the fleet and loads their time-series data to each
@@ -62,6 +64,8 @@ def load_datafiles_to_generators(
     datafiles_imported_dict (Dict[str, DataFile]): A dictionary of DataFile instances, where
         the key is the id in `config/datafiles.csv`.
     resolution (float): The time resolution of each interval for the input data [hours/interval].
+    year_first_t (NDArray[np.int64]): Array mapping each year index to its first time interval index.
+    intervals_count (int): Total number of time intervals in the modelling horizon.
 
     Returns:
     -------
@@ -73,7 +77,7 @@ def load_datafiles_to_generators(
     modified.
 
     The residual_load at the node where each generator is located is also updated. The update
-    to residual load is based upon the initial capacity, resolution, and generation trace. This
+    to residual load is based upon the year-specific initial capacity and generation trace. This
     means that load_datafiles_to_network must be run before load_datafiles_to_generators.
     """
     for generator in fleet.generators.values():
@@ -82,6 +86,8 @@ def load_datafiles_to_generators(
             select_datafile("generation", generator.name, datafiles_imported_dict),
             select_datafile("flexible_annual_limit", generator.name, datafiles_imported_dict),
             resolution,
+            year_first_t,
+            intervals_count,
         )
     return None
 

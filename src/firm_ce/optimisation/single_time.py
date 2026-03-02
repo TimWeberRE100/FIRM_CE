@@ -4,7 +4,7 @@ import numpy as np
 
 from firm_ce.common.constants import JIT_ENABLED, NUM_THREADS, PENALTY_MULTIPLIER
 from firm_ce.common.jit_overload import jitclass, njit, prange
-from firm_ce.common.typing import boolean, float64, unicode_type
+from firm_ce.common.typing import boolean, float64, int64, unicode_type
 from firm_ce.fast_methods import fleet_m, generator_m, line_m, network_m, static_m, storage_m
 from firm_ce.optimisation.balancing import balance_for_period
 from firm_ce.system.components import Fleet_InstanceType
@@ -23,6 +23,11 @@ if JIT_ENABLED:
         ("penalties", float64),
         ("balancing_type", unicode_type),
         ("fixed_costs_threshold", float64),
+        ("first_t", int64),
+        ("last_t", int64),
+        ("year", int64),
+        ("year_count", int64),
+        ("interval_resolutions", float64[:]),
         # Static jitclass instances
         ("static", ScenarioParameters_InstanceType),
         # Dynamic jitclass instances
@@ -81,6 +86,8 @@ class Solution:
         network: Network_InstanceType,
         balancing_type: unicode_type,
         fixed_costs_threshold: float64,
+        first_t: int64,
+        last_t: int64,
     ) -> None:
         """
         Initialise a Solution instance and construct dynamic copies of Fleet and Network.
@@ -96,6 +103,11 @@ class Solution:
         fixed_costs_threshold (float64): Upper bound on fixed costs intensity, units $/MWh of operational demand. Allows
             low-quality solutions to be rapidly discarded and penalised without evaluating the time-consuming unit
             committment problem.
+        first_t (int64): First interval index (inclusive) over which unit commitment is evaluated. For 'single_time'
+            models this is 0. For 'capacity_expansion' models this is the first interval of the evaluated year.
+        last_t (int64): Last interval index (exclusive) over which unit commitment is evaluated. For 'single_time'
+            models this is static.intervals_count. For 'capacity_expansion' models this is the last interval of the
+            evaluated year.
 
         Side-effects
         -------
@@ -114,41 +126,53 @@ class Solution:
         self.static = static
         self.balancing_type = balancing_type
         self.fixed_costs_threshold = fixed_costs_threshold
+        self.first_t = first_t
+        self.last_t = last_t
+
+        n_intervals = last_t - first_t
+        self.interval_resolutions = static.interval_resolutions[first_t:last_t].copy()
+
+        self.year = static_m.get_year_idx_from_interval(static, first_t)
+        self.year_count = static_m.get_bounded_year_count(static, first_t, last_t)
 
         # These are dynamic jitclass instances. It is SAFE to modify
         # some attributes within a worker process of the optimiser
-        self.network = network_m.create_dynamic_copy(network)  # Includes static reference to data
+        self.network = network_m.create_dynamic_copy(network, first_t, last_t)  # Includes static reference to data
         self.fleet = fleet_m.create_dynamic_copy(
-            fleet, self.network.nodes, self.network.minor_lines
+            fleet, self.network.nodes, self.network.minor_lines, first_t, last_t
         )  # Includes static reference to data
 
-        fleet_m.build_capacities(self.fleet, x, self.static.interval_resolutions)
+        fleet_m.build_capacities(self.fleet, x, self.interval_resolutions, self.year)
         network_m.build_capacity(self.network, x)
 
-        fleet_m.allocate_memory(self.fleet, self.static.intervals_count)
-        network_m.allocate_memory(self.network, self.static.intervals_count)
+        fleet_m.allocate_memory(self.fleet, n_intervals)
+        network_m.allocate_memory(self.network, n_intervals)
 
-        network_m.assign_storage_merit_orders(self.network, self.fleet.storages)
-        network_m.assign_flexible_merit_orders(self.network, self.fleet.generators)
+        network_m.assign_storage_merit_orders(self.network, self.fleet.storages, self.year)
+        network_m.assign_flexible_merit_orders(self.network, self.fleet.generators, self.year)
 
-    def balance_residual_load(self) -> boolean:
+    def balance_residual_load(self, year_count: int64) -> boolean:
         """
-        Evaluate the unit committment business rules over the entire modelling horizon.
+        Evaluate the unit committment business rules over the modelling horizon between self.first_t and self.last_t.
 
         Notes:
         -------
-        - At the end of each calendar year, the reliability constraint is evaluated. The method returns early
-        if the reliability constraint is breached for any year.
+        - At the end of each calendar year within [self.first_t, self.last_t], the reliability constraint is
+        evaluated. The method returns early if the reliability constraint is breached for any year.
         - Stored energy in Storage systems is initialised at the start of the modelling period. Annual generation
         limits for flexible Generators are initialised at the start of each calendar year.
+        - All per-interval array accesses use indices rebased relative to self.first_t. For 'single_time' models,
+        self.first_t is 0 so absolute and relative indices are identical. For 'capacity_expansion' models,
+        absolute interval t maps to relative index t - self.first_t.
 
         Parameters:
         -------
-        None.
+        year_count (int64): Number of years to evaluate starting from self.year. For 'single_time' models this
+            is static.year_count. For 'capacity_expansion' models this is 1.
 
         Returns:
         -------
-        boolean: Returns True if reliability constraint is satisfied for all years in the modelling horizon.
+        boolean: Returns True if reliability constraint is satisfied for all years in [self.first_t, self.last_t].
             Otherwise, False.
 
         Side-effects:
@@ -160,20 +184,23 @@ class Solution:
         """
         fleet_m.initialise_stored_energies(self.fleet)
 
-        for year in range(self.static.year_count):
-            first_t, last_t = static_m.get_year_t_boundaries(self.static, year)
+        for year_offset in range(year_count):
+            year = self.year + year_offset
+            year_first_t_abs, year_last_t_abs = static_m.get_year_t_boundaries(self.static, year)
+            year_first_t_rel = year_first_t_abs - self.first_t  # Rebase to optimisation window
+            year_last_t_rel = year_last_t_abs - self.first_t  # Rebase to optimisation window
 
-            fleet_m.initialise_annual_limits(self.fleet, year, first_t)
+            fleet_m.initialise_annual_limits(self.fleet, year, year_first_t_rel)
 
-            balance_for_period(first_t, last_t, self.balancing_type == "full", self, year)
+            balance_for_period(year_first_t_rel, year_last_t_rel, self.balancing_type == "full", self, year)
 
             annual_unserved_energy = network_m.calculate_period_unserved_energy(
-                self.network, first_t, last_t, self.static.interval_resolutions
+                self.network, year_first_t_rel, year_last_t_rel, self.interval_resolutions
             )
 
             # End early if reliability constraint breached for any year
             if not static_m.check_reliability_constraint(self.static, year, annual_unserved_energy):
-                self.penalties += (self.static.year_count - year) * annual_unserved_energy * PENALTY_MULTIPLIER
+                self.penalties += (year_count - year_offset) * annual_unserved_energy * PENALTY_MULTIPLIER
                 return False
         return True
 
@@ -203,19 +230,19 @@ class Solution:
         Attributes modified for LTCosts instances referenced in the lt_costs attributes: fom, annualised_build.
         """
         total_costs = 0.0
-        years_float = self.static.year_count * self.static.fom_scalar
+        years_float = self.year_count * self.static.fom_scalar
 
         for generator in self.fleet.generators.values():
-            total_costs += generator_m.calculate_fixed_costs(generator, years_float, self.static.year_count)
+            total_costs += generator_m.calculate_fixed_costs(generator, years_float, self.year_count, self.year)
 
         for storage in self.fleet.storages.values():
-            total_costs += storage_m.calculate_fixed_costs(storage, years_float, self.static.year_count)
+            total_costs += storage_m.calculate_fixed_costs(storage, years_float, self.year_count, self.year)
 
         for line in self.network.major_lines.values():
-            total_costs += line_m.calculate_fixed_costs(line, years_float, self.static.year_count)
+            total_costs += line_m.calculate_fixed_costs(line, years_float, self.year_count, self.year)
 
         for line in self.network.minor_lines.values():
-            total_costs += line_m.calculate_fixed_costs(line, years_float, self.static.year_count)
+            total_costs += line_m.calculate_fixed_costs(line, years_float, self.year_count, self.year)
 
         return total_costs
 
@@ -243,24 +270,25 @@ class Solution:
 
         fleet_m.calculate_lt_generations(
             self.fleet,
-            self.static.interval_resolutions,
+            self.interval_resolutions,
+            self.year,
         )
         network_m.calculate_lt_flows(
             self.network,
-            self.static.interval_resolutions,
+            self.interval_resolutions,
         )
 
         for generator in self.fleet.generators.values():
-            total_costs += generator_m.calculate_variable_costs(generator)
+            total_costs += generator_m.calculate_variable_costs(generator, self.year)
 
         for storage in self.fleet.storages.values():
-            total_costs += storage_m.calculate_variable_costs(storage)
+            total_costs += storage_m.calculate_variable_costs(storage, self.year)
 
         for line in self.network.major_lines.values():
-            total_costs += line_m.calculate_variable_costs(line)
+            total_costs += line_m.calculate_variable_costs(line, self.year)
 
         for line in self.network.minor_lines.values():
-            total_costs += line_m.calculate_variable_costs(line)
+            total_costs += line_m.calculate_variable_costs(line, self.year)
 
         return total_costs
 
@@ -281,7 +309,10 @@ class Solution:
         -------
         boolean: True if fixed cost constraint is satisfied. Otherwise, False.
         """
-        return (fixed_costs / sum(self.static.year_energy_demand) / 1000) < self.fixed_costs_threshold  # $/MWh_demand
+        demand = 0.0
+        for y in range(self.year_count):
+            demand += self.static.year_energy_demand[self.year + y]
+        return (fixed_costs / demand / 1000) < self.fixed_costs_threshold  # $/MWh_demand
 
     def objective(self):
         """
@@ -321,15 +352,18 @@ class Solution:
         if not self.check_fixed_costs(total_costs):
             return self.lcoe, total_costs * PENALTY_MULTIPLIER  # End early if fixed cost constraint breached
 
-        reliability_check = self.balance_residual_load()
+        reliability_check = self.balance_residual_load(self.year_count)
         if not reliability_check:
             return self.lcoe, self.penalties  # End early if reliability constraint breached
 
         total_costs += self.calculate_variable_costs()
 
-        total_line_losses = network_m.calculate_lt_line_losses(self.network)
+        total_line_losses = network_m.calculate_lt_line_losses(self.network, self.year)
 
-        lcoe = total_costs / np.abs(sum(self.static.year_energy_demand) - total_line_losses) / 1000  # $/MWh
+        demand = 0.0
+        for y in range(self.year_count):
+            demand += self.static.year_energy_demand[self.year + y]
+        lcoe = total_costs / np.abs(demand - total_line_losses) / 1000  # $/MWh
 
         return lcoe, self.penalties
 
@@ -365,6 +399,8 @@ def parallel_wrapper(
     network: Network_InstanceType,
     balancing_type: unicode_type,
     fixed_costs_threshold: float64,
+    first_t: int64,
+    last_t: int64,
 ) -> float64[:, :]:
     """
     A wrapper receives the vectorised differential evolution population and evaluates it over a parallel range.
@@ -384,6 +420,8 @@ def parallel_wrapper(
     fixed_costs_threshold (float64): Upper bound on fixed costs intensity, units $/MWh of operational demand. Allows
         low-quality solutions to be rapidly discarded and penalised without evaluating the time-consuming unit
         committment problem.
+    first_t (int64): First interval index (inclusive) passed to each Solution for unit commitment evaluation.
+    last_t (int64): Last interval index (exclusive) passed to each Solution for unit commitment evaluation.
 
     Returns:
     -------
@@ -395,7 +433,7 @@ def parallel_wrapper(
     result = np.zeros((3, n_points), dtype=np.float64)
     for j in prange(n_points):
         xj = xs[:, j]
-        sol = Solution(xj, static, fleet, network, balancing_type, fixed_costs_threshold)
+        sol = Solution(xj, static, fleet, network, balancing_type, fixed_costs_threshold, first_t, last_t)
         sol.evaluate()
         result[0, j] = sol.lcoe + sol.penalties
         result[1, j] = sol.lcoe
@@ -410,6 +448,8 @@ def evaluate_vectorised_xs(
     network: Network_InstanceType,
     balancing_type: unicode_type,
     fixed_costs_threshold: float64,
+    first_t: int64,
+    last_t: int64,
 ):
     """
     A wrapper receives the vectorised differential evolution population and passes it to the parallel wrapper.
@@ -428,6 +468,8 @@ def evaluate_vectorised_xs(
     fixed_costs_threshold (float64): Upper bound on fixed costs intensity, units $/MWh of operational demand. Allows
         low-quality solutions to be rapidly discarded and penalised without evaluating the time-consuming unit
         committment problem.
+    first_t (int64): First interval index (inclusive) passed to each Solution for unit commitment evaluation.
+    last_t (int64): Last interval index (exclusive) passed to each Solution for unit commitment evaluation.
 
     Returns:
     -------
@@ -436,7 +478,7 @@ def evaluate_vectorised_xs(
         and the penalties. This is the value minimised by the differential evolution optimisation.
     """
     start_time = time.time()
-    result = parallel_wrapper(xs, static, fleet, network, balancing_type, fixed_costs_threshold)
+    result = parallel_wrapper(xs, static, fleet, network, balancing_type, fixed_costs_threshold, first_t, last_t)
     end_time = time.time()
     print(f"Average objective time: {NUM_THREADS*(end_time-start_time)/xs.shape[1]:.4f} seconds.")
     print(f"Iteration time: {(end_time-start_time):.4f} seconds for {NUM_THREADS} workers.")

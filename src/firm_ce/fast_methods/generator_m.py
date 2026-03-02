@@ -17,6 +17,8 @@ def create_dynamic_copy(
     generator_instance: Generator_InstanceType,
     nodes_typed_dict: DictType(int64, Node_InstanceType),
     lines_typed_dict: DictType(int64, Line_InstanceType),
+    first_t: int64,
+    last_t: int64,
 ) -> Generator_InstanceType:
     """
     A 'static' instance of the Generator jitclass (Generator.static_instance=True) is copied
@@ -42,33 +44,38 @@ def create_dynamic_copy(
         all Node jitclass instances for the scenario. Key defined as Node.order.
     lines_typed_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
         all Line jitclass instances for the scenario. Key defined as Line.order.
+    first_t (int64): First interval index (inclusive) of the evaluation window. The data array
+        (capacity factor trace) is sliced to [first_t, last_t) so that dynamic arrays use rebased
+        0-based interval indexing within the evaluation window.
+    last_t (int64): Last interval index (exclusive) of the evaluation window.
 
     Returns:
     -------
     Generator_InstanceType: A dynamic instance of the Generator jitclass.
     """
-    node_copy = nodes_typed_dict[generator_instance.node.order]
-    line_copy = lines_typed_dict[generator_instance.line.order]
-
     generator_copy = Generator(
         False,
         generator_instance.id,
         generator_instance.order,
         generator_instance.name,
-        generator_instance.unit_size,
-        generator_instance.max_build,
-        generator_instance.min_build,
+        generator_instance.unit_size,  # This remains static
+        generator_instance.max_build,  # This remains static
+        generator_instance.min_build,  # This remains static
+        generator_instance.initial_capacity,  # This remains static
         generator_instance.capacity,
         generator_instance.unit_type,
         generator_instance.near_optimum_check,
-        node_copy,
+        nodes_typed_dict[generator_instance.node.order],
         generator_instance.fuel,  # This remains static
-        line_copy,
+        lines_typed_dict[generator_instance.line.order],
         generator_instance.group,
         generator_instance.cost,  # This remains static
     )
     generator_copy.data_status = generator_instance.data_status
-    generator_copy.data = generator_instance.data  # This remains static
+    if len(generator_instance.data) > 0:
+        generator_copy.data = generator_instance.data[first_t:last_t].copy()
+    else:
+        generator_copy.data = generator_instance.data  # This remains static (empty array)
     generator_copy.annual_constraints_data = generator_instance.annual_constraints_data  # This remains static
     generator_copy.candidate_x_idx = generator_instance.candidate_x_idx
     generator_copy.lt_generation = generator_instance.lt_generation
@@ -124,6 +131,8 @@ def load_data(
     generation_trace: float64[:],
     annual_constraints: float64[:],
     interval_resolutions: float64[:],
+    year_first_t: int64[:],
+    intervals_count: int64,
 ) -> None:
     """
     Load the capacity factor trace and flexible annual constraint data to the Generator instance. This is done
@@ -139,6 +148,8 @@ def load_data(
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
         in the unit committment formulation (hours per time interval). An array is used instead of a single
         scalar value to allow for variable time step simplified balancing methods to be developed in future.
+    year_first_t (int64[:]): Array mapping each year index to its first time interval index.
+    intervals_count (int64): Total number of time intervals in the modelling horizon.
 
     Returns:
     -------
@@ -146,15 +157,14 @@ def load_data(
 
     Side-effects:
     -------
-    Attributes modified for the Generator instance: data_status, data, annual_constraints_data, lt_generation.
-    Attributes modified for the referenced Generator.line: lt_flows.
+    Attributes modified for the Generator instance: data_status, data, annual_constraints_data.
     Attributes modified for the referenced Generator.node: residual_load.
     """
     generator_instance.data_status = "loaded"
     generator_instance.data = generation_trace
     generator_instance.annual_constraints_data = annual_constraints
 
-    update_residual_load(generator_instance, generator_instance.initial_capacity, interval_resolutions)
+    update_residual_load_initial(generator_instance, year_first_t, intervals_count)
     return None
 
 
@@ -244,6 +254,51 @@ def allocate_memory(generator_instance: Generator_InstanceType, intervals_count:
 
 
 @njit(fastmath=FASTMATH)
+def update_residual_load_initial(
+    generator_instance: Generator_InstanceType,
+    year_first_t: int64[:],
+    intervals_count: int64,
+) -> None:
+    """
+    Update the residual load at each Node where a Generator is located using year-specific initial capacities.
+
+    Notes:
+    -------
+    - Iterates over the modelling horizon year by year. For each year, the year's initial capacity is applied
+    to the corresponding portion of the Node's residual_load array.
+    - This function replaces the single-capacity version of update_residual_load for the data loading stage,
+    where initial_capacity is keyed by year rather than being a single scalar.
+
+    Parameters:
+    -------
+    generator_instance (Generator_InstanceType): A static instance of the Generator jitclass with data already loaded.
+    year_first_t (int64[:]): Array mapping each year index to its first time interval index.
+    intervals_count (int64): Total number of time intervals in the modelling horizon.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    For each year with non-zero initial capacity, the corresponding portion of the residual_load array at
+    Generator.node[year] is reduced by initial_capacity[year] * availability_trace.
+    """
+    if get_data(generator_instance, "trace").shape[0] == 0:
+        return None
+
+    year_count = len(year_first_t)
+    for year in range(year_count):
+        year_capacity = generator_instance.initial_capacity[year]
+        if year_capacity > 0.0:
+            first_t = year_first_t[year]
+            last_t = year_first_t[year + 1] if year < year_count - 1 else intervals_count
+            year_trace = get_data(generator_instance, "trace")[first_t:last_t] * year_capacity
+            node_m.get_data(generator_instance.node, "residual_load")[first_t:last_t] -= year_trace
+    return None
+
+
+@njit(fastmath=FASTMATH)
 def update_residual_load(
     generator_instance: Generator_InstanceType, added_capacity: float64, interval_resolutions: float64[:]
 ) -> None:
@@ -279,7 +334,9 @@ def update_residual_load(
 
 @njit(fastmath=FASTMATH)
 def update_lt_generation(
-    generator_instance: Generator_InstanceType, generation_trace: float64[:], interval_resolutions: float64[:]
+    generator_instance: Generator_InstanceType,
+    generation_trace: float64[:],
+    interval_resolutions: float64[:],
 ) -> None:
     """
     The total generation over the modelling horizon for the Generator is updated, based upon a generation trace
@@ -312,7 +369,7 @@ def update_lt_generation(
 @njit(fastmath=FASTMATH)
 def initialise_annual_limit(
     generator_instance: Generator_InstanceType,
-    year: int64,
+    year_idx: int64,
     first_t: int64,
 ) -> None:
     """
@@ -321,7 +378,7 @@ def initialise_annual_limit(
     Parameters:
     -------
     generator_instance (Generator_InstanceType): An instance of the Generator jitclass.
-    year (int64): Current number of years that have completed balancing in the unit committment. Used
+    year_idx (int64): Current number of years that have completed balancing in the unit committment. Used
         to index the annual_constraints_data.
     first_t (int64): Index for the first time interval of the calendar year.
 
@@ -341,14 +398,16 @@ def initialise_annual_limit(
     if generator_instance.static_instance:
         raise_static_modification_error()
     if len(get_data(generator_instance, "annual_constraints_data")) > 0:
-        generator_instance.remaining_energy[first_t - 1] = get_data(generator_instance, "annual_constraints_data")[year]
+        generator_instance.remaining_energy[first_t - 1] = get_data(generator_instance, "annual_constraints_data")[
+            year_idx
+        ]
     return None
 
 
 @njit(fastmath=FASTMATH)
 def get_annual_limit(
     generator_instance: Generator_InstanceType,
-    year: int64,
+    year_idx: int64,
 ) -> float64[:]:
     """
     Get the annual constraints data array for a flexible Generator.
@@ -356,7 +415,7 @@ def get_annual_limit(
     Parameters:
     -------
     generator_instance (Generator_InstanceType): An instance of the Generator jitclass.
-    year (int64): Current number of years that have completed balancing in the unit committment. Used
+    year_idx (int64): Current number of years that have completed balancing in the unit committment. Used
         to index the annual_constraints_data.
 
     Returns:
@@ -364,7 +423,7 @@ def get_annual_limit(
     float64[:]: A 1-dimensional array containing the annual generation constraints for each year for
         the flexible Generator
     """
-    return get_data(generator_instance, "annual_constraints_data")[year]
+    return get_data(generator_instance, "annual_constraints_data")[year_idx]
 
 
 @njit(fastmath=FASTMATH)
@@ -531,7 +590,9 @@ def update_remaining_energy(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_generation(generator_instance: Generator_InstanceType, interval_resolutions: float64[:]) -> None:
+def calculate_lt_generation(
+    generator_instance: Generator_InstanceType, interval_resolutions: float64[:], year_idx: int64
+) -> None:
     """
     Calculate the total generation over the long-term modelling horizon for a flexible Generator. Also
     calculate the hours of operation for each unit of the Generator over the modelling horizon.
@@ -542,6 +603,7 @@ def calculate_lt_generation(generator_instance: Generator_InstanceType, interval
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
         in the unit committment formulation (hours per time interval). An array is used instead of a single
         scalar value to allow for variable time step simplified balancing methods to be developed in future.
+    year_idx (int64): Year index used to look up year-varying Generator attributes.
 
     Returns:
     -------
@@ -554,19 +616,20 @@ def calculate_lt_generation(generator_instance: Generator_InstanceType, interval
     """
     update_lt_generation(generator_instance, generator_instance.dispatch_power, interval_resolutions)
     generator_instance.unit_lt_hours = sum(
-        np.ceil(generator_instance.dispatch_power / generator_instance.unit_size) * interval_resolutions
+        np.ceil(generator_instance.dispatch_power / generator_instance.unit_size[year_idx]) * interval_resolutions
     )
     return None
 
 
 @njit(fastmath=FASTMATH)
-def calculate_variable_costs(generator_instance: Generator_InstanceType) -> float64:
+def calculate_variable_costs(generator_instance: Generator_InstanceType, year_idx: int64) -> float64:
     """
     Calculate the total variable costs for a Generator at the end of unit committment.
 
     Parameters:
     -------
     generator_instance (Generator_InstanceType): An instance of the Generator jitclass.
+    year_idx (int64): Year index used to look up year-varying cost assumptions.
 
     Returns:
     -------
@@ -577,19 +640,21 @@ def calculate_variable_costs(generator_instance: Generator_InstanceType) -> floa
     Attributes modified for the Generator instance: lt_costs.
     Attributes modified for the referenced Generator.lt_costs: vom, fuel.
     """
-    ltcosts_m.calculate_vom(generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.cost)
+    ltcosts_m.calculate_vom(
+        generator_instance.lt_costs, generator_instance.lt_generation, generator_instance.cost[year_idx]
+    )
     ltcosts_m.calculate_fuel(
         generator_instance.lt_costs,
         generator_instance.lt_generation,
         generator_instance.unit_lt_hours,
-        generator_instance.cost,
+        generator_instance.cost[year_idx],
     )
     return ltcosts_m.get_variable(generator_instance.lt_costs)
 
 
 @njit(fastmath=FASTMATH)
 def calculate_fixed_costs(
-    generator_instance: Generator_InstanceType, years_float: float64, year_count: int64
+    generator_instance: Generator_InstanceType, years_float: float64, year_count: int64, year_idx: int64
 ) -> float64:
     """
     Calculate the total fixed costs for a Generator.
@@ -599,6 +664,7 @@ def calculate_fixed_costs(
     generator_instance (Generator_InstanceType): An instance of the Generator jitclass.
     years_float (float64): Number of non-leap years. Leap days provide additional fractional value.
     year_count (int64): Total number of years across modelling horizon.
+    year_idx (int64): Year index used to look up year-varying cost assumptions.
 
     Returns:
     -------
@@ -614,12 +680,17 @@ def calculate_fixed_costs(
         0.0,
         generator_instance.new_build,
         0.0,
-        generator_instance.cost,
+        generator_instance.cost[year_idx],
         year_count,
         "generator",
     )
     ltcosts_m.calculate_fom(
-        generator_instance.lt_costs, generator_instance.capacity, years_float, 0.0, generator_instance.cost, "generator"
+        generator_instance.lt_costs,
+        generator_instance.capacity,
+        years_float,
+        0.0,
+        generator_instance.cost[year_idx],
+        "generator",
     )
     return ltcosts_m.get_fixed(generator_instance.lt_costs)
 
@@ -751,7 +822,10 @@ def update_precharging_flags(generator_instance: Generator_InstanceType, interva
 
 @njit(fastmath=FASTMATH)
 def set_precharging_max_t(
-    generator_instance: Generator_InstanceType, interval: int64, resolution: float64, merit_order_idx: int64
+    generator_instance: Generator_InstanceType,
+    interval: int64,
+    resolution: float64,
+    merit_order_idx: int64,
 ) -> None:
     """
     Within the precharging period (leading up to the deficit block), the maximum dispatch power adjustment for a

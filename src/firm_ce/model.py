@@ -2,11 +2,14 @@ import time
 from datetime import datetime
 
 from firm_ce.common.constants import DEBUG
+from firm_ce.common.logging import get_logger, init_model_logger
 from firm_ce.common.exceptions import ValidationError
-from firm_ce.io.validate import ModelData
+from firm_ce.io.model_data import ModelData
+from firm_ce.io.validate import validate_config, validate_data
 from firm_ce.optimisation.statistics import Statistics
 from firm_ce.system.parameters import ModelConfig
 from firm_ce.system.scenario import Scenario
+from firm_ce.io.file_manager import extract_model_name
 
 
 class Model:
@@ -15,7 +18,8 @@ class Model:
 
     Notes:
     -------
-    - Input configuration files are loaded into the ModelData dataclass and validated before constructing the Scenarios.
+    - Config files are validated via validate_config before constructing ModelData or any Scenarios.
+    - Data files are validated via validate_data for each scenario.
     - Time-series data files are loaded after calling the solve() method. Data files are only loaded for one Scenario at a time
     in order to manage memory. After the optimisation for a Scenario has completed and the results saved, data files are unloaded
     from the Scenario.
@@ -53,19 +57,35 @@ class Model:
         """
         self.config_directory = config_directory
         self.data_directory = data_directory
-        model_data = ModelData(config_directory=self.config_directory, logging_flag=logging_flag)
 
-        if not model_data.validate():
+        model_name = extract_model_name(self.config_directory)
+        results_dir = init_model_logger(model_name, logging_flag)
+
+        if not validate_config(config_directory=self.config_directory):
             raise ValidationError(
                 "Model failed validation. Check the `log.txt` and modify the config and data files to resolve errors."
             )
 
+        model_data = ModelData(config_directory=self.config_directory, results_dir=results_dir)
         self.config = ModelConfig(model_data.config)
         self.datafile_filenames_dict = model_data.datafiles
         self.scenarios = {
             model_data.scenarios[scenario_idx].get("scenario_name"): Scenario(model_data, scenario_idx)
             for scenario_idx in model_data.scenarios
         }
+
+        data_is_valid = True
+        for scenario_name in self.scenarios:
+            if not validate_data(
+                all_datafiles=model_data.datafiles,
+                scenario_name=scenario_name,
+                datafiles_directory=self.data_directory,
+            ):
+                data_is_valid = False
+        if not data_is_valid:
+            raise ValidationError(
+                "Data file validation failed. Check the `log.txt` and modify the data files to resolve errors."
+            )
 
     def solve(self) -> None:
         """
@@ -92,12 +112,12 @@ class Model:
         for scenario in self.scenarios.values():
             start_time = time.time()
             start_time_str = datetime.fromtimestamp(start_time).strftime("%d/%m/%Y %H:%M:%S")
-            scenario.logger.info(f"Started scenario {scenario.name} at {start_time_str}.")
+            get_logger().info(f"Started scenario {scenario.name} at {start_time_str}.")
 
             scenario.load_datafiles(self.datafile_filenames_dict, self.data_directory)
             datafile_loadtime = time.time()
             datafile_loadtime_str = datetime.fromtimestamp(datafile_loadtime).strftime("%d/%m/%Y %H:%M:%S")
-            scenario.logger.info(
+            get_logger().info(
                 f"Datafiles loaded at {datafile_loadtime_str} ({datafile_loadtime - start_time:.4f} seconds)."
             )
 
@@ -105,7 +125,7 @@ class Model:
 
             solve_time = time.time()
             solve_time_str = datetime.fromtimestamp(solve_time).strftime("%d/%m/%Y %H:%M:%S")
-            scenario.logger.info(
+            get_logger().info(
                 f"Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours)."
             )
 
@@ -127,13 +147,13 @@ class Model:
                     scenario.statistics.dump()
                 results_time = time.time()
                 results_time_str = datetime.fromtimestamp(results_time).strftime("%d/%m/%Y %H:%M:%S")
-                scenario.logger.info(f"Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).")
+                get_logger().info(f"Results saved at {results_time_str} ({results_time - solve_time:.4f} seconds).")
 
             scenario.unload_datafiles()
 
             end_time = time.time()
             end_time_str = datetime.fromtimestamp(end_time).strftime("%d/%m/%Y %H:%M:%S")
-            scenario.logger.info(
+            get_logger().info(
                 f"Scenario completed at {end_time_str} (Total time taken: {(end_time - start_time)/(60*60):.4f} hours)."
             )
 

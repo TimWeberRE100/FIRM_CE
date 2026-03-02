@@ -109,7 +109,14 @@ class Statistics:
         None.
         """
         self.solution = Solution(
-            x_candidate, parameters_static, fleet_static, network_static, balancing_type, fixed_costs_threshold
+            x_candidate,
+            parameters_static,
+            fleet_static,
+            network_static,
+            balancing_type,
+            fixed_costs_threshold,
+            0,
+            parameters_static.intervals_count,
         )
         start_time = time.time()
         self.solution.evaluate()
@@ -420,8 +427,8 @@ class Statistics:
             )
             data_array[0, col] = round(generator.capacity, 3)
             data_array[1, col] = round(generator.new_build, 3)
-            data_array[2, col] = round(generator.min_build, 3)
-            data_array[3, col] = round(generator.max_build, 3)
+            data_array[2, col] = round(generator.min_build[0], 3)
+            data_array[3, col] = round(generator.max_build[0], 3)
             col += 1
 
         for storage in self.solution.fleet.storages.values():
@@ -430,8 +437,8 @@ class Statistics:
             )
             data_array[0, col] = round(storage.power_capacity, 3)
             data_array[1, col] = round(storage.new_build_p, 3)
-            data_array[2, col] = round(storage.min_build_p, 3)
-            data_array[3, col] = round(storage.max_build_p, 3)
+            data_array[2, col] = round(storage.min_build_p[0], 3)
+            data_array[3, col] = round(storage.max_build_p[0], 3)
             col += 1
 
         for storage in self.solution.fleet.storages.values():
@@ -440,24 +447,24 @@ class Statistics:
             )
             data_array[0, col] = round(storage.energy_capacity, 3)
             data_array[1, col] = round(storage.new_build_e, 3)
-            data_array[2, col] = round(storage.min_build_e, 3)
-            data_array[3, col] = round(storage.max_build_e, 3)
+            data_array[2, col] = round(storage.min_build_e[0], 3)
+            data_array[3, col] = round(storage.max_build_e[0], 3)
             col += 1
 
         for line in self.solution.network.major_lines.values():
             header[:, col] = np.array([line.name, "Major Line", str(line.id), "Power Capacity", "[GW]"], dtype=object)
             data_array[0, col] = round(line.capacity, 3)
             data_array[1, col] = round(line.new_build, 3)
-            data_array[2, col] = round(line.min_build, 3)
-            data_array[3, col] = round(line.max_build, 3)
+            data_array[2, col] = round(line.min_build[0], 3)
+            data_array[3, col] = round(line.max_build[0], 3)
             col += 1
 
         for line in self.solution.network.minor_lines.values():
             header[:, col] = np.array([line.name, "Minor Line", str(line.id), "Power Capacity", "[GW]"], dtype=object)
             data_array[0, col] = round(line.capacity, 3)
             data_array[1, col] = round(line.new_build, 3)
-            data_array[2, col] = round(line.min_build, 3)
-            data_array[3, col] = round(line.max_build, 3)
+            data_array[2, col] = round(line.min_build[0], 3)
+            data_array[3, col] = round(line.max_build[0], 3)
             col += 1
 
         result_file = ResultFile("capacities", self.results_directory, header, data_array, decimals=None)
@@ -781,7 +788,8 @@ class Statistics:
 
         total_energy = (
             np.abs(
-                sum(self.solution.static.year_energy_demand) - network_m.calculate_lt_line_losses(self.solution.network)
+                sum(self.solution.static.year_energy_demand)
+                - network_m.calculate_lt_line_losses(self.solution.network, 0)
             )
             * 1000
         )

@@ -12,7 +12,9 @@ from firm_ce.system.topology import Line, Line_InstanceType, Node, Node_Instance
 
 @njit(fastmath=FASTMATH)
 def create_dynamic_copy(
-    line_instance: Line_InstanceType, nodes_typed_dict: DictType(int64, Node_InstanceType), line_type: unicode_type
+    line_instance: Line_InstanceType,
+    nodes_typed_dict: DictType(int64, Node_InstanceType),
+    line_type: unicode_type,
 ) -> Line_InstanceType:
     """
     A 'static' instance of the Line jitclass (Line.static_instance=True) is copied
@@ -39,7 +41,7 @@ def create_dynamic_copy(
     line_instance (Line_InstanceType): A static instance of the Line jitclass.
     nodes_typed_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
         all Node jitclass instances for the scenario. Key defined as Node.order.
-    lines_type (unicode_type): Text that specifies if the Line is a 'major_line' or 'minor_line'.
+    line_type (unicode_type): Text that specifies if the Line is a 'major_line' or 'minor_line'.
 
     Returns:
     -------
@@ -48,7 +50,7 @@ def create_dynamic_copy(
     if line_type == "major":
         node_start_copy = nodes_typed_dict[line_instance.node_start.order]
         node_end_copy = nodes_typed_dict[line_instance.node_end.order]
-    elif line_type == "minor":
+    else:
         node_start_copy = Node(False, -1, -1, "MINOR_NODE")
         node_end_copy = Node(False, -1, -1, "MINOR_NODE")
 
@@ -57,12 +59,13 @@ def create_dynamic_copy(
         line_instance.id,
         line_instance.order,
         line_instance.name,
-        line_instance.length,
+        line_instance.length,  # This remains static
         node_start_copy,
         node_end_copy,
-        line_instance.loss_factor,
-        line_instance.max_build,
-        line_instance.min_build,
+        line_instance.loss_factor,  # This remains static
+        line_instance.max_build,  # This remains static
+        line_instance.min_build,  # This remains static
+        line_instance.initial_capacity,  # This remains static
         line_instance.capacity,
         line_instance.unit_type,
         line_instance.near_optimum_check,
@@ -156,13 +159,14 @@ def calculate_lt_flow(line_instance: Line_InstanceType, interval_resolutions: fl
 
 
 @njit(fastmath=FASTMATH)
-def calculate_variable_costs(line_instance: Line_InstanceType) -> float64:
+def calculate_variable_costs(line_instance: Line_InstanceType, year_idx: int64) -> float64:
     """
     Calculate the total variable costs for a Line at the end of unit committment.
 
     Parameters:
     -------
     line_instance (Line_InstanceType): An instance of the Line jitclass.
+    year_idx (int64): Year index used to look up year-keyed cost attributes.
 
     Returns:
     -------
@@ -173,13 +177,15 @@ def calculate_variable_costs(line_instance: Line_InstanceType) -> float64:
     Attributes modified for the Line instance: lt_costs.
     Attributes modified for the referenced Line.lt_costs: vom, fuel.
     """
-    ltcosts_m.calculate_vom(line_instance.lt_costs, line_instance.lt_flows, line_instance.cost)
-    ltcosts_m.calculate_fuel(line_instance.lt_costs, line_instance.lt_flows, 0, line_instance.cost)
+    ltcosts_m.calculate_vom(line_instance.lt_costs, line_instance.lt_flows, line_instance.cost[year_idx])
+    ltcosts_m.calculate_fuel(line_instance.lt_costs, line_instance.lt_flows, 0, line_instance.cost[year_idx])
     return ltcosts_m.get_variable(line_instance.lt_costs)
 
 
 @njit(fastmath=FASTMATH)
-def calculate_fixed_costs(line_instance: Line_InstanceType, years_float: float64, year_count: int64) -> float64:
+def calculate_fixed_costs(
+    line_instance: Line_InstanceType, years_float: float64, year_count: int64, year_idx: int64
+) -> float64:
     """
     Calculate the total fixed costs for a Line.
 
@@ -188,6 +194,7 @@ def calculate_fixed_costs(line_instance: Line_InstanceType, years_float: float64
     line_instance (Line_InstanceType): An instance of the Line jitclass.
     years_float (float64): Number of non-leap years. Leap days provide additional fractional value.
     year_count (int64): Total number of years across modelling horizon.
+    year_idx (int64): Year index used to look up year-keyed cost attributes.
 
     Returns:
     -------
@@ -203,27 +210,28 @@ def calculate_fixed_costs(line_instance: Line_InstanceType, years_float: float64
         0.0,
         line_instance.new_build,
         line_instance.length,
-        line_instance.cost,
+        line_instance.cost[year_idx],
         year_count,
         "line",
     )
     ltcosts_m.calculate_fom(
-        line_instance.lt_costs, line_instance.capacity, years_float, 0.0, line_instance.cost, "line"
+        line_instance.lt_costs, line_instance.capacity, years_float, 0.0, line_instance.cost[year_idx], "line"
     )
     return ltcosts_m.get_fixed(line_instance.lt_costs)
 
 
 @njit(fastmath=FASTMATH)
-def get_lt_losses(line_instance: Line_InstanceType) -> float64:
+def get_lt_losses(line_instance: Line_InstanceType, year_idx: int64) -> float64:
     """
     Simplified linear energy loss function for estimating total line losses for a Line over the model horizon.
 
     Parameters:
     -------
     line_instance (Line_InstanceType): A dynamic instance of the Line jitclass.
+    year_idx (int64): Year index used to look up year-keyed loss_factor attribute.
 
     Returns:
     -------
     float64: Total line losses over the model horizon [GWh].
     """
-    return line_instance.lt_flows * line_instance.loss_factor * line_instance.length / 1000
+    return line_instance.lt_flows * line_instance.loss_factor[year_idx] * line_instance.length / 1000

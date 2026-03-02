@@ -11,8 +11,8 @@ if JIT_ENABLED:
         ("static_instance", boolean),
         ("id", int64),
         ("name", unicode_type),
-        ("cost", float64),
-        ("emissions", float64),
+        ("cost", DictType(int64, float64)),
+        ("emissions", DictType(int64, float64)),
     ]
 else:
     fuel_spec = []
@@ -35,12 +35,17 @@ class Fuel:
         A static instance is unsafe to modify within a worker process for the unit committment process.
     id (int64): A model-level identifier for the Fuel instance.
     name (unicode_type): A string providing the oridinary name of the fuel.
-    cost (float64): Cost of the fuel with units of $/GJ.
-    emissions (float64): Emissions intensity of the fuel in kg-CO2eq/GJ.
+    cost (DictType(int64, float64)): Cost of the fuel with units of $/GJ, keyed by year.
+    emissions (DictType(int64, float64)): Emissions intensity of the fuel in kg-CO2eq/GJ, keyed by year.
     """
 
     def __init__(
-        self, static_instance: boolean, idx: int64, name: unicode_type, cost: float64, emissions: float64
+        self,
+        static_instance: boolean,
+        idx: int64,
+        name: unicode_type,
+        cost: DictType(int64, float64),
+        emissions: DictType(int64, float64),
     ) -> None:
         """
         Initialise a Fuel instance.
@@ -51,8 +56,8 @@ class Fuel:
             A static instance is unsafe to modify within a worker process for the unit committment process.
         idx (int64): A model-level identifier for the Fuel instance.
         name (unicode_type): A string providing the oridinary name of the fuel.
-        cost (float64): Cost of the fuel with units of $/GJ.
-        emissions (float64): Emissions intensity of the fuel in kg-CO2eq/GJ.
+        cost (DictType(int64, float64)): Cost of the fuel with units of $/GJ, keyed by year.
+        emissions (DictType(int64, float64)): Emissions intensity of the fuel in kg-CO2eq/GJ, keyed by year.
         """
 
         self.static_instance = static_instance
@@ -75,15 +80,15 @@ if JIT_ENABLED:
         ("name", unicode_type),
         ("node", Node_InstanceType),
         ("fuel", Fuel_InstanceType),
-        ("unit_size", float64),
-        ("max_build", float64),
-        ("min_build", float64),
-        ("initial_capacity", float64),
+        ("unit_size", DictType(int64, float64)),
+        ("max_build", DictType(int64, float64)),
+        ("min_build", DictType(int64, float64)),
+        ("initial_capacity", DictType(int64, float64)),
         ("line", Line_InstanceType),
         ("unit_type", unicode_type),
         ("near_optimum_check", boolean),
         ("group", unicode_type),
-        ("cost", UnitCost_InstanceType),
+        ("cost", DictType(int64, UnitCost_InstanceType)),
         ("data_status", unicode_type),
         ("data", float64[:]),
         ("annual_constraints_data", float64[:]),
@@ -136,10 +141,10 @@ class Generator:
     id (int64): A model-level identifier for the Generator instance.
     order (int64): A scenario-level identifier for the Generator instance.
     name (unicode_type): A string providing the oridinary name of the Generator.
-    unit_size (float64): Nameplate unit size in GW. A Generator could be formed from multiple units.
-    max_build (float64): Maximum build limit in GW.
-    min_build (float64): Minimum build limit in GW.
-    initial_capacity (float64): Installed capacity at model start in GW.
+    unit_size (DictType(int64, float64)): Nameplate unit size in GW, keyed by year.
+    max_build (DictType(int64, float64)): Maximum build limit in GW, keyed by year.
+    min_build (DictType(int64, float64)): Minimum build limit in GW, keyed by year.
+    initial_capacity (DictType(int64, float64)): Installed capacity at model start in GW, keyed by year.
     unit_type (unicode_type): Type of Generator (e.g., 'solar', 'wind', 'baseload', 'flexible').
     near_optimum_check (boolean): Flag to perform near-optimum optimisation.
     node (Node_InstanceType): The Network Node where the Generator is located.
@@ -147,7 +152,7 @@ class Generator:
     line (Line_InstanceType): Minor line connecting Generator to the transmission network.
     group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
         when minimising/maximising installed capacity within the broad optimum space.
-    cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+    cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
     data_status (unicode_type): Status of data loading (e.g., 'unloaded').
     data (float64[:]): Interval capacity factor trace data. Each value represents the capacity factor of the solar, wind
         or baseload Generator in each time interval of the modelling horizon.
@@ -179,9 +184,10 @@ class Generator:
         idx: int64,
         order: int64,
         name: unicode_type,
-        unit_size: float64,
-        max_build: float64,
-        min_build: float64,
+        unit_size: DictType(int64, float64),
+        max_build: DictType(int64, float64),
+        min_build: DictType(int64, float64),
+        initial_capacity: DictType(int64, float64),
         capacity: float64,
         unit_type: unicode_type,
         near_optimum_check: boolean,
@@ -189,7 +195,7 @@ class Generator:
         fuel: Fuel_InstanceType,
         line: Line_InstanceType,
         group: unicode_type,
-        cost: UnitCost_InstanceType,
+        cost: DictType(int64, UnitCost_InstanceType),
     ) -> None:
         """
         Initialise a Generator instance.
@@ -201,10 +207,11 @@ class Generator:
         idx (int64): A model-level identifier for the Generator instance.
         order (int64): A scenario-level identifier for the Generator instance.
         name (unicode_type): A string providing the oridinary name of the Generator.
-        unit_size (float64): Nameplate unit size in GW. A Generator could be formed from multiple units.
-        max_build (float64): Maximum build limit in GW.
-        min_build (float64): Minimum build limit in GW.
-        capacity (float64): Installed capacity at model start in GW.
+        unit_size (DictType(int64, float64)): Nameplate unit size in GW, keyed by year.
+        max_build (DictType(int64, float64)): Maximum build limit in GW, keyed by year.
+        min_build (DictType(int64, float64)): Minimum build limit in GW, keyed by year.
+        initial_capacity (DictType(int64, float64)): Installed capacity at model start in GW, keyed by year.
+        capacity (float64): Initial value for dynamic installed capacity, units GW.
         unit_type (unicode_type): Type of Generator (e.g., 'solar', 'wind', 'baseload', 'flexible').
         near_optimum_check (boolean): Flag to perform near-optimum optimisation.
         node (Node_InstanceType): The Network Node where the Generator is located.
@@ -212,7 +219,7 @@ class Generator:
         line (Line_InstanceType): Minor line connecting Generator to the transmission network.
         group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
             when minimising/maximising installed capacity within the broad optimum space.
-        cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+        cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
         """
         self.static_instance = static_instance
         self.id = idx
@@ -221,7 +228,7 @@ class Generator:
         self.unit_size = unit_size  # GW/unit
         self.max_build = max_build  # GW/year
         self.min_build = min_build  # GW/year
-        self.initial_capacity = capacity  # GW
+        self.initial_capacity = initial_capacity  # GW
         self.unit_type = unit_type
         self.near_optimum_check = near_optimum_check
         self.node = node
@@ -270,20 +277,20 @@ if JIT_ENABLED:
         ("order", int64),
         ("name", unicode_type),
         ("node", Node_InstanceType),
-        ("initial_power_capacity", float64),
-        ("initial_energy_capacity", float64),
-        ("duration", int64),
-        ("charge_efficiency", float64),
-        ("discharge_efficiency", float64),
-        ("max_build_p", float64),
-        ("max_build_e", float64),
-        ("min_build_p", float64),
-        ("min_build_e", float64),
+        ("initial_power_capacity", DictType(int64, float64)),
+        ("initial_energy_capacity", DictType(int64, float64)),
+        ("duration", DictType(int64, int64)),
+        ("charge_efficiency", DictType(int64, float64)),
+        ("discharge_efficiency", DictType(int64, float64)),
+        ("max_build_p", DictType(int64, float64)),
+        ("max_build_e", DictType(int64, float64)),
+        ("min_build_p", DictType(int64, float64)),
+        ("min_build_e", DictType(int64, float64)),
         ("line", Line_InstanceType),
         ("unit_type", unicode_type),
         ("near_optimum_check", boolean),
         ("group", unicode_type),
-        ("cost", UnitCost_InstanceType),
+        ("cost", DictType(int64, UnitCost_InstanceType)),
         ("candidate_p_x_idx", int64),
         ("candidate_e_x_idx", int64),
         # Dynamic
@@ -335,22 +342,22 @@ class Storage:
     id (int64): A model-level identifier for the Storage instance.
     order (int64): A scenario-level identifier for the Storage instance.
     name (unicode_type): A string providing the ordinary name of the Storage system.
-    initial_power_capacity (float64): Initial power capacity, units GW.
-    initial_energy_capacity (float64): Initial energy capacity, units GWh.
-    duration (int64): Storage duration in hours.
-    charge_efficiency (float64): Charging efficiency (fraction).
-    discharge_efficiency (float64): Discharging efficiency (fraction).
-    max_build_p (float64): Maximum build limit for power capacity, units GW.
-    max_build_e (float64): Maximum build limit for energy capacity, units GWh.
-    min_build_p (float64): Minimum build limit for power capacity, units GW.
-    min_build_e (float64): Minimum build limit for energy capacity, units GWh.
+    initial_power_capacity (DictType(int64, float64)): Initial power capacity in GW, keyed by year.
+    initial_energy_capacity (DictType(int64, float64)): Initial energy capacity in GWh, keyed by year.
+    duration (DictType(int64, int64)): Storage duration in hours, keyed by year.
+    charge_efficiency (DictType(int64, float64)): Charging efficiency (fraction), keyed by year.
+    discharge_efficiency (DictType(int64, float64)): Discharging efficiency (fraction), keyed by year.
+    max_build_p (DictType(int64, float64)): Maximum build limit for power capacity in GW, keyed by year.
+    max_build_e (DictType(int64, float64)): Maximum build limit for energy capacity in GWh, keyed by year.
+    min_build_p (DictType(int64, float64)): Minimum build limit for power capacity in GW, keyed by year.
+    min_build_e (DictType(int64, float64)): Minimum build limit for energy capacity in GWh, keyed by year.
     unit_type (unicode_type): Type of storage (e.g., 'PHES', 'BESS').
     near_optimum_check (boolean): Flag to perform near-optimum optimisation.
     node (Node_InstanceType): The Network Node where the Storage is located.
     line (Line_InstanceType): Minor line connecting Storage to the transmission network.
     group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
         when minimising/maximising installed capacity within the broad optimum space.
-    cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+    cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
     candidate_p_x_idx (int64): Index of one Storage decision variable (new build power capacity) in the candidate
         solution vector.
     candidate_e_x_idx (int64): Index of one Storage decision variable (new build energy capacity) in the candidate
@@ -391,21 +398,23 @@ class Storage:
         idx: int64,
         order: int64,
         name: unicode_type,
+        initial_power_capacity: DictType(int64, float64),
+        initial_energy_capacity: DictType(int64, float64),
+        duration: DictType(int64, int64),
+        charge_efficiency: DictType(int64, float64),
+        discharge_efficiency: DictType(int64, float64),
+        max_build_p: DictType(int64, float64),
+        max_build_e: DictType(int64, float64),
+        min_build_p: DictType(int64, float64),
+        min_build_e: DictType(int64, float64),
         power_capacity: float64,
         energy_capacity: float64,
-        duration: float64,
-        charge_efficiency: float64,
-        discharge_efficiency: float64,
-        max_build_p: float64,
-        max_build_e: float64,
-        min_build_p: float64,
-        min_build_e: float64,
         unit_type: unicode_type,
         near_optimum_check: boolean,
         node: Node_InstanceType,
         line: Line_InstanceType,
         group: unicode_type,
-        cost: UnitCost_InstanceType,
+        cost: DictType(int64, UnitCost_InstanceType),
     ) -> None:
         """
         Initialise a Storage instance.
@@ -417,31 +426,33 @@ class Storage:
         idx (int64): A model-level identifier for the Storage instance.
         order (int64): A scenario-level identifier for the Storage instance.
         name (unicode_type): A string providing the ordinary name of the Storage system.
-        power_capacity (float64): Initial power capacity, units GW.
-        energy_capacity (float64): Initial energy capacity, units GWh.
-        duration (int64): Storage duration in hours.
-        charge_efficiency (float64): Charging efficiency (fraction).
-        discharge_efficiency (float64): Discharging efficiency (fraction).
-        max_build_p (float64): Maximum build limit for power capacity, units GW.
-        max_build_e (float64): Maximum build limit for energy capacity, units GWh.
-        min_build_p (float64): Minimum build limit for power capacity, units GW.
-        min_build_e (float64): Minimum build limit for energy capacity, units GWh.
+        initial_power_capacity (DictType(int64, float64)): Initial power capacity in GW, keyed by year.
+        initial_energy_capacity (DictType(int64, float64)): Initial energy capacity in GWh, keyed by year.
+        duration (DictType(int64, int64)): Storage duration in hours, keyed by year.
+        charge_efficiency (DictType(int64, float64)): Charging efficiency (fraction), keyed by year.
+        discharge_efficiency (DictType(int64, float64)): Discharging efficiency (fraction), keyed by year.
+        max_build_p (DictType(int64, float64)): Maximum build limit for power capacity in GW, keyed by year.
+        max_build_e (DictType(int64, float64)): Maximum build limit for energy capacity in GWh, keyed by year.
+        min_build_p (DictType(int64, float64)): Minimum build limit for power capacity in GW, keyed by year.
+        min_build_e (DictType(int64, float64)): Minimum build limit for energy capacity in GWh, keyed by year.
+        power_capacity (float64): Initial value for dynamic installed power capacity, units GW.
+        energy_capacity (float64): Initial value for dynamic installed energy capacity, units GWh.
         unit_type (unicode_type): Type of storage (e.g., 'PHES', 'BESS').
         near_optimum_check (boolean): Flag to perform near-optimum optimisation.
         node (Node_InstanceType): The Network Node where the Storage is located.
         line (Line_InstanceType): Minor line connecting Storage to the transmission network.
         group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
             when minimising/maximising installed capacity within the broad optimum space.
-        cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+        cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
         """
 
         self.static_instance = static_instance
         self.id = idx
         self.order = order  # id specific to scenario
         self.name = name
-        self.initial_power_capacity = power_capacity  # GW
+        self.initial_power_capacity = initial_power_capacity  # GW
+        self.initial_energy_capacity = initial_energy_capacity  # GWh
         self.duration = duration  # hours
-        self.initial_energy_capacity = energy_capacity if duration == 0 else duration * power_capacity  # GWh
         self.charge_efficiency = charge_efficiency  # %
         self.discharge_efficiency = discharge_efficiency  # %
         self.max_build_p = max_build_p  # GW/year
@@ -462,7 +473,7 @@ class Storage:
         self.new_build_p = 0.0  # GW
         self.new_build_e = 0.0  # GWh
         self.power_capacity = power_capacity  # GW
-        self.energy_capacity = energy_capacity if duration == 0 else duration * power_capacity  # GWh
+        self.energy_capacity = energy_capacity  # GWh
         self.dispatch_power = np.empty(0, dtype=np.float64)  # GW
         self.stored_energy = np.empty(0, dtype=np.float64)  # GWh
 
@@ -476,7 +487,7 @@ class Storage:
         self.stored_energy_temp_reverse = 0.0  # GWh
         self.stored_energy_temp_forward = 0.0  # GWh
         self.deficit_block_min_storage = 0.0  # GWh
-        self.deficit_block_max_storage = 0.0  # GW  h
+        self.deficit_block_max_storage = 0.0  # GWh
         self.precharge_energy = 0.0  # GWh
         self.trickling_reserves = 0.0  # GWh
         self.remaining_trickling_reserves = 0.0  # GWh

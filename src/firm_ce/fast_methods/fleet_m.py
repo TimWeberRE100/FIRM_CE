@@ -12,6 +12,8 @@ def create_dynamic_copy(
     fleet_instance: Fleet_InstanceType,
     nodes_typed_dict: DictType(int64, Node_InstanceType),
     lines_typed_dict: DictType(int64, Line_InstanceType),
+    first_t: int64,
+    last_t: int64,
 ) -> Fleet_InstanceType:
     """
     A 'static' instance of the Fleet jitclass (Fleet.static_instance=True) is copied
@@ -37,6 +39,9 @@ def create_dynamic_copy(
         all Node jitclass instances for the scenario. Key defined as Node.order.
     lines_typed_dict (DictType(int64, Line_InstanceType)): A typed dictionary of
         all Line jitclass instances for the scenario. Key defined as Line.order.
+    first_t (int64): First interval index (inclusive) of the evaluation window. Passed through to
+        component create_dynamic_copy functions to slice per-interval static data.
+    last_t (int64): Last interval index (exclusive) of the evaluation window.
 
     Returns:
     -------
@@ -46,7 +51,9 @@ def create_dynamic_copy(
     storages_copy = TypedDict.empty(key_type=int64, value_type=Storage_InstanceType)
 
     for order, generator in fleet_instance.generators.items():
-        generators_copy[order] = generator_m.create_dynamic_copy(generator, nodes_typed_dict, lines_typed_dict)
+        generators_copy[order] = generator_m.create_dynamic_copy(
+            generator, nodes_typed_dict, lines_typed_dict, first_t, last_t
+        )
 
     for order, storage in fleet_instance.storages.items():
         storages_copy[order] = storage_m.create_dynamic_copy(storage, nodes_typed_dict, lines_typed_dict)
@@ -62,7 +69,7 @@ def create_dynamic_copy(
 
 @njit(fastmath=FASTMATH)
 def build_capacities(
-    fleet_instance: Fleet_InstanceType, decision_x: float64[:], interval_resolutions: float64[:]
+    fleet_instance: Fleet_InstanceType, decision_x: float64[:], interval_resolutions: float64[:], year: int64
 ) -> None:
     """
     The candidate solution defines new build capacity for each Generator, Storage, and Line (major_lines) object. This
@@ -78,6 +85,7 @@ def build_capacities(
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
         in the unit committment formulation (hours per time interval). An array is used instead of a single
         scalar value to allow for variable time step simplified balancing methods to be developed in future.
+    year (int64): 0-based year index used to look up year-varying storage duration assumptions.
 
     Returns:
     -------
@@ -103,8 +111,8 @@ def build_capacities(
         generator_m.build_capacity(generator, decision_x[generator.candidate_x_idx], interval_resolutions)
 
     for storage in fleet_instance.storages.values():
-        storage_m.build_capacity(storage, decision_x[storage.candidate_p_x_idx], "power")
-        storage_m.build_capacity(storage, decision_x[storage.candidate_e_x_idx], "energy")
+        storage_m.build_capacity(storage, decision_x[storage.candidate_p_x_idx], "power", year)
+        storage_m.build_capacity(storage, decision_x[storage.candidate_e_x_idx], "energy", year)
     return None
 
 
@@ -176,7 +184,7 @@ def initialise_stored_energies(fleet_instance: Fleet_InstanceType) -> None:
 
 
 @njit(fastmath=FASTMATH)
-def initialise_annual_limits(fleet_instance: Fleet_InstanceType, year: int64, first_t: int64) -> None:
+def initialise_annual_limits(fleet_instance: Fleet_InstanceType, year_idx: int64, first_t: int64) -> None:
     """
     The energy generation constraint for each flexible Generator is initialised. This is done once
     per year.
@@ -184,7 +192,7 @@ def initialise_annual_limits(fleet_instance: Fleet_InstanceType, year: int64, fi
     Parameters:
     -------
     fleet_instance (Fleet_InstanceType): A dynamic instance of the Fleet jitclass.
-    year (int64): Defines the number of years that have completed balancing since the start of the
+    year_idx (int64): Defines the number of years that have completed balancing since the start of the
         optimisation. Used as the index for the Generator.annual_constraints_data array.
     first_t (int64): Index for the first time interval in the year.
 
@@ -203,7 +211,7 @@ def initialise_annual_limits(fleet_instance: Fleet_InstanceType, year: int64, fi
     if fleet_instance.static_instance:
         raise_static_modification_error()
     for generator in fleet_instance.generators.values():
-        generator_m.initialise_annual_limit(generator, year, first_t)
+        generator_m.initialise_annual_limit(generator, year_idx, first_t)
     return None
 
 
@@ -230,7 +238,11 @@ def count_generator_unit_type(fleet_instance: Fleet_InstanceType, unit_type: uni
 
 @njit(fastmath=FASTMATH)
 def update_stored_energies(
-    fleet_instance: Fleet_InstanceType, interval: int64, resolution: float64, forward_time_flag: boolean
+    fleet_instance: Fleet_InstanceType,
+    interval: int64,
+    resolution: float64,
+    forward_time_flag: boolean,
+    year_idx: int64,
 ) -> None:
     """
     Once the dispatch_power for the Storage objects have been determined for a time interval, the stored_energy
@@ -244,6 +256,7 @@ def update_stored_energies(
     resolution (float64): Resolution of the time interval (hours per time interval).
     forward_time_flag (boolean): True indicates the unit committment is iterating forwards through time. False
         indicates that it is moving backwards through time within the deficit block.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -255,7 +268,7 @@ def update_stored_energies(
         stored_energy_temp_reverse (forwards_time_flag = False).
     """
     for storage in fleet_instance.storages.values():
-        storage_m.update_stored_energy(storage, interval, resolution, forward_time_flag)
+        storage_m.update_stored_energy(storage, interval, resolution, forward_time_flag, year_idx)
     return None
 
 
@@ -300,7 +313,9 @@ def update_remaining_flexible_energies(
 
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_generations(fleet_instance: Fleet_InstanceType, interval_resolutions: float64[:]) -> None:
+def calculate_lt_generations(
+    fleet_instance: Fleet_InstanceType, interval_resolutions: float64[:], year_idx: int64
+) -> None:
     """
     The total energy generated by each flexible Generator and discharged from each Storage system during
     unit committment is calculated from the interval values.
@@ -311,6 +326,7 @@ def calculate_lt_generations(fleet_instance: Fleet_InstanceType, interval_resolu
     interval_resolutions (float64[:]): A 1-dimensional array containing the resolution for every time interval
         in the unit committment formulation (hours per time interval). An array is used instead of a single
         scalar value to allow for variable time step simplified balancing methods to be developed in future.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -325,7 +341,7 @@ def calculate_lt_generations(fleet_instance: Fleet_InstanceType, interval_resolu
     """
     for generator in fleet_instance.generators.values():
         if generator_m.check_unit_type(generator, "flexible"):
-            generator_m.calculate_lt_generation(generator, interval_resolutions)
+            generator_m.calculate_lt_generation(generator, interval_resolutions, year_idx)
 
     for storage in fleet_instance.storages.values():
         storage_m.calculate_lt_discharge(storage, interval_resolutions)
@@ -447,7 +463,7 @@ def update_deficit_block(fleet_instance: Fleet_InstanceType) -> None:
 
 @njit(fastmath=FASTMATH)
 def assign_precharging_values(
-    fleet_instance: Fleet_InstanceType, interval: int64, resolution: float64, year: int64
+    fleet_instance: Fleet_InstanceType, interval: int64, resolution: float64, year_idx: int64
 ) -> None:
     """
     Once the first time interval in a deficit block is located (during reverse-time balancing),
@@ -462,7 +478,7 @@ def assign_precharging_values(
     fleet_instance (Fleet_InstanceType): An instance of the Fleet jitclass.
     interval (int64): Index for the current time interval.
     resolution (float64): Resolution of the interval (hours per time interval).
-    year (int64): Defines the number of years that have completed balancing since the start of the
+    year_idx (int64): Defines the number of years that have completed balancing since the start of the
         optimisation. Used as the index for the Generator.annual_constraints_data array.
 
     Returns:
@@ -482,7 +498,7 @@ def assign_precharging_values(
                 generator.remaining_energy[interval - 1] - generator.dispatch_power[interval] * resolution
             )
             generator.remaining_energy_temp_forward = min(
-                max(generator.remaining_energy_temp_forward, 0.0), generator_m.get_annual_limit(generator, year)
+                max(generator.remaining_energy_temp_forward, 0.0), generator_m.get_annual_limit(generator, year_idx)
             )
             generator_m.update_deficit_block_bounds(generator, generator.remaining_energy_temp_forward)
             generator_m.assign_trickling_reserves(generator)
@@ -491,8 +507,8 @@ def assign_precharging_values(
         # After reverse charging, the stored energy is discontinuous in the forward and reverse directions
         storage.stored_energy_temp_forward = (
             storage.stored_energy[interval - 1]
-            - max(storage.dispatch_power[interval], 0) / storage.discharge_efficiency * resolution
-            - min(storage.dispatch_power[interval], 0) * storage.charge_efficiency * resolution
+            - max(storage.dispatch_power[interval], 0) / storage.discharge_efficiency[year_idx] * resolution
+            - min(storage.dispatch_power[interval], 0) * storage.charge_efficiency[year_idx] * resolution
         )
         storage.stored_energy_temp_forward = min(max(storage.stored_energy_temp_forward, 0.0), storage.energy_capacity)
         storage_m.update_deficit_block_bounds(storage, storage.stored_energy_temp_forward)

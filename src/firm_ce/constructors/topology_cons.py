@@ -1,8 +1,9 @@
-from typing import Dict, Any
+from typing import Any, Dict
 
 import numpy as np
 
-from firm_ce.common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, int64
+from firm_ce.common.logging import get_logger
+from firm_ce.common.typing import DictType, ListType, TypedDict, TypedList, UniTuple, float64, int64
 from firm_ce.constructors.cost_cons import construct_UnitCost_object
 from firm_ce.fast_methods import route_m
 from firm_ce.io.validate import is_nan
@@ -16,6 +17,7 @@ from firm_ce.system.topology import (
     Route,
     Route_InstanceType,
 )
+from firm_ce.system.costs import UnitCost_InstanceType
 
 
 def construct_Node_object(node_dict: Dict[str, Any], order: int) -> Node_InstanceType:
@@ -28,10 +30,8 @@ def construct_Node_object(node_dict: Dict[str, Any], order: int) -> Node_Instanc
 
     Parameters:
     -------
-    idx (int): The model-level id associated with the node. Currently the same as Node.order since nodes
-        are defined at the scenario-level in `config/scenarios.csv`. May change in future.
-    order (int): The scenario-level id associated with the node.
     node_dict (Dict[str, Any]): A dictionary containing the attributes of a single node.
+    order (int): The scenario-level id associated with the node.
 
     Returns:
     -------
@@ -43,73 +43,121 @@ def construct_Node_object(node_dict: Dict[str, Any], order: int) -> Node_Instanc
 
 
 def construct_Line_object(
-    line_dict: Dict[str, Any], nodes_object_dict: DictType(int64, Node_InstanceType), order: int
+    line_id: int,
+    year_dict: Dict[int, Dict[str, Any]],
+    nodes_object_dict: DictType(int64, Node_InstanceType),
+    order: int,
+    firstyear: int,
+    finalyear: int,
 ) -> Line_InstanceType:
     """
-    Takes data required to initialise a single line object, casts values into Numba-compatible
-    types, and returns an instance of the Line jitclass. The Lines define interconnections
-    between nodes (buses) in the network.
+    Takes data required to initialise a single Line object, builds year-keyed TypedDicts for all
+    year-varying attributes, and returns a static instance of the Line jitclass. The Lines define
+    interconnections between nodes (buses) in the network.
+
+    node_start, node_end, length, and lifetime are time-invariant fields (read from `lines.csv`).
+    For years before the line's first data entry (i.e. the line does not yet exist),
+    capacity fields (initial_capacity, max_build, min_build) are set to 0.0 and all other
+    year-varying attributes (loss_factor, cost) are copied from the first year with data, so that
+    the full topology is always initialised across the entire modelling horizon.
 
     Parameters:
     -------
-    line_dict (Dict[str, Any]): A dictionary containing the attributes of
-        a single line object in `config/lines.csv`.
-    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of
-        all Node jitclass instances for the scenario. Key defined as Node.order.
+    line_id (int): The model-level id for the line.
+    year_dict (Dict[int, Dict[str, Any]]): A dictionary of per-year line attribute dicts, keyed
+        by year integer. May contain only a subset of [firstyear, finalyear] if the line is added
+        partway through the horizon.
+    nodes_object_dict (DictType(int64, Node_InstanceType)): A typed dictionary of all Node
+        jitclass instances for the scenario, keyed by Node.order.
     order (int): The scenario-specific id for the Line instance.
+    firstyear (int): First year of the modelling horizon (inclusive).
+    finalyear (int): Final year of the modelling horizon (inclusive).
 
     Returns:
     -------
     Line_InstanceType: A static instance of the Line jitclass.
     """
-    idx = int(line_dict["id"])
-    name = str(line_dict["name"])
-    length = float(line_dict["length"])
-    loss_factor = float(line_dict["loss_factor"])
-    max_build = float(line_dict["max_build"])
-    min_build = float(line_dict["min_build"])
-    capacity = float(line_dict["initial_capacity"])
-    unit_type = str(line_dict["unit_type"])
-    near_opt = str(line_dict.get("near_optimum", "")).lower() in ("true", "1", "yes")
-    minor_node = construct_Node_object({"id": -1, "name": "MINOR_NODE"}, -1)
+    any_year_data = next(iter(year_dict.values()))
+    name = str(any_year_data["name"])
+    unit_type = str(any_year_data["unit_type"])
+    near_opt = str(any_year_data.get("near_optimum", "")).lower() in ("true", "1", "yes")
 
-    raw_group = line_dict.get("range_group", "")
+    raw_group = any_year_data.get("range_group", "")
     group = (
         name
         if raw_group is None or (isinstance(raw_group, float) and np.isnan(raw_group)) or str(raw_group).strip() == ""
         else str(raw_group).strip()
     )
 
+    minor_node = construct_Node_object({"id": -1, "name": "MINOR_NODE"}, -1)
+    length = float(any_year_data["length"])
+    lifetime = int(any_year_data["lifetime"])
     node_start = next(
         (
-            node
-            for node in nodes_object_dict.values()
-            if not is_nan(line_dict["node_start"]) and node.name == str(line_dict["node_start"])
+            n
+            for n in nodes_object_dict.values()
+            if not is_nan(any_year_data["node_start"]) and n.name == str(any_year_data["node_start"])
         ),
         minor_node,
     )
-
     node_end = next(
         (
-            node
-            for node in nodes_object_dict.values()
-            if not is_nan(line_dict["node_end"]) and node.name == str(line_dict["node_end"])
+            n
+            for n in nodes_object_dict.values()
+            if not is_nan(any_year_data["node_end"]) and n.name == str(any_year_data["node_end"])
         ),
         minor_node,
     )
 
-    cost = construct_UnitCost_object(
-        float(line_dict["capex"]),
-        float(line_dict["fom"]),
-        float(line_dict["vom"]),
-        int(line_dict["lifetime"]),
-        float(line_dict["discount_rate"]),
-        transformer_capex=int(line_dict["transformer_capex"]),
+    loss_factor = TypedDict.empty(key_type=int64, value_type=float64)
+    max_build = TypedDict.empty(key_type=int64, value_type=float64)
+    min_build = TypedDict.empty(key_type=int64, value_type=float64)
+    initial_capacity = TypedDict.empty(key_type=int64, value_type=float64)
+    cost = TypedDict.empty(key_type=int64, value_type=UnitCost_InstanceType)
+
+    capacity = 0.0
+
+    # Pre-resolve cost from the first year with data for filling pre-existence years.
+    first_yr = year_dict[min(year_dict.keys())]
+    first_cost = construct_UnitCost_object(
+        float(first_yr["capex"]),
+        float(first_yr["fom"]),
+        float(first_yr["vom"]),
+        lifetime,
+        float(first_yr["discount_rate"]),
+        transformer_capex=int(first_yr["transformer_capex"]),
     )
+
+    for year_idx, year in enumerate(range(firstyear, finalyear + 1)):
+        if year in year_dict:
+            yr = year_dict[year]
+            loss_factor[year_idx] = float(yr["loss_factor"])
+            max_build[year_idx] = float(yr["max_build"])
+            min_build[year_idx] = float(yr["min_build"])
+            initial_capacity[year_idx] = float(yr["initial_capacity"])
+
+            cost[year_idx] = construct_UnitCost_object(
+                float(yr["capex"]),
+                float(yr["fom"]),
+                float(yr["vom"]),
+                lifetime,
+                float(yr["discount_rate"]),
+                transformer_capex=int(yr["transformer_capex"]),
+            )
+
+            if year_idx == 0:
+                capacity = float(yr["initial_capacity"])
+        else:
+            get_logger().debug("Line id %s has no data for year %s; setting capacity fields to 0.", line_id, year)
+            loss_factor[year_idx] = float(first_yr["loss_factor"])
+            max_build[year_idx] = 0.0
+            min_build[year_idx] = 0.0
+            initial_capacity[year_idx] = 0.0
+            cost[year_idx] = first_cost
 
     return Line(
         True,
-        idx,
+        line_id,
         order,
         name,
         length,
@@ -118,6 +166,7 @@ def construct_Line_object(
         loss_factor,
         max_build,
         min_build,
+        initial_capacity,
         capacity,
         unit_type,
         near_opt,
@@ -234,24 +283,28 @@ def get_routes_for_node(
             for line in lines_object_dict.values():
                 if route_m.check_contains_line(route, line):  # Remove loops
                     continue
-                if line.node_start.order == route.nodes[-1].order:
-                    if route_m.check_contains_node(route, line.node_end):  # Remove loops
+                node_start = line.node_start
+                node_end = line.node_end
+                if node_start is not None and node_start.order == route.nodes[-1].order:
+                    if route_m.check_contains_node(route, node_end):  # Remove loops
                         continue
-                    new_route = extend_route(route, line.node_end, line, -1, leg)
+                    new_route = extend_route(route, node_end, line, -1, leg)
                     routes_to_node_curr_leg.append(new_route)
-                elif line.node_end.order == route.nodes[-1].order:
-                    if route_m.check_contains_node(route, line.node_start):  # Remove loops
+                elif node_end is not None and node_end.order == route.nodes[-1].order:
+                    if route_m.check_contains_node(route, node_start):  # Remove loops
                         continue
-                    new_route = extend_route(route, line.node_start, line, 1, leg)
+                    new_route = extend_route(route, node_start, line, 1, leg)
                     routes_to_node_curr_leg.append(new_route)
     else:
         routes_to_node_prev_leg = TypedList.empty_list(Route_InstanceType)
         for line in lines_object_dict.values():
-            if line.node_start.order == initial_node.order:
-                new_route = construct_new_Route_object(initial_node, line.node_end, line, -1, leg)
+            node_start = line.node_start
+            node_end = line.node_end
+            if node_start is not None and node_start.order == initial_node.order:
+                new_route = construct_new_Route_object(initial_node, node_end, line, -1, leg)
                 routes_to_node_curr_leg.append(new_route)
-            elif line.node_end.order == initial_node.order:
-                new_route = construct_new_Route_object(initial_node, line.node_start, line, 1, leg)
+            elif node_end is not None and node_end.order == initial_node.order:
+                new_route = construct_new_Route_object(initial_node, node_start, line, 1, leg)
                 routes_to_node_curr_leg.append(new_route)
     return routes_to_node_curr_leg
 
@@ -298,11 +351,13 @@ def build_routes_typed_dict(
 
 def construct_Network_object(
     nodes_imported_dict: Dict[int, Dict[str, Any]],
-    lines_imported_dict: Dict[int, Dict[str, Any]],
+    lines_imported_dict: Dict[int, Dict[int, Dict[str, Any]]],
     networksteps_max: int,
+    firstyear: int,
+    finalyear: int,
 ) -> Network_InstanceType:
     """
-    Takes data required to initialise a single network object, casts values into Numba-compatible
+    Takes data required to initialise a single Network object, casts values into Numba-compatible
     types, builds Node and Line jitclasses, builds transmission routes, and returns an instance of
     the Network jitclass.
 
@@ -312,12 +367,14 @@ def construct_Network_object(
 
     Parameters:
     -------
-    nodes_imported_dict (Dict[int, Dict[str, Any]]): A dictionary containing data for all nodes
-        imported from `config/nodes.csv`.
-    lines_imported_dict (Dict[int, Dict[str, Any]]): A dictionary containing data for all
-        lines imported from `config/lines.csv`.
+    nodes_imported_dict (Dict[int, Dict[str, Any]]): A flat dictionary of node attribute dicts,
+        grouped by node id. Nodes have no year-varying attributes.
+    lines_imported_dict (Dict[int, Dict[int, Dict[str, Any]]]): A year-keyed dictionary of line
+        attribute dicts, grouped by line id.
     networksteps_max (int): The maximum number of legs allowed in a route for a given scenario.
         Can be adjusted in `config/scenarios.csv`.
+    firstyear (int): First year of the modelling horizon (inclusive).
+    finalyear (int): Final year of the modelling horizon (inclusive).
 
     Returns:
     -------
@@ -335,11 +392,17 @@ def construct_Network_object(
     order_major = 0
     order_minor = 0
     for idx in lines_imported_dict:
-        if not is_nan(lines_imported_dict[idx]["node_start"]) and not is_nan(lines_imported_dict[idx]["node_end"]):
-            major_lines[order_major] = construct_Line_object(lines_imported_dict[idx], nodes, order_major)
+        line_year_dict = lines_imported_dict[idx]
+        any_year_data = next(iter(line_year_dict.values()))
+        if not is_nan(any_year_data["node_start"]) and not is_nan(any_year_data["node_end"]):
+            major_lines[order_major] = construct_Line_object(
+                idx, line_year_dict, nodes, order_major, firstyear, finalyear
+            )
             order_major += 1
         else:
-            minor_lines[order_minor] = construct_Line_object(lines_imported_dict[idx], nodes, order_minor)
+            minor_lines[order_minor] = construct_Line_object(
+                idx, line_year_dict, nodes, order_minor, firstyear, finalyear
+            )
             order_minor += 1
 
     routes = build_routes_typed_dict(networksteps_max, nodes, major_lines)

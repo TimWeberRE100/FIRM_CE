@@ -175,14 +175,14 @@ if JIT_ENABLED:
         ("length", float64),
         ("node_start", Node_InstanceType),
         ("node_end", Node_InstanceType),
-        ("loss_factor", float64),
-        ("max_build", float64),
-        ("min_build", float64),
-        ("initial_capacity", float64),
+        ("loss_factor", DictType(int64, float64)),
+        ("max_build", DictType(int64, float64)),
+        ("min_build", DictType(int64, float64)),
+        ("initial_capacity", DictType(int64, float64)),
         ("unit_type", unicode_type),
         ("near_optimum_check", boolean),
         ("group", unicode_type),
-        ("cost", UnitCost_InstanceType),
+        ("cost", DictType(int64, UnitCost_InstanceType)),
         ("candidate_x_idx", int64),
         # Dynamic
         ("new_build", float64),
@@ -219,19 +219,19 @@ class Line:
     id (int64): A model-level identifier for the Line instance.
     order (int64): A scenario-level identifier for the Line instance.
     name (unicode_type): A string providing the oridinary name of the transmission line.
-    length (float64): Line length, units km.
+    length (float64): Line length in km.
     node_start (Node_InstanceType): Starting Node for a major line (generic minor Node for minor Line).
     node_end (Node_InstanceType): Ending Node for a major line (generic minor Node for minor Line).
-    loss_factor (float64): Energy loss percentage per 1000 km.
-    max_build (float64): Maximum build limit in GW.
-    min_build (float64): Minimum build limit in GW.
-    initial_capacity (float64): Installed capacity at model start in GW.
+    loss_factor (DictType(int64, float64)): Energy loss percentage per 1000 km, keyed by year.
+    max_build (DictType(int64, float64)): Maximum build limit in GW, keyed by year.
+    min_build (DictType(int64, float64)): Minimum build limit in GW, keyed by year.
+    initial_capacity (DictType(int64, float64)): Installed capacity at model start in GW, keyed by year.
     unit_type (unicode_type): Technology/type label (e.g., 'AC', 'HVDC', 'Minor'). Currently, only relevent for grouping
         similar Lines together in some figures within `tools/result_viewer.ipynb`.
     near_optimum_check (boolean): Flag to perform near-optimum optimisation.
     group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
         when minimising/maximising installed capacity within the broad optimum space.
-    cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+    cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
     candidate_x_idx (int64): Index of the Line's decision variable (new build capacity) in the candidate solution vector.
     new_build (float64): Capacity built for the candidate solution, units GW.
     capacity (float64): Current installed capacity, units GW.
@@ -251,14 +251,15 @@ class Line:
         length: float64,
         node_start: Node_InstanceType,
         node_end: Node_InstanceType,
-        loss_factor: float64,
-        max_build: float64,
-        min_build: float64,
+        loss_factor: DictType(int64, float64),
+        max_build: DictType(int64, float64),
+        min_build: DictType(int64, float64),
+        initial_capacity: DictType(int64, float64),
         capacity: float64,
         unit_type: unicode_type,
         near_optimum_check: boolean,
         group: unicode_type,
-        cost: UnitCost_InstanceType,
+        cost: DictType(int64, UnitCost_InstanceType),
     ) -> None:
         """
         Initialise a Line instance.
@@ -270,19 +271,20 @@ class Line:
         idx (int64): A model-level identifier for the Line instance.
         order (int64): A scenario-level identifier for the Line instance.
         name (unicode_type): A string providing the oridinary name of the transmission line.
-        length (float64): Line length, units km.
+        length (float64): Line length in km.
         node_start (Node_InstanceType): Starting Node for a major line (generic minor Node for minor Line).
         node_end (Node_InstanceType): Ending Node for a major line (generic minor Node for minor Line).
-        loss_factor (float64): Energy loss percentage per 1000 km.
-        max_build (float64): Maximum build limit in GW.
-        min_build (float64): Minimum build limit in GW.
-        capacity (float64): Installed capacity at model start in GW.
-        unit_type (unicode_type): Technology/type label (e.g., 'AC', 'HVDC', 'Minor'). Currently, only relevent for grouping
-        similar Lines together in some figures within `tools/result_viewer.ipynb`.
+        loss_factor (DictType(int64, float64)): Energy loss percentage per 1000 km, keyed by year.
+        max_build (DictType(int64, float64)): Maximum build limit in GW, keyed by year.
+        min_build (DictType(int64, float64)): Minimum build limit in GW, keyed by year.
+        initial_capacity (DictType(int64, float64)): Installed capacity at model start in GW, keyed by year.
+        capacity (float64): Initial value for dynamic installed capacity, units GW.
+        unit_type (unicode_type): Technology/type label (e.g., 'HVAC', 'HVDC'). Currently, only relevent for
+            grouping similar Lines together in some figures within `tools/result_viewer.ipynb`.
         near_optimum_check (boolean): Flag to perform near-optimum optimisation.
         group (unicode_type): Group label used by broad optimum optimisation. Grouped assets are considered in aggregate
-        when minimising/maximising installed capacity within the broad optimum space.
-        cost (UnitCost_InstanceType): Exogenously defined cost assumptions.
+            when minimising/maximising installed capacity within the broad optimum space.
+        cost (DictType(int64, UnitCost_InstanceType)): Exogenously defined cost assumptions, keyed by year.
         """
         self.static_instance = static_instance
         self.id = idx
@@ -294,7 +296,7 @@ class Line:
         self.loss_factor = loss_factor  # Transmission losses % per 1000 km
         self.max_build = max_build  # GW/year
         self.min_build = min_build  # GW/year
-        self.initial_capacity = capacity  # GW
+        self.initial_capacity = initial_capacity  # GW
         self.unit_type = unit_type
         self.near_optimum_check = near_optimum_check
         self.group = group

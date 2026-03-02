@@ -15,7 +15,7 @@ from firm_ce.system.topology import (
 
 
 @njit(fastmath=FASTMATH)
-def create_dynamic_copy(network_instance: Network_InstanceType) -> Network_InstanceType:
+def create_dynamic_copy(network_instance: Network_InstanceType, first_t: int64, last_t: int64) -> Network_InstanceType:
     """
     A 'static' instance of the Network jitclass (Network.static_instance=True) is copied
     and marked as a 'dynamic' instance (Network.static_instance=False).
@@ -35,7 +35,10 @@ def create_dynamic_copy(network_instance: Network_InstanceType) -> Network_Insta
 
     Parameters:
     -------
-    network_instance (Network_InstanceType): A static instance of the Fleet jitclass.
+    network_instance (Network_InstanceType): A static instance of the Network jitclass.
+    first_t (int64): First interval index (inclusive) of the evaluation window. Passed through to
+        component create_dynamic_copy functions to slice per-interval static data.
+    last_t (int64): Last interval index (exclusive) of the evaluation window.
 
     Returns:
     -------
@@ -47,7 +50,7 @@ def create_dynamic_copy(network_instance: Network_InstanceType) -> Network_Insta
     routes_copy = TypedDict.empty(key_type=routes_key_type, value_type=routes_list_type)
 
     for order, node in network_instance.nodes.items():
-        nodes_copy[order] = node_m.create_dynamic_copy(node)
+        nodes_copy[order] = node_m.create_dynamic_copy(node, first_t, last_t)
 
     for order, line in network_instance.major_lines.items():
         major_lines_copy[order] = line_m.create_dynamic_copy(line, nodes_copy, "major")
@@ -671,7 +674,9 @@ def calculate_spillage_and_deficit(network_instance: Network_InstanceType, inter
 
 @njit(fastmath=FASTMATH)
 def assign_storage_merit_orders(
-    network_instance: Network_InstanceType, storages_typed_dict  # DictType(int64, Storage_InstanceType)
+    network_instance: Network_InstanceType,
+    storages_typed_dict,  # DictType(int64, Storage_InstanceType)
+    year_idx: int64,
 ) -> None:
     """
     For each Node, finds all Storage instances at that Node. Sorts the Storage systems at that Node from
@@ -686,6 +691,7 @@ def assign_storage_merit_orders(
     network_instance (Network_InstanceType): An instance of the Network jitclass.
     storages_typed_dict (DictType(int64, Storage_InstanceType)): Typed dictionary of Storage instances within
         the scenario, keyed by Storage.order.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -696,13 +702,15 @@ def assign_storage_merit_orders(
     Attributes modified for each Node in Network.nodes: storage_merit_order.
     """
     for node in network_instance.nodes.values():
-        node_m.assign_storage_merit_order(node, storages_typed_dict)
+        node_m.assign_storage_merit_order(node, storages_typed_dict, year_idx)
     return None
 
 
 @njit(fastmath=FASTMATH)
 def assign_flexible_merit_orders(
-    network_instance: Network_InstanceType, generators_typed_dict  # DictType(int64, Generators_InstanceType)
+    network_instance: Network_InstanceType,
+    generators_typed_dict,  # DictType(int64, Generators_InstanceType)
+    year_idx: int64,
 ) -> None:
     """
     For each Node, finds all flexible Generator instances at that Node. Sorts the flexible Generators at that Node from
@@ -715,6 +723,7 @@ def assign_flexible_merit_orders(
     network_instance (Network_InstanceType): An instance of the Network jitclass.
     generators_typed_dict (DictType(int64, Generators_InstanceType)): Typed dictionary of Generator
         instances within the scenario, keyed by Generator.order.
+    year_idx (int64): Year index used to look up year-keyed attributes.
 
     Returns:
     -------
@@ -725,7 +734,7 @@ def assign_flexible_merit_orders(
     Attributes modified for each Node in Network.nodes: flexible_merit_order.
     """
     for node in network_instance.nodes.values():
-        node_m.assign_flexible_merit_order(node, generators_typed_dict)
+        node_m.assign_flexible_merit_order(node, generators_typed_dict, year_idx)
     return None
 
 
@@ -757,7 +766,7 @@ def calculate_lt_flows(network_instance: Network_InstanceType, interval_resoluti
 
 
 @njit(fastmath=FASTMATH)
-def calculate_lt_line_losses(network_instance: Network_InstanceType) -> float64:
+def calculate_lt_line_losses(network_instance: Network_InstanceType, year_idx: int64) -> float64:
     """
     Estimates the total long-term transmission losses over the modelling horizon for both major and minor
     Lines. Assumes a simplified linear loss factor applied to the line flows.
@@ -765,6 +774,7 @@ def calculate_lt_line_losses(network_instance: Network_InstanceType) -> float64:
     Parameters:
     -------
     network_instance (Network_InstanceType): An instance of the Network jitclass.
+    year_idx (int64): Year index used to look up year-keyed loss_factor and length attributes.
 
     Returns:
     -------
@@ -772,9 +782,9 @@ def calculate_lt_line_losses(network_instance: Network_InstanceType) -> float64:
     """
     total_line_losses = 0.0
     for line in network_instance.major_lines.values():
-        total_line_losses += line_m.get_lt_losses(line)
+        total_line_losses += line_m.get_lt_losses(line, year_idx)
     for line in network_instance.minor_lines.values():
-        total_line_losses += line_m.get_lt_losses(line)
+        total_line_losses += line_m.get_lt_losses(line, year_idx)
     return total_line_losses
 
 
