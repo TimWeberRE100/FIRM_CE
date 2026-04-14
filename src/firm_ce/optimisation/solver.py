@@ -35,6 +35,7 @@ class Solver:
         fleet_static: Fleet_InstanceType,
         network_static: Network_InstanceType,
         scenario_name: str,
+        results_directory: str,
         initial_population: NDArray[np.float64] | str = "latinhypercube",
     ) -> None:
         """
@@ -77,6 +78,7 @@ class Solver:
         self.lower_bounds, self.upper_bounds = self.get_bounds()
         self.broad_optimum_var_info = build_broad_optimum_var_info(fleet_static, network_static)
         self.scenario_name = scenario_name
+        self.results_directory = results_directory
         self.result = None
         self.optimal_lcoe = None
         self.initial_population = initial_population
@@ -477,10 +479,7 @@ class Solver:
 
     def capacity_expansion(self) -> None:
         """
-        Run a capacity expansion solve by iterating over each year in the modelling horizon.
-
-        Delegates to run_capacity_expansion, which creates and evaluates a Solution instance
-        for each year.
+        Run a sequential year-by-year capacity expansion solve.
 
         Parameters:
         -------
@@ -498,14 +497,17 @@ class Solver:
         -------
         None.
         """
-        run_capacity_expansion(
+        self.result = run_capacity_expansion(
+            self.config,
             self.parameters_static,
             self.fleet_static,
             self.network_static,
-            self.config.balancing_type,
-            self.config.fixed_costs_threshold,
+            self.scenario_name,
+            self.results_directory,
             self.lower_bounds,
             self.upper_bounds,
+            self.decision_x0,
+            self.initial_population,
         )
 
     def evaluate(self) -> None:

@@ -367,6 +367,15 @@ class Scenario:
         of candidate solutions evaluated (`populations.csv`), the energies of each population (`population_energies.csv`),
         and the best candidate solution from each iteration of the optimisation (`callback.csv`).
         """
-        solver = Solver(config, self.x0, self.static, self.fleet, self.network, self.name, self.initial_population)
+        solver = Solver(
+            config,
+            self.x0,
+            self.static,
+            self.fleet,
+            self.network,
+            self.name,
+            self.results_dir,
+            self.initial_population,
+        )
         solver.evaluate()
         return solver.result

@@ -260,14 +260,16 @@ def update_residual_load_initial(
     intervals_count: int64,
 ) -> None:
     """
-    Update the residual load at each Node where a Generator is located using year-specific initial capacities.
+    Update the residual load at each Node where a Generator is located using the
+    opening baseline capacity from the first model year.
 
     Notes:
     -------
-    - Iterates over the modelling horizon year by year. For each year, the year's initial capacity is applied
-    to the corresponding portion of the Node's residual_load array.
-    - This function replaces the single-capacity version of update_residual_load for the data loading stage,
-    where initial_capacity is keyed by year rather than being a single scalar.
+    - Iterates over the modelling horizon year by year. For each year, the first year's
+      initial capacity is applied to the corresponding portion of the Node's residual_load array.
+    - Later-year initial_capacity entries are intentionally ignored. Exogenous opening stock is
+      defined only at model start; later capacity changes should be represented by endogenous
+      builds/retirements or a dedicated exogenous pathway input.
 
     Parameters:
     -------
@@ -281,20 +283,23 @@ def update_residual_load_initial(
 
     Side-effects:
     -------
-    For each year with non-zero initial capacity, the corresponding portion of the residual_load array at
-    Generator.node[year] is reduced by initial_capacity[year] * availability_trace.
+    For each year with non-zero opening baseline capacity, the corresponding portion of the
+    residual_load array at Generator.node[year] is reduced by initial_capacity[0] *
+    availability_trace.
     """
     if get_data(generator_instance, "trace").shape[0] == 0:
         return None
 
     year_count = len(year_first_t)
+    initial_capacity = generator_instance.initial_capacity[0]
+    if initial_capacity <= 0.0:
+        return None
+
     for year in range(year_count):
-        year_capacity = generator_instance.initial_capacity[year]
-        if year_capacity > 0.0:
-            first_t = year_first_t[year]
-            last_t = year_first_t[year + 1] if year < year_count - 1 else intervals_count
-            year_trace = get_data(generator_instance, "trace")[first_t:last_t] * year_capacity
-            node_m.get_data(generator_instance.node, "residual_load")[first_t:last_t] -= year_trace
+        first_t = year_first_t[year]
+        last_t = year_first_t[year + 1] if year < year_count - 1 else intervals_count
+        year_trace = get_data(generator_instance, "trace")[first_t:last_t] * initial_capacity
+        node_m.get_data(generator_instance.node, "residual_load")[first_t:last_t] -= year_trace
     return None
 
 

@@ -31,7 +31,7 @@ def validate_range(val: Any, min_val: float, max_val: float = None, inclusive: b
             return min_val <= val <= max_val if max_val is not None else min_val <= val
         else:
             return min_val < val < max_val if max_val is not None else min_val < val
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
 
 
@@ -49,7 +49,7 @@ def validate_positive_int(val: Any) -> bool:
     """
     try:
         return int(val) > 0
-    except TypeError, ValueError:
+    except (TypeError, ValueError):
         return False
 
 
@@ -664,7 +664,7 @@ def validate_lines(
                 val = cast(any_year_data[field])
                 if val < 0:
                     raise ValueError
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 get_logger().error(
                     "'%s' must be a valid %s >= 0 (id=%s)",
                     field,
@@ -706,7 +706,7 @@ def validate_lines(
                             "'min_build' must be less than or equal to 'max_build' (id=%s, year=%s)", asset_id, year
                         )
                         flag = False
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     pass
 
         for scenario in get_applicable_scenarios(any_year_data, scenarios_list, asset_id, "line"):
@@ -758,7 +758,7 @@ def validate_generators(
             if int(any_year_data["lifetime"]) <= 0:
                 get_logger().error("'lifetime' must be int > 0 (id=%s)", asset_id)
                 flag = False
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             get_logger().error("'lifetime' must be a valid integer (id=%s)", asset_id)
             flag = False
 
@@ -801,7 +801,7 @@ def validate_generators(
                             "'min_build' must be less than or equal to 'max_build' (id=%s, year=%s)", asset_id, year
                         )
                         flag = False
-                except TypeError, ValueError:
+                except (TypeError, ValueError):
                     pass
 
         for scenario in get_applicable_scenarios(any_year_data, scenarios_list, asset_id, "generator"):
@@ -885,14 +885,14 @@ def validate_storages(
                                 "'%s' must be <= '%s' (id=%s, year=%s)", min_field, max_field, asset_id, year
                             )
                             flag = False
-                    except TypeError, ValueError:
+                    except (TypeError, ValueError):
                         pass
 
             try:
                 if int(item["lifetime"]) <= 0:
                     get_logger().error("'lifetime' must be int > 0 (id=%s, year=%s)", asset_id, year)
                     flag = False
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 get_logger().error("'lifetime' must be a valid integer (id=%s, year=%s)", asset_id, year)
                 flag = False
 
@@ -900,7 +900,7 @@ def validate_storages(
                 if int(item["duration"]) < 0:
                     get_logger().error("'duration' must be int >= 0 (id=%s, year=%s)", asset_id, year)
                     flag = False
-            except TypeError, ValueError:
+            except (TypeError, ValueError):
                 get_logger().error("'duration' must be a valid integer (id=%s, year=%s)", asset_id, year)
                 flag = False
 
