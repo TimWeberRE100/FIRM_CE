@@ -21,6 +21,7 @@ if JIT_ENABLED:
         ("node_count", int64),
         ("fom_scalar", float64),
         ("year_energy_demand", float64[:]),
+        ("investment_steps", int64[:]),
     ]
 else:
     scenario_parameters_spec = []
@@ -47,6 +48,8 @@ class ScenarioParameters:
     node_count (int64): Number of Nodes in the Network.
     fom_scalar (float64): Scaling factor to adjust fixed O&M to account for leap years (PLEXOS consistency).
     year_energy_demand (float64[:]): Array of total annual energy demand for each simulated year, units GWh.
+    investment_steps (int64[:]): Array of years at which capacity investment decisions are made. Defaults
+        to all years between firstyear and finalyear (inclusive) when no investment steps are defined.
     """
 
     def __init__(
@@ -60,6 +63,7 @@ class ScenarioParameters:
         year_first_t: int64[:],
         intervals_count: int64,
         node_count: int64,
+        investment_steps: int64[:],
     ):
         """
         Initialise a ScenarioParameters instance.
@@ -75,6 +79,7 @@ class ScenarioParameters:
         year_first_t (int64[:]): Array mapping each year to its first time interval index.
         intervals_count (int64): Total number of intervals in the modelling horizon.
         node_count (int64): Number of Nodes in the Network.
+        investment_steps (int64[:]): Array of years at which capacity investment decisions are made.
         """
         self.resolution = resolution  # length of time interval in hours
         self.interval_resolutions = resolution * np.ones(
@@ -93,6 +98,7 @@ class ScenarioParameters:
             year_count + leap_year_count / 365
         ) / year_count  # Scale average annual fom to account for leap days for PLEXOS consistency
         self.year_energy_demand = np.zeros(self.year_count, dtype=np.float64)  # GWh
+        self.investment_steps = investment_steps
 
 
 if JIT_ENABLED:
@@ -121,6 +127,12 @@ class ModelConfig:
     fixed_costs_threshold (float): Maximum ratio of fixed costs to total energy demand ($/MWh) (default: 500.0).
         Allows for high cost solutions to be rapidly discarded using a penalty function before beginning unit
         committment processes.
+    intervention_set_size (int): Maximum number of interventions in a single intervention set for pathway planning
+        (default: 3). An intervention set is a multiset of discrete capacity additions; this bounds the total
+        number of additions considered together in each evaluated combination.
+    intervention_set_medoids_per_year (int): Number of cluster medoids to evaluate per investment step year in
+        pathway planning (default: 50). Mini-batch k-means groups the intervention sets in cost space and the
+        medoid of each cluster is evaluated via unit commitment.
     """
 
     def __init__(self, config_dict: Dict[str, str]) -> None:
@@ -142,3 +154,5 @@ class ModelConfig:
         self.midpoint_count = int(config_dict.get("midpoint_count", 0))
         self.balancing_type = str(config_dict["balancing_type"])
         self.fixed_costs_threshold = float(config_dict.get("fixed_costs_threshold", 500.0))
+        self.intervention_set_size = int(config_dict.get("intervention_set_size", 3))
+        self.intervention_set_medoids_per_year = int(config_dict.get("intervention_set_medoids_per_year", 50))

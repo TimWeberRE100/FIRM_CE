@@ -8,6 +8,7 @@ from scipy.optimize import OptimizeResult
 from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.constants import SCENARIOS_ALL_STR
 from firm_ce.constructors.component_cons import construct_Fleet_object
+from firm_ce.constructors.intervention_cons import construct_ScenarioInterventions_object
 from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_object
 from firm_ce.constructors.topology_cons import construct_Network_object
 from firm_ce.constructors.traces_cons import (
@@ -46,6 +47,8 @@ class Scenario:
     network (Network): Represents the network topology (a collection of Lines, Routes, and Nodes) and associated information.
     static (ScenarioParameters): Represents the static parameters for a model scenario.
     fleet (Fleet): Represents a collection of Generators and Storage systems in the scenario.
+    interventions (ScenarioInterventions): Container of all Intervention objects applicable to this scenario, built
+        from interventions.csv and interventions_multiyear.csv.
     statistics (Statistics | None): Optional Statistics object that stores the results of an optimisation. Initialised as None.
         Statistics instance generated either after solving the Scenario or through direct instantiation using an initial guess
         vector (refer to `examples/model_build_and_statistics.py`).
@@ -98,7 +101,10 @@ class Scenario:
             firstyear,
             finalyear,
         )
-        self.static = construct_ScenarioParameters_object(self.scenario_data, len(self.network.nodes))
+        self.static = construct_ScenarioParameters_object(
+            self.scenario_data,
+            len(self.network.nodes),
+        )
         self.fleet = construct_Fleet_object(
             self.get_scenario_dicts(model_data.generators, firstyear, finalyear),
             self.get_scenario_dicts(model_data.storages, firstyear, finalyear),
@@ -107,6 +113,13 @@ class Scenario:
             self.network.nodes,
             firstyear,
             finalyear,
+        )
+        self.interventions = construct_ScenarioInterventions_object(
+            self.get_scenario_dicts(model_data.interventions or {}, firstyear, finalyear),
+            self.fleet,
+            firstyear,
+            finalyear,
+            self.static.investment_steps,
         )
         self.statistics = None
 
@@ -376,6 +389,7 @@ class Scenario:
             self.name,
             self.results_dir,
             self.initial_population,
+            self.interventions,
         )
         solver.evaluate()
         return solver.result

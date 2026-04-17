@@ -1,0 +1,4 @@
+id,name,scenarios
+0,solar_and_wind,all
+1,gas,all
+2,pumped_hydro,all

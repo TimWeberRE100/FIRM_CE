@@ -242,6 +242,8 @@ def construct_Storage_object(
     max_build_e = TypedDict.empty(key_type=int64, value_type=float64)
     min_build_p = TypedDict.empty(key_type=int64, value_type=float64)
     min_build_e = TypedDict.empty(key_type=int64, value_type=float64)
+    unit_size_p = TypedDict.empty(key_type=int64, value_type=float64)
+    unit_size_e = TypedDict.empty(key_type=int64, value_type=float64)
     cost = TypedDict.empty(key_type=int64, value_type=UnitCost_InstanceType)
 
     power_capacity = 0.0
@@ -267,6 +269,8 @@ def construct_Storage_object(
             max_build_e[year_idx] = float(yr["max_build_e"])
             min_build_p[year_idx] = float(yr["min_build_p"])
             min_build_e[year_idx] = float(yr["min_build_e"])
+            unit_size_p[year_idx] = float(yr["unit_size_p"])
+            unit_size_e[year_idx] = float(yr["unit_size_e"])
 
             cost[year_idx] = construct_UnitCost_object(
                 capex_p=float(yr["capex_p"]),
@@ -298,6 +302,8 @@ def construct_Storage_object(
         max_build_e,
         min_build_p,
         min_build_e,
+        unit_size_p,
+        unit_size_e,
         power_capacity,
         energy_capacity,
         unit_type,

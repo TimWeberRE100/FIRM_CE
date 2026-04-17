@@ -9,3 +9,5 @@ id,name,value
 7,midpoint_count,3
 8,balancing_type,full
 9,fixed_costs_threshold,400
+10,intervention_set_size,5
+11,intervention_set_medoids_per_year,20

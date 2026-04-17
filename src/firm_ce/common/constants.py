@@ -15,4 +15,4 @@ NUM_THREADS = int(os.getenv("NUM_THREADS", os.cpu_count()))
 FASTMATH = True
 YEAR_ALL_STR = "all"
 SCENARIOS_ALL_STR = "all"
-MULTIYEAR_FILENAMES = {"generators", "fuels", "lines", "storages"}
+MULTIYEAR_FILENAMES = {"generators", "fuels", "lines", "storages", "interventions"}

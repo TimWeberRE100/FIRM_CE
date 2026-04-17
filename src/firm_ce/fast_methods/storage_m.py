@@ -60,6 +60,8 @@ def create_dynamic_copy(
         storage_instance.max_build_e,  # This remains static
         storage_instance.min_build_p,  # This remains static
         storage_instance.min_build_e,  # This remains static
+        storage_instance.unit_size_p,  # This remains static
+        storage_instance.unit_size_e,  # This remains static
         storage_instance.power_capacity,
         storage_instance.energy_capacity,
         storage_instance.unit_type,

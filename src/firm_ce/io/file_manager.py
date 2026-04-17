@@ -48,6 +48,7 @@ class ImportCSV:
             "fuels",
             "lines",
             "storages",
+            "interventions",
             "config",
             "initial_guess",
             "datafiles",

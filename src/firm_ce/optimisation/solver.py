@@ -20,8 +20,10 @@ from firm_ce.optimisation.broad_optimum import (
     write_broad_optimum_records,
 )
 from firm_ce.optimisation.capacity_expansion import run_capacity_expansion
+from firm_ce.optimisation.pathway_planning import run_pathway_planning
 from firm_ce.optimisation.single_time import Solution, evaluate_vectorised_xs
 from firm_ce.system.components import Fleet_InstanceType
+from firm_ce.system.interventions import ScenarioInterventions
 from firm_ce.system.parameters import ModelConfig, ScenarioParameters_InstanceType
 from firm_ce.system.topology import Network_InstanceType
 
@@ -37,6 +39,7 @@ class Solver:
         scenario_name: str,
         results_directory: str,
         initial_population: NDArray[np.float64] | str = "latinhypercube",
+        interventions: ScenarioInterventions | None = None,
     ) -> None:
         """
         Initialise the Solver with the model configuration and static system data.
@@ -82,6 +85,7 @@ class Solver:
         self.result = None
         self.optimal_lcoe = None
         self.initial_population = initial_population
+        self.interventions = interventions
         self.iterations = config.iterations
 
     def get_bounds(self) -> Tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -491,7 +495,7 @@ class Solver:
 
         Side-effects:
         -------
-        None.
+        Sets self.result to the OptimizeResult from the final capacity expansion year.
 
         Exceptions:
         -------
@@ -510,6 +514,40 @@ class Solver:
             self.initial_population,
         )
 
+    def pathway_planning(self) -> None:
+        """
+        Run the broad optimum capacity expansion (pathway planning) solve.
+
+        Parameters:
+        -------
+        None.
+
+        Returns:
+        -------
+        None.
+
+        Side-effects:
+        -------
+        Sets self.result to the OptimizeResult from the final investment step.
+
+        Exceptions:
+        -------
+        None.
+        """
+        self.result = run_pathway_planning(
+            self.config,
+            self.parameters_static,
+            self.fleet_static,
+            self.network_static,
+            self.scenario_name,
+            self.results_directory,
+            self.lower_bounds,
+            self.upper_bounds,
+            self.decision_x0,
+            self.initial_population,
+            self.interventions,
+        )
+
     def evaluate(self) -> None:
         """
         Run the appropriate optimisation based on the config type.
@@ -525,12 +563,12 @@ class Solver:
         Side-effects:
         -------
         Delegates to single_time(), find_near_optimal_band(), explore_midpoints(),
-        or capacity_expansion() depending on self.config.type.
+        capacity_expansion(), or pathway_planning() depending on self.config.type.
 
         Exceptions:
         -------
         Exception: Raised if self.config.type is not one of "single_time",
-            "near_optimum", "midpoint_explore", or "capacity_expansion".
+            "near_optimum", "midpoint_explore", "capacity_expansion", or "pathway_planning".
         """
         if self.config.type == "single_time":
             self.single_time()
@@ -540,10 +578,12 @@ class Solver:
             self.explore_midpoints()
         elif self.config.type == "capacity_expansion":
             self.capacity_expansion()
+        elif self.config.type == "pathway_planning":
+            self.pathway_planning()
         else:
             raise Exception(
-                "Model type in config must be 'single_time' or 'capacity_expansion' or 'near_optimum' or"
-                "'midpoint_explore'"
+                "Model type in config must be 'single_time', 'capacity_expansion', 'near_optimum', "
+                "'midpoint_explore', or 'pathway_planning'."
             )
 
 

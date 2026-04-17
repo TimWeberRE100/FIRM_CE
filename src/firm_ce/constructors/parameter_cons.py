@@ -4,6 +4,7 @@ from typing import Dict, Tuple
 import numpy as np
 from numpy.typing import NDArray
 
+from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
 
 
@@ -49,6 +50,35 @@ def determine_interval_parameters(
     return leap_days, year_first_t, intervals_count
 
 
+def determine_investment_steps(
+    investment_steps_raw: object,
+    first_year: int,
+    final_year: int,
+) -> NDArray:
+    """
+    Parse the raw investment_steps value from scenarios.csv into a sorted array of years.
+    If the field is absent or NaN, every year in the modelling horizon is treated as an
+    investment step.
+
+    Parameters:
+    -------
+    investment_steps_raw (object): The raw value read from the `investment_steps` column of
+        `config/scenarios.csv`. May be a float NaN (missing), an empty string, or a
+        comma-separated string of integer years.
+    first_year (int): The first year of the scenario.
+    final_year (int): The final year of the scenario (inclusive).
+
+    Returns:
+    -------
+    NDArray: A 1-D int64 array of investment step years.
+    """
+    if isinstance(investment_steps_raw, float) and np.isnan(investment_steps_raw):
+        return np.array(range(first_year, final_year + 1), dtype=np.int64)
+    return np.array(
+        [int(s) for s in parse_comma_separated(str(investment_steps_raw), lower=False)], dtype=np.int64
+    )
+
+
 def construct_ScenarioParameters_object(
     scenario_data_dict: Dict[str, str],
     node_count: int,
@@ -79,6 +109,12 @@ def construct_ScenarioParameters_object(
         resolution,
     )
 
+    investment_steps = determine_investment_steps(
+        scenario_data_dict.get("investment_steps", ""),
+        first_year,
+        final_year,
+    )
+
     return ScenarioParameters(
         resolution,
         allowance,
@@ -89,4 +125,5 @@ def construct_ScenarioParameters_object(
         year_first_t,
         intervals_count,
         node_count,
+        investment_steps,
     )

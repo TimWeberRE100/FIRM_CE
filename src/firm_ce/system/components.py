@@ -286,6 +286,8 @@ if JIT_ENABLED:
         ("max_build_e", DictType(int64, float64)),
         ("min_build_p", DictType(int64, float64)),
         ("min_build_e", DictType(int64, float64)),
+        ("unit_size_p", DictType(int64, float64)),
+        ("unit_size_e", DictType(int64, float64)),
         ("line", Line_InstanceType),
         ("unit_type", unicode_type),
         ("near_optimum_check", boolean),
@@ -351,6 +353,10 @@ class Storage:
     max_build_e (DictType(int64, float64)): Maximum build limit for energy capacity in GWh, keyed by year.
     min_build_p (DictType(int64, float64)): Minimum build limit for power capacity in GW, keyed by year.
     min_build_e (DictType(int64, float64)): Minimum build limit for energy capacity in GWh, keyed by year.
+    unit_size_p (DictType(int64, float64)): Nameplate power unit size in GW, keyed by year. Used for pathway
+        planning intervention generation; an intervention adds one unit_size_p of power capacity.
+    unit_size_e (DictType(int64, float64)): Nameplate energy unit size in GWh, keyed by year. Only used for
+        independently sized storage (duration == 0); ignored when energy capacity is derived from power * duration.
     unit_type (unicode_type): Type of storage (e.g., 'PHES', 'BESS').
     near_optimum_check (boolean): Flag to perform near-optimum optimisation.
     node (Node_InstanceType): The Network Node where the Storage is located.
@@ -407,6 +413,8 @@ class Storage:
         max_build_e: DictType(int64, float64),
         min_build_p: DictType(int64, float64),
         min_build_e: DictType(int64, float64),
+        unit_size_p: DictType(int64, float64),
+        unit_size_e: DictType(int64, float64),
         power_capacity: float64,
         energy_capacity: float64,
         unit_type: unicode_type,
@@ -435,6 +443,8 @@ class Storage:
         max_build_e (DictType(int64, float64)): Maximum build limit for energy capacity in GWh, keyed by year.
         min_build_p (DictType(int64, float64)): Minimum build limit for power capacity in GW, keyed by year.
         min_build_e (DictType(int64, float64)): Minimum build limit for energy capacity in GWh, keyed by year.
+        unit_size_p (DictType(int64, float64)): Nameplate power unit size in GW, keyed by year.
+        unit_size_e (DictType(int64, float64)): Nameplate energy unit size in GWh, keyed by year.
         power_capacity (float64): Initial value for dynamic installed power capacity, units GW.
         energy_capacity (float64): Initial value for dynamic installed energy capacity, units GWh.
         unit_type (unicode_type): Type of storage (e.g., 'PHES', 'BESS').
@@ -459,6 +469,8 @@ class Storage:
         self.max_build_e = max_build_e  # GWh/year
         self.min_build_p = min_build_p  # GW/year
         self.min_build_e = min_build_e  # GWh/year
+        self.unit_size_p = unit_size_p  # GW/unit
+        self.unit_size_e = unit_size_e  # GWh/unit
         self.unit_type = unit_type
         self.near_optimum_check = near_optimum_check
         self.node = node

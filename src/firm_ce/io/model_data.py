@@ -31,6 +31,7 @@ class ModelData:
         self.fuels = config_data.get("fuels")
         self.lines = config_data.get("lines")
         self.storages = config_data.get("storages")
+        self.interventions = config_data.get("interventions")
         self.config = config_data.get("config")
         self.x0s = config_data.get("initial_guess")
         self.datafiles = config_data.get("datafiles")

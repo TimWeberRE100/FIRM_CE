@@ -436,7 +436,7 @@ def validate_model_config(config_dict: Dict[int, Dict[str, Any]]) -> bool:
         "recombination": lambda v: validate_range(v, 0, 1),
         "type": lambda v: validate_enum(
             v,
-            ["single_time", "capacity_expansion", "near_optimum", "midpoint_explore"],
+            ["single_time", "capacity_expansion", "near_optimum", "midpoint_explore", "pathway_planning"],
         ),
         "model_name": None,
         "near_optimal_tol": lambda v: validate_range(v, 0, 1),
@@ -473,7 +473,8 @@ def validate_scenarios(scenarios_dict: Dict[int, Dict[str, Any]]) -> Tuple[List[
     Validate all rows in `scenarios.csv` and extract the list of scenario names.
 
     Checks for duplicate scenario names, valid numeric ranges for resolution and
-    allowance, and that firstyear <= finalyear.
+    allowance, integer firstyear/finalyear with firstyear <= finalyear, and that all
+    investment_steps values are integers within [firstyear, finalyear].
 
     Parameters:
     -------
@@ -505,14 +506,35 @@ def validate_scenarios(scenarios_dict: Dict[int, Dict[str, Any]]) -> Tuple[List[
             get_logger().error("'allowance' must be float in range [0,1]")
             flag = False
 
+        scenario_firstyear, scenario_finalyear = None, None
         try:
-            fy = int(item["firstyear"])
-            ly = int(item["finalyear"])
-            firstyear = fy if firstyear is None else min(firstyear, fy)
-            finalyear = ly if finalyear is None else max(finalyear, ly)
+            scenario_firstyear = int(item["firstyear"])
+            scenario_finalyear = int(item["finalyear"])
+            firstyear = scenario_firstyear if firstyear is None else min(firstyear, scenario_firstyear)
+            finalyear = scenario_finalyear if finalyear is None else max(finalyear, scenario_finalyear)
         except ValueError:
             get_logger().error("'firstyear' and 'finalyear' must be integers")
             flag = False
+
+        steps_raw = parse_list(item.get("investment_steps", float("nan")), lower=False)
+        if steps_raw:
+            try:
+                steps = [int(s) for s in steps_raw]
+            except ValueError:
+                get_logger().error("'investment_steps' must contain integer year values in scenario '%s'", name)
+                flag = False
+                steps = []
+            if scenario_firstyear is not None and scenario_finalyear is not None:
+                for step in steps:
+                    if not (scenario_firstyear <= step <= scenario_finalyear):
+                        get_logger().error(
+                            "investment_steps value %d in scenario '%s' is outside [firstyear=%d, finalyear=%d]",
+                            step,
+                            name,
+                            scenario_firstyear,
+                            scenario_finalyear,
+                        )
+                        flag = False
 
     if firstyear is not None and finalyear is not None and firstyear > finalyear:
         get_logger().error("'firstyear' must be less than or equal to 'finalyear'")
@@ -870,6 +892,8 @@ def validate_storages(
                 "min_build_p",
                 "max_build_e",
                 "min_build_e",
+                "unit_size_p",
+                "unit_size_e",
             ]:
                 if not validate_range(item[field], 0):
                     get_logger().error("'%s' must be float >= 0 (id=%s, year=%s)", field, asset_id, year)
@@ -915,6 +939,179 @@ def validate_storages(
             )
 
     return scenario_storages, flag
+
+
+def validate_interventions(
+    interventions_dict: Dict[int, Dict[int, Dict[str, Any]]],
+    generators_dict: Dict[int, Dict[int, Dict[str, Any]]],
+    storages_dict: Dict[int, Dict[int, Dict[str, Any]]],
+    scenarios_list: List[str],
+) -> bool:
+    """
+    Validate all rows in `interventions.csv` / `interventions_multiyear.csv`.
+
+    Checks that generator_ids and storage_ids reference valid model-level ids present in the
+    respective asset dicts for each applicable scenario, that capacity lists have the same length
+    as their corresponding id lists, and that all capacity values are positive.
+
+    Parameters:
+    -------
+    interventions_dict (Dict[int, Dict[int, Dict[str, Any]]]): Mapping of intervention id to
+        year-keyed dicts as loaded and merged from interventions.csv and
+        interventions_multiyear.csv.
+    generators_dict (Dict[int, Dict[int, Dict[str, Any]]]): Mapping of generator id to
+        year-keyed dicts, used to build per-scenario generator id sets.
+    storages_dict (Dict[int, Dict[int, Dict[str, Any]]]): Mapping of storage id to year-keyed
+        dicts, used to build per-scenario storage id sets.
+    scenarios_list (List[str]): List of valid scenario names.
+
+    Returns:
+    -------
+    bool: True if all validation checks pass, False otherwise. Returns True immediately when
+        interventions_dict is empty.
+    """
+    if not interventions_dict:
+        return True
+
+    flag = True
+
+    # Build per-scenario sets of valid model-level ids
+    scenario_gen_ids: Dict[str, set] = {s: set() for s in scenarios_list}
+    for gen_id, year_dict in generators_dict.items():
+        any_year_data = next(iter(year_dict.values()))
+        for sc in get_applicable_scenarios(any_year_data, scenarios_list, gen_id, "generator"):
+            scenario_gen_ids[sc].add(gen_id)
+
+    scenario_storage_ids: Dict[str, set] = {s: set() for s in scenarios_list}
+    for storage_id, year_dict in storages_dict.items():
+        any_year_data = next(iter(year_dict.values()))
+        for sc in get_applicable_scenarios(any_year_data, scenarios_list, storage_id, "storage"):
+            scenario_storage_ids[sc].add(storage_id)
+
+    for asset_id, year_dict in interventions_dict.items():
+        any_year_data = next(iter(year_dict.values()))
+
+        gen_ids = parse_list(any_year_data.get("generator_ids", float("nan")), lower=False)
+        storage_ids = parse_list(any_year_data.get("storage_ids", float("nan")), lower=False)
+        gen_caps = parse_list(any_year_data.get("generator_intervention_capacities", float("nan")), lower=False)
+        storage_caps_p = parse_list(
+            any_year_data.get("storage_intervention_capacities_p", float("nan")), lower=False
+        )
+        storage_caps_e = parse_list(
+            any_year_data.get("storage_intervention_capacities_e", float("nan")), lower=False
+        )
+
+        # Parse integer ids
+        try:
+            gen_id_ints = [int(x) for x in gen_ids if x]
+        except (ValueError, TypeError):
+            get_logger().error("'generator_ids' contains non-integer values (id=%s)", asset_id)
+            flag = False
+            gen_id_ints = []
+
+        try:
+            storage_id_ints = [int(x) for x in storage_ids if x]
+        except (ValueError, TypeError):
+            get_logger().error("'storage_ids' contains non-integer values (id=%s)", asset_id)
+            flag = False
+            storage_id_ints = []
+
+        # Check capacity list lengths
+        if gen_id_ints and len(gen_caps) != len(gen_id_ints):
+            get_logger().error(
+                "'generator_intervention_capacities' length (%d) does not match 'generator_ids' length (%d) (id=%s)",
+                len(gen_caps),
+                len(gen_id_ints),
+                asset_id,
+            )
+            flag = False
+
+        if storage_id_ints and len(storage_caps_p) != len(storage_id_ints):
+            get_logger().error(
+                "'storage_intervention_capacities_p' length (%d) does not match 'storage_ids' length (%d) (id=%s)",
+                len(storage_caps_p),
+                len(storage_id_ints),
+                asset_id,
+            )
+            flag = False
+
+        if storage_caps_e and len(storage_caps_e) != len(storage_id_ints):
+            get_logger().error(
+                "'storage_intervention_capacities_e' length (%d) does not match 'storage_ids' length (%d) (id=%s)",
+                len(storage_caps_e),
+                len(storage_id_ints),
+                asset_id,
+            )
+            flag = False
+
+        # Check capacity values are positive
+        for cap_str in gen_caps:
+            try:
+                if float(cap_str) <= 0:
+                    get_logger().error(
+                        "'generator_intervention_capacities' must all be > 0 (id=%s)", asset_id
+                    )
+                    flag = False
+                    break
+            except (ValueError, TypeError):
+                get_logger().error(
+                    "'generator_intervention_capacities' contains non-numeric value (id=%s)", asset_id
+                )
+                flag = False
+                break
+
+        for cap_str in storage_caps_p:
+            try:
+                if float(cap_str) <= 0:
+                    get_logger().error(
+                        "'storage_intervention_capacities_p' must all be > 0 (id=%s)", asset_id
+                    )
+                    flag = False
+                    break
+            except (ValueError, TypeError):
+                get_logger().error(
+                    "'storage_intervention_capacities_p' contains non-numeric value (id=%s)", asset_id
+                )
+                flag = False
+                break
+
+        for cap_str in storage_caps_e:
+            try:
+                if float(cap_str) <= 0:
+                    get_logger().error(
+                        "'storage_intervention_capacities_e' must all be > 0 (id=%s)", asset_id
+                    )
+                    flag = False
+                    break
+            except (ValueError, TypeError):
+                get_logger().error(
+                    "'storage_intervention_capacities_e' contains non-numeric value (id=%s)", asset_id
+                )
+                flag = False
+                break
+
+        # Check id references against per-scenario asset sets
+        for scenario in get_applicable_scenarios(any_year_data, scenarios_list, asset_id, "intervention"):
+            for gid in gen_id_ints:
+                if gid not in scenario_gen_ids[scenario]:
+                    get_logger().error(
+                        "generator_id %d in intervention id=%s not found in scenario '%s'",
+                        gid,
+                        asset_id,
+                        scenario,
+                    )
+                    flag = False
+            for sid in storage_id_ints:
+                if sid not in scenario_storage_ids[scenario]:
+                    get_logger().error(
+                        "storage_id %d in intervention id=%s not found in scenario '%s'",
+                        sid,
+                        asset_id,
+                        scenario,
+                    )
+                    flag = False
+
+    return flag
 
 
 def validate_initial_guess(
@@ -1070,6 +1267,7 @@ def validate_config(config_directory: str) -> bool:
         "fuels": config_data.get("fuels"),
         "lines": config_data.get("lines"),
         "storages": config_data.get("storages"),
+        "interventions": config_data.get("interventions"),
     }
     for mf_name, mf_dict in multiyear_files.items():
         if not validate_multiyear_year_columns(mf_dict, config_type, mf_name + ".csv"):
@@ -1104,6 +1302,15 @@ def validate_config(config_directory: str) -> bool:
         config_data.get("storages", {}), scenarios_list, scenario_nodes, scenario_lines
     )
     log_input_validation_result("storages.csv / storages_multiyear.csv", flag)
+    config_flag = config_flag and flag
+
+    flag = validate_interventions(
+        config_data.get("interventions", {}),
+        config_data.get("generators", {}),
+        config_data.get("storages", {}),
+        scenarios_list,
+    )
+    log_input_validation_result("interventions.csv / interventions_multiyear.csv", flag)
     config_flag = config_flag and flag
 
     flag = validate_initial_guess(
