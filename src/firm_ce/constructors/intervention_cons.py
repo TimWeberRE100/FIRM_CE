@@ -65,23 +65,30 @@ def construct_ScenarioInterventions_object(
             cumulative_generator_capacities: Dict[int, float] = {}
             cumulative_storage_capacities_p: Dict[int, float] = {}
             cumulative_storage_capacities_e: Dict[int, float] = {}
+            cumulative_generator_max_build: Dict[int, float] = {}
+            cumulative_storage_max_build_p: Dict[int, float] = {}
+            cumulative_storage_max_build_e: Dict[int, float] = {}
 
             for year in range(step_start_year, step_end_year + 1):
-                year_data = intervention_year_dict[year]
-                generator_ids = parse_id_list(year_data["generator_ids"])
-                storage_ids = parse_id_list(year_data["storage_ids"])
-                generator_capacities = parse_float_list(year_data["generator_intervention_capacities"])
-                storage_capacities_p = parse_float_list(year_data["storage_intervention_capacities_p"])
-                storage_capacities_e = parse_float_list(year_data["storage_intervention_capacities_e"])
+                year_idx = year - firstyear
+                intervention_year_data = intervention_year_dict[year]
+                generator_ids = parse_id_list(intervention_year_data["generator_ids"])
+                storage_ids = parse_id_list(intervention_year_data["storage_ids"])
+                generator_capacities = parse_float_list(intervention_year_data["generator_intervention_capacities"])
+                storage_capacities_p = parse_float_list(intervention_year_data["storage_intervention_capacities_p"])
+                storage_capacities_e = parse_float_list(intervention_year_data["storage_intervention_capacities_e"])
 
                 for generator_idx, capacity in zip(generator_ids, generator_capacities):
                     order = generator_id_to_order[generator_idx]
                     cumulative_generator_capacities[order] = cumulative_generator_capacities.get(order, 0.0) + capacity
+                    cumulative_generator_max_build[order] = cumulative_generator_max_build.get(order, 0.0) + fleet.generators[order].max_build[year_idx]
 
                 for storage_idx, capacity_p, capacity_e in zip(storage_ids, storage_capacities_p, storage_capacities_e):
                     order = storage_id_to_order[storage_idx]
                     cumulative_storage_capacities_p[order] = cumulative_storage_capacities_p.get(order, 0.0) + capacity_p
                     cumulative_storage_capacities_e[order] = cumulative_storage_capacities_e.get(order, 0.0) + capacity_e
+                    cumulative_storage_max_build_p[order] = cumulative_storage_max_build_p.get(order, 0.0) + fleet.storages[order].max_build_p[year_idx]
+                    cumulative_storage_max_build_e[order] = cumulative_storage_max_build_e.get(order, 0.0) + fleet.storages[order].max_build_e[year_idx]
 
             step_interventions[intervention_id] = Intervention(
                 intervention_id=intervention_id,
@@ -89,6 +96,11 @@ def construct_ScenarioInterventions_object(
                 generator_capacities=cumulative_generator_capacities,
                 storage_capacities_p=cumulative_storage_capacities_p,
                 storage_capacities_e=cumulative_storage_capacities_e,
+                generator_max_build_step=cumulative_generator_max_build,
+                storage_max_build_p_step=cumulative_storage_max_build_p,
+                storage_max_build_e_step=cumulative_storage_max_build_e,
+                fleet=fleet,
+                year_idx=investment_year_idx
             )
 
         interventions_for_investment_steps[investment_year_idx] = step_interventions

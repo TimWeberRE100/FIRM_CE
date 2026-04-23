@@ -74,6 +74,37 @@ def get_present_value(discount_rate: float64, lifetime: float64) -> float64:
 
 
 @njit(fastmath=FASTMATH)
+def calculate_annualised_build_func(
+    energy_capacity: float64,
+    power_capacity: float64,
+    line_length: float64,
+    unit_costs: UnitCost_InstanceType,
+    year_count: int64,
+    asset_type: unicode_type,
+) -> float:
+    present_value = get_present_value(unit_costs.discount_rate, unit_costs.lifetime)
+    if asset_type == "generator" or asset_type == "storage":
+        return (
+            year_count
+            * (energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p)
+            / present_value
+            if present_value > 1e-6
+            else 0
+        )
+    elif asset_type == "line":
+        return (
+            year_count
+            * (
+                power_capacity * 1e3 * line_length * unit_costs.capex_p
+                + power_capacity * 1e3 * unit_costs.transformer_capex
+            )
+            / present_value
+            if present_value > 1e-6
+            else 0
+        )
+    
+
+@njit(fastmath=FASTMATH)
 def calculate_annualised_build(
     ltcosts_instance: LTCosts_InstanceType,
     energy_capacity: float64,
@@ -113,26 +144,14 @@ def calculate_annualised_build(
     -------
     Attributes modified for the LTCosts instance: annualised_build.
     """
-    present_value = get_present_value(unit_costs.discount_rate, unit_costs.lifetime)
-    if asset_type == "generator" or asset_type == "storage":
-        ltcosts_instance.annualised_build = (
-            year_count
-            * (energy_capacity * 1e6 * unit_costs.capex_e + power_capacity * 1e6 * unit_costs.capex_p)
-            / present_value
-            if present_value > 1e-6
-            else 0
-        )
-    elif asset_type == "line":
-        ltcosts_instance.annualised_build = (
-            year_count
-            * (
-                power_capacity * 1e3 * line_length * unit_costs.capex_p
-                + power_capacity * 1e3 * unit_costs.transformer_capex
-            )
-            / present_value
-            if present_value > 1e-6
-            else 0
-        )
+    ltcosts_instance.annualised_build = calculate_annualised_build_func(
+        energy_capacity,
+        power_capacity,
+        line_length,
+        unit_costs,
+        year_count,
+        asset_type,
+    )
     return None
 
 

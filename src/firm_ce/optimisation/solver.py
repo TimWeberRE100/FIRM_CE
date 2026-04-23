@@ -544,7 +544,6 @@ class Solver:
             self.lower_bounds,
             self.upper_bounds,
             self.decision_x0,
-            self.initial_population,
             self.interventions,
         )
 

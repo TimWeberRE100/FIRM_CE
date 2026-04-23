@@ -16,3 +16,4 @@ FASTMATH = True
 YEAR_ALL_STR = "all"
 SCENARIOS_ALL_STR = "all"
 MULTIYEAR_FILENAMES = {"generators", "fuels", "lines", "storages", "interventions"}
+INTERVENTION_CHUNK_SIZE = 1000000
