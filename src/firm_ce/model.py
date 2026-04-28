@@ -121,7 +121,7 @@ class Model:
                 f"Datafiles loaded at {datafile_loadtime_str} ({datafile_loadtime - start_time:.4f} seconds)."
             )
 
-            de_result = scenario.solve(self.config)
+            optimisation_result = scenario.solve(self.config)
 
             solve_time = time.time()
             solve_time_str = datetime.fromtimestamp(solve_time).strftime("%d/%m/%Y %H:%M:%S")
@@ -129,9 +129,9 @@ class Model:
                 f"Optimisation completed at {solve_time_str} ({(solve_time - datafile_loadtime)/(60*60):.4f} hours)."
             )
 
-            if self.config.type == "single_time":
+            if self.config.type in ["single_time", "pathway_planning"]:
                 scenario.statistics = Statistics(
-                    de_result.x,
+                    optimisation_result.x,
                     scenario.static,
                     scenario.fleet,
                     scenario.network,
