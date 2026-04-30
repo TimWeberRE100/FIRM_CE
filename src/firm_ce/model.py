@@ -114,7 +114,11 @@ class Model:
             start_time_str = datetime.fromtimestamp(start_time).strftime("%d/%m/%Y %H:%M:%S")
             get_logger().info(f"Started scenario {scenario.name} at {start_time_str}.")
 
-            scenario.load_datafiles(self.datafile_filenames_dict, self.data_directory)
+            scenario.load_datafiles(
+                self.datafile_filenames_dict,
+                self.data_directory,
+                filter_leap_days=(self.config.type == "pathway_planning"),
+            )
             datafile_loadtime = time.time()
             datafile_loadtime_str = datetime.fromtimestamp(datafile_loadtime).strftime("%d/%m/%Y %H:%M:%S")
             get_logger().info(

@@ -444,6 +444,8 @@ def validate_model_config(config_dict: Dict[int, Dict[str, Any]]) -> bool:
         "balancing_type": lambda v: validate_enum(v, ["simple", "full"]),
         "simple_blocks_per_day": validate_positive_int,
         "fixed_costs_threshold": lambda v: validate_range(v, 0),
+        "intervention_set_size": validate_positive_int,
+        "intervention_set_medoids_per_year": validate_positive_int,
     }
 
     for item in config_dict.values():

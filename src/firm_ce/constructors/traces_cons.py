@@ -9,6 +9,73 @@ from firm_ce.system.components import Fleet_InstanceType
 from firm_ce.system.topology import Network_InstanceType
 
 
+def filter_leap_days_from_datafile_data(datafile: DataFile) -> None:
+    """
+    Remove Feb 29 rows from a DataFile's data dict in-place.
+
+    Only acts on files that carry Month and Day columns (demand and generation types).
+    Flexible-annual-limit files (Year column only) are left unchanged.
+
+    Parameters:
+    -------
+    datafile (DataFile): A DataFile instance whose .data dict maps column names to
+        NumPy arrays. Modified in-place.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    datafile.data is replaced with a new dict whose arrays exclude all rows where
+    Month == 2 and Day == 29.
+    """
+    data = datafile.data
+    if "Month" not in data or "Day" not in data:
+        return
+    mask = ~((data["Month"] == 2) & (data["Day"] == 29))
+    datafile.data = {col: arr[mask] for col, arr in data.items()}
+
+
+def apply_demand_scalars(
+    network: Network_InstanceType,
+    demand_scalars: NDArray[np.float64],
+    year_first_t: NDArray[np.int64],
+    intervals_count: int,
+) -> None:
+    """
+    Scale each year's demand and residual_load in-place across all nodes.
+
+    Must be called after load_datafiles_to_network and before
+    load_datafiles_to_generators, so that residual_load reflects the scaled
+    demand before initial generation is subtracted.
+
+    Parameters:
+    -------
+    network (Network_InstanceType): A static instance of the Network jitclass whose
+        nodes have already had demand loaded.
+    demand_scalars (NDArray[np.float64]): Per-year multipliers of length year_count.
+        demand_scalars[i] is applied to all intervals of year i.
+    year_first_t (NDArray[np.int64]): Array mapping each year index to its first interval.
+    intervals_count (int): Total number of intervals in the modelling horizon.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    Modifies node.data and node.residual_load in-place for every Node in the network.
+    """
+    year_count = len(year_first_t)
+    for node in network.nodes.values():
+        for year_idx in range(year_count):
+            t_start = int(year_first_t[year_idx])
+            t_end = int(year_first_t[year_idx + 1]) if year_idx < year_count - 1 else intervals_count
+            node.data[t_start:t_end] *= demand_scalars[year_idx]
+            node.residual_load[t_start:t_end] *= demand_scalars[year_idx]
+
+
 def select_datafile(
     datafile_type: str,
     object_name: str,

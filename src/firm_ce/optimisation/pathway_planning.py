@@ -13,7 +13,8 @@ from sklearn.cluster import MiniBatchKMeans
 
 from firm_ce.common.constants import DEBUG, NUM_THREADS, INTERVENTION_CHUNK_SIZE, PENALTY_MULTIPLIER
 from firm_ce.common.logging import get_logger
-from firm_ce.fast_methods import static_m
+from firm_ce.constructors.parameter_cons import build_generation_parameters_for_pathway_step
+from firm_ce.fast_methods import node_m, static_m
 from firm_ce.optimisation.capacity_expansion import (
     _active_vintages,  # noqa: F401 (imported for re-use within this module)
     _append_pathway_records,
@@ -512,6 +513,74 @@ def build_x_existing(fleet_static: Fleet_InstanceType, year_idx: int, vector_len
     return x_existing
 
 
+def get_total_generation_intervals(fleet_static: Fleet_InstanceType) -> int:
+    """
+    Return the length of the generation trace loaded into the fleet (T_gen), or 0 if no
+    generator has a non-empty generation trace.
+
+    Parameters:
+    -------
+    fleet_static (Fleet_InstanceType): A static instance of the Fleet jitclass.
+
+    Returns:
+    -------
+    int: Length of the first non-empty generator.data array found, or 0.
+    """
+    for generator in fleet_static.generators.values():
+        if len(generator.data) > 0:
+            return len(generator.data)
+    return 0
+
+
+def prepare_pathway_step_network(
+    network_static: Network_InstanceType,
+    fleet_static: Fleet_InstanceType,
+    original_demand: Dict[int, NDArray],
+    demand_first_t: int,
+    demand_last_t: int,
+    n_weather_years: int,
+) -> None:
+    """
+    Prepare network_static for a pathway planning investment step evaluation.
+
+    Tiles the investment step year's demand slice to match the full generation trace length
+    (W weather years) for every node, then recomputes residual_load by subtracting the
+    initial existing-capacity generation contribution.
+
+    Modifies network_static.nodes[*].data and residual_load in-place. This is safe because
+    the call is sequential and DE workers subsequently create independent dynamic copies of
+    these static instances.
+
+    Parameters:
+    -------
+    network_static (Network_InstanceType): Static network whose nodes will be updated.
+    fleet_static (Fleet_InstanceType): Static fleet providing initial-capacity generator traces.
+    original_demand (Dict[int, NDArray]): Original T_demand-length demand arrays keyed by
+        node order, captured before the first tiling step.
+    demand_first_t (int): First interval index (inclusive) of the investment step year in
+        the demand trace.
+    demand_last_t (int): Last interval index (exclusive) of the investment step year in the
+        demand trace.
+    n_weather_years (int): Number of weather years W; demand slice is tiled this many times.
+
+    Returns:
+    -------
+    None.
+
+    Side-effects:
+    -------
+    node.data and node.residual_load are replaced on every Node in network_static.
+    """
+    for order, node in network_static.nodes.items():
+        demand_slice = original_demand[order][demand_first_t:demand_last_t]
+        demand_tiled = np.tile(demand_slice, n_weather_years)
+        node_m.load_data(node, demand_tiled)
+
+    for generator in fleet_static.generators.values():
+        if len(generator.data) > 0 and generator.initial_capacity[0] > 0.0:
+            node_m.get_data(generator.node, "residual_load")[:] -= generator.data * generator.initial_capacity[0]
+
+
 def parallel_wrapper_with_progress(
     xs: NDArray,
     parameters_static: ScenarioParameters_InstanceType,
@@ -627,11 +696,24 @@ def run_pathway_planning(
     previous_step_year = None
     final_result = OptimizeResult()
 
+    gen_intervals_total = get_total_generation_intervals(fleet_static)
+    if gen_intervals_total == 0:
+        raise ValueError("No generation traces found in fleet; pathway planning requires generation data.")
+    original_demand: Dict[int, NDArray] = {order: np.array(node.data) for order, node in network_static.nodes.items()}
+    logger.info("Generation trace length: %d intervals.", gen_intervals_total)
+
     for step_idx, year in enumerate(parameters_static.investment_steps):
         step_start = time.time()
         year_idx = int(year - parameters_static.first_year)
-        first_t, last_t = static_m.get_year_t_boundaries(parameters_static, year_idx)
-        logger.info("Investment step %d/%d: year %d.", step_idx + 1, n_steps, year)
+        demand_first_t, demand_last_t = static_m.get_year_t_boundaries(parameters_static, year_idx)
+        intervals_per_demand_year = int(demand_last_t - demand_first_t)
+        n_weather_years = gen_intervals_total // intervals_per_demand_year
+        if gen_intervals_total % intervals_per_demand_year != 0:
+            raise ValueError(
+                f"Generation trace length ({gen_intervals_total}) is not an integer multiple "
+                f"of investment step year {year} interval count ({intervals_per_demand_year})."
+            )
+        logger.info("Investment step %d/%d: year %d (%d weather years).", step_idx + 1, n_steps, year, n_weather_years)
 
         logger.info("  Generating interventions for year %d.", year)
         step_interventions = generate_interventions_for_step(year_idx, interventions)
@@ -681,9 +763,16 @@ def run_pathway_planning(
             xs[:, i] = x_candidate
 
         logger.info("  Evaluating %d pathways for year %d.", n_pathways, year)
+        prepare_pathway_step_network(
+            network_static, fleet_static, original_demand, demand_first_t, demand_last_t, n_weather_years
+        )
+        eval_static = build_generation_parameters_for_pathway_step(
+            parameters_static, n_weather_years, intervals_per_demand_year,
+            float(parameters_static.year_energy_demand[year_idx]),
+        )
         results = parallel_wrapper_with_progress(
-            xs, parameters_static, fleet_static, network_static,
-            config.balancing_type, config.fixed_costs_threshold, first_t, last_t,
+            xs, eval_static, fleet_static, network_static,
+            config.balancing_type, config.fixed_costs_threshold, 0, gen_intervals_total,
         )
         logger.info("  Pathway evaluation complete for year %d.", year)
 
@@ -718,6 +807,9 @@ def run_pathway_planning(
 
         investment_steps_completed.append(year)
         previous_step_year = year
+
+    for order, node in network_static.nodes.items():
+        node_m.load_data(node, original_demand[order])
 
     logger.info("Pathway planning complete for scenario '%s'.", scenario_name)
     return final_result

@@ -9,9 +9,11 @@ from firm_ce.common.helpers import parse_comma_separated
 from firm_ce.common.constants import SCENARIOS_ALL_STR
 from firm_ce.constructors.component_cons import construct_Fleet_object
 from firm_ce.constructors.intervention_cons import construct_ScenarioInterventions_object
-from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_object
+from firm_ce.constructors.parameter_cons import construct_ScenarioParameters_object, determine_annual_demand_scalars
 from firm_ce.constructors.topology_cons import construct_Network_object
 from firm_ce.constructors.traces_cons import (
+    apply_demand_scalars,
+    filter_leap_days_from_datafile_data,
     load_datafiles_to_generators,
     load_datafiles_to_network,
     unload_data_from_generators,
@@ -105,6 +107,15 @@ class Scenario:
             self.scenario_data,
             len(self.network.nodes),
         )
+        total_demand_scalar_raw = self.scenario_data.get("total_demand_scalar", float("nan"))
+        self.total_demand_scalar = (
+            1.0 if isinstance(total_demand_scalar_raw, float) and np.isnan(total_demand_scalar_raw)
+            else float(total_demand_scalar_raw)
+        )
+        self.demand_scalars = determine_annual_demand_scalars(
+            self.scenario_data.get("annual_demand_scalar", float("nan")),
+            self.static.year_count,
+        )
         self.fleet = construct_Fleet_object(
             self.get_scenario_dicts(model_data.generators, firstyear, finalyear),
             self.get_scenario_dicts(model_data.storages, firstyear, finalyear),
@@ -128,7 +139,9 @@ class Scenario:
     def __repr__(self):
         return f"Scenario({self.id!r} {self.name!r})"
 
-    def load_datafiles(self, all_datafiles: Dict[str, DataFile], data_directory: str) -> None:
+    def load_datafiles(
+        self, all_datafiles: Dict[str, DataFile], data_directory: str, filter_leap_days: bool = False
+    ) -> None:
         """
         Load and attach external timeseries datafiles from the data_directory required by the
         Network.nodes and Fleet.generators for this Scenario. Calculates the annual net operational
@@ -140,6 +153,10 @@ class Scenario:
             `datafiles.csv` config file.
         data_directory (str): Root directory where data files referenced by the DataFile values reside. When solving a Model
             instance, the data_directory is defined during Model instantiation.
+        filter_leap_days (bool): When True, removes Feb 29 rows from all demand and generation
+            datafiles and updates the static interval parameters to no-leap boundaries (each year
+            is treated as exactly 8760 / resolution intervals). Required for pathway_planning when
+            data files contain leap years, to ensure all years have equal interval counts.
 
         Returns:
         -------
@@ -149,11 +166,31 @@ class Scenario:
         -------
         Attributes modified for the referenced Scenario.network.nodes: data_status, data, residual_load.
         Attributes modified for the referenced Scenario.fleet.generators: data_status, data, annual_constraints_data.
-        Attributes modified for the referenced Scenario.static: year_energy_demand.
+        Attributes modified for the referenced Scenario.static: year_energy_demand, and when
+            filter_leap_days is True also year_first_t, intervals_count, leap_year_count,
+            fom_scalar, interval_resolutions, and block_lengths.
         """
         datafiles = self.get_datafiles(all_datafiles, data_directory)
 
+        if filter_leap_days:
+            for datafile in datafiles.values():
+                filter_leap_days_from_datafile_data(datafile)
+            noleap_intervals_per_year = int(8760 // self.static.resolution)
+            noleap_intervals_count = self.static.year_count * noleap_intervals_per_year
+            noleap_year_first_t = np.arange(self.static.year_count, dtype=np.int64) * noleap_intervals_per_year
+            self.static.year_first_t = noleap_year_first_t
+            self.static.intervals_count = noleap_intervals_count
+            self.static.leap_year_count = 0
+            self.static.fom_scalar = 1.0
+            self.static.interval_resolutions = np.full(noleap_intervals_count, self.static.resolution)
+            self.static.block_lengths = np.ones(noleap_intervals_count, dtype=np.int64)
+
         load_datafiles_to_network(self.network, datafiles)
+
+        apply_demand_scalars(
+            self.network, self.demand_scalars * self.total_demand_scalar,
+            self.static.year_first_t, self.static.intervals_count,
+        )
 
         load_datafiles_to_generators(
             self.fleet, datafiles, self.static.resolution, self.static.year_first_t, self.static.intervals_count

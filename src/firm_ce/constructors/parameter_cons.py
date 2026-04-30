@@ -1,10 +1,11 @@
 import calendar
-from typing import Dict, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 from numpy.typing import NDArray
 
-from firm_ce.common.helpers import parse_comma_separated
+from firm_ce.common.exceptions import ValidationError
+from firm_ce.common.helpers import parse_comma_separated, parse_float_list
 from firm_ce.system.parameters import ScenarioParameters, ScenarioParameters_InstanceType
 
 
@@ -50,6 +51,53 @@ def determine_interval_parameters(
     return leap_days, year_first_t, intervals_count
 
 
+def determine_annual_demand_scalars(
+    annual_demand_scalar_raw: object,
+    year_count: int,
+) -> NDArray[np.float64]:
+    """
+    Parse the annual_demand_scalar field from scenarios.csv into a per-year multiplier array.
+
+    When a single value s is provided, demand for year i (0-indexed) is scaled by s^i, so
+    the first year is unscaled (s^0 = 1.0) and each subsequent year compounds by s. When a
+    comma-separated list is provided the values are used directly as per-year multipliers;
+    the list must contain exactly year_count entries. An absent or NaN field returns an
+    all-ones array (no scaling).
+
+    Parameters:
+    -------
+    annual_demand_scalar_raw (object): Raw value from the `annual_demand_scalar` column of
+        `config/scenarios.csv`. May be a float NaN (absent), a numeric string representing a
+        single scalar, or a comma-separated string of floats.
+    year_count (int): Number of years in the modelling horizon (firstyear to finalyear
+        inclusive).
+
+    Returns:
+    -------
+    NDArray[np.float64]: Array of per-year demand multipliers of length year_count.
+
+    Exceptions:
+    -------
+    ValidationError: Raised when a list is provided but its length does not equal year_count.
+    """
+    values: List[float] = parse_float_list(annual_demand_scalar_raw)
+
+    if not values:
+        return np.ones(year_count, dtype=np.float64)
+
+    if len(values) == 1:
+        s = values[0]
+        return np.array([s ** i for i in range(year_count)], dtype=np.float64)
+
+    if len(values) != year_count:
+        raise ValidationError(
+            f"annual_demand_scalar has {len(values)} entries but scenario has {year_count} years "
+            f"(firstyear to finalyear inclusive). Provide either a single scalar or exactly "
+            f"{year_count} comma-separated values."
+        )
+    return np.array(values, dtype=np.float64)
+
+
 def determine_investment_steps(
     investment_steps_raw: object,
     first_year: int,
@@ -77,6 +125,58 @@ def determine_investment_steps(
     return np.array(
         [int(s) for s in parse_comma_separated(str(investment_steps_raw), lower=False)], dtype=np.int64
     )
+
+
+def build_generation_parameters_for_pathway_step(
+    base_static: ScenarioParameters_InstanceType,
+    n_weather_years: int,
+    intervals_per_weather_year: int,
+    year_energy_demand: float,
+) -> ScenarioParameters_InstanceType:
+    """
+    Build a ScenarioParameters instance for evaluating a pathway planning investment step
+    over W weather years using a single investment step year's demand level.
+
+    The resulting instance has year_count = n_weather_years and equal-spaced year boundaries
+    derived from intervals_per_weather_year. All other fields (resolution, allowance, node
+    count, etc.) are inherited from base_static.
+
+    LCOE correctness: both fixed and variable costs scale with year_count = W, and the
+    demand denominator also scales by W, so LCOE = (W*fixed + W*var) / (W*demand) is
+    equivalent to the correct single-year LCOE.
+
+    Parameters:
+    -------
+    base_static (ScenarioParameters_InstanceType): The demand-based ScenarioParameters for the
+        scenario; supplies resolution, allowance, node_count, and other inherited fields.
+    n_weather_years (int): Number of weather years W in the full generation trace.
+    intervals_per_weather_year (int): Number of time intervals in one weather year (T_Y),
+        equal to the interval count of the investment step year's demand slice.
+    year_energy_demand (float): Total annual energy demand [GWh] for the investment step year,
+        used to populate year_energy_demand for every weather year in the result.
+
+    Returns:
+    -------
+    ScenarioParameters_InstanceType: A ScenarioParameters instance with W equal-length weather
+        years covering T_gen = W * T_Y total intervals.
+    """
+    total_gen_intervals = n_weather_years * intervals_per_weather_year
+    weather_year_first_t = np.arange(n_weather_years, dtype=np.int64) * intervals_per_weather_year
+
+    gen_params = ScenarioParameters(
+        base_static.resolution,
+        base_static.allowance,
+        base_static.first_year,
+        base_static.final_year,
+        n_weather_years,
+        0,  # leap_year_count: weather years use equal spacing; negligible FOM effect
+        weather_year_first_t,
+        total_gen_intervals,
+        base_static.node_count,
+        base_static.investment_steps,
+    )
+    gen_params.year_energy_demand = np.full(n_weather_years, year_energy_demand, dtype=np.float64)
+    return gen_params
 
 
 def construct_ScenarioParameters_object(

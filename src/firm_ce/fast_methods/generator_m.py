@@ -286,8 +286,16 @@ def update_residual_load_initial(
     For each year with non-zero opening baseline capacity, the corresponding portion of the
     residual_load array at Generator.node[year] is reduced by initial_capacity[0] *
     availability_trace.
+
+    When the generation trace length does not match intervals_count (e.g. pathway planning
+    where generation files span more weather years than the demand horizon), the function
+    returns immediately without modifying residual_load. In that case the caller is responsible
+    for building the correct residual_load externally.
     """
     if get_data(generator_instance, "trace").shape[0] == 0:
+        return None
+
+    if get_data(generator_instance, "trace").shape[0] != intervals_count:
         return None
 
     year_count = len(year_first_t)

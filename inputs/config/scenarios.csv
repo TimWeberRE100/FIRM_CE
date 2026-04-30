@@ -1,5 +1,5 @@
-id,scenario_name,resolution,allowance,firstyear,finalyear,investment_steps,networksteps_max,initial_pop_filename
-0,gas,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,
-1,nem,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,
-2,battery,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,
-3,gas_hr,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,
+id,scenario_name,resolution,allowance,firstyear,finalyear,investment_steps,networksteps_max,total_demand_scalar,annual_demand_scalar,initial_pop_filename
+0,gas,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,1.0,1.0,
+1,nem,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,1.0,1.0,
+2,battery,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,1.0,1.0,
+3,gas_hr,1,0.00002,2026,2050,"2029,2031,2033,2035,2040,2050",4,1.0,1.0,
